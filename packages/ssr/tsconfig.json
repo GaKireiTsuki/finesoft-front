@@ -1,11 +1,10 @@
 {
-	"extends": "../../tsconfig.base.json",
-	"compilerOptions": {
-		"outDir": "dist",
-		"baseUrl": ".",
-		"paths": {
-			"@finesoft/core": ["../core/src/index.ts"]
-		}
-	},
-	"include": ["src"]
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "dist",
+        "paths": {
+            "@finesoft/core": ["../core/src/index.ts"]
+        }
+    },
+    "include": ["src"]
 }

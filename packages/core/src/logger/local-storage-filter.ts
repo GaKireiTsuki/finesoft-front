@@ -12,83 +12,83 @@ import type { Level } from "./types";
 type LevelNum = 4 | 3 | 2 | 1 | 0;
 
 const LEVEL_TO_NUM: Record<string, LevelNum> = {
-	"*": 4,
-	debug: 4,
-	info: 3,
-	warn: 2,
-	error: 1,
-	off: 0,
-	"": 0,
+    "*": 4,
+    debug: 4,
+    info: 3,
+    warn: 2,
+    error: 1,
+    off: 0,
+    "": 0,
 };
 
 interface Rules {
-	named?: Record<string, LevelNum>;
-	defaultLevel?: LevelNum;
+    named?: Record<string, LevelNum>;
+    defaultLevel?: LevelNum;
 }
 
 let cachedRules: Rules | undefined;
 let cachedRaw: string | undefined;
 
 function parseRules(): Rules {
-	if (typeof globalThis.localStorage === "undefined") {
-		return {};
-	}
+    if (typeof globalThis.localStorage === "undefined") {
+        return {};
+    }
 
-	let raw: string | null;
-	try {
-		raw = globalThis.localStorage.getItem("onyxLog");
-	} catch {
-		return {};
-	}
+    let raw: string | null;
+    try {
+        raw = globalThis.localStorage.getItem("onyxLog");
+    } catch {
+        return {};
+    }
 
-	if (!raw) return {};
+    if (!raw) return {};
 
-	if (raw === cachedRaw && cachedRules) return cachedRules;
-	cachedRaw = raw;
+    if (raw === cachedRaw && cachedRules) return cachedRules;
+    cachedRaw = raw;
 
-	const rules: Rules = {};
-	const parts = raw.split(",");
+    const rules: Rules = {};
+    const parts = raw.split(",");
 
-	for (const part of parts) {
-		const [name, level] = part.trim().split("=");
-		if (!name || level === undefined) continue;
+    for (const part of parts) {
+        const [name, level] = part.trim().split("=");
+        if (!name || level === undefined) continue;
 
-		const num = LEVEL_TO_NUM[level.toLowerCase()] ?? undefined;
-		if (num === undefined) continue;
+        const num = LEVEL_TO_NUM[level.toLowerCase()] ?? undefined;
+        if (num === undefined) continue;
 
-		if (name === "*") {
-			rules.defaultLevel = num;
-		} else {
-			rules.named ??= {};
-			rules.named[name] = num;
-		}
-	}
+        if (name === "*") {
+            rules.defaultLevel = num;
+        } else {
+            rules.named ??= {};
+            rules.named[name] = num;
+        }
+    }
 
-	cachedRules = rules;
-	return rules;
+    cachedRules = rules;
+    return rules;
 }
 
 export function shouldLog(name: string, level: Level): boolean {
-	const rules = parseRules();
+    const rules = parseRules();
 
-	if (rules.defaultLevel === undefined && !rules.named) {
-		return true;
-	}
+    if (rules.defaultLevel === undefined && !rules.named) {
+        return true;
+    }
 
-	const currentNum = LEVEL_TO_NUM[level] ?? 4;
+    const currentNum = LEVEL_TO_NUM[level] ?? 4;
 
-	if (rules.named?.[name] !== undefined) {
-		return currentNum <= rules.named[name];
-	}
+    if (rules.named?.[name] !== undefined) {
+        return currentNum <= rules.named[name];
+    }
 
-	if (rules.defaultLevel !== undefined) {
-		return currentNum <= rules.defaultLevel;
-	}
+    if (rules.defaultLevel !== undefined) {
+        return currentNum <= rules.defaultLevel;
+    }
 
-	return true;
+    return true;
 }
 
 export function resetFilterCache(): void {
-	cachedRules = undefined;
-	cachedRaw = undefined;
+    cachedRules = undefined;
+    cachedRaw = undefined;
 }

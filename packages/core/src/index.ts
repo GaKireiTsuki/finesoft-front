@@ -2,19 +2,14 @@
 export { ActionDispatcher } from "./actions/dispatcher";
 export type { ActionHandler } from "./actions/dispatcher";
 export {
-	ACTION_KINDS,
-	isCompoundAction,
-	isExternalUrlAction,
-	isFlowAction,
-	makeExternalUrlAction,
-	makeFlowAction,
+    ACTION_KINDS,
+    isCompoundAction,
+    isExternalUrlAction,
+    isFlowAction,
+    makeExternalUrlAction,
+    makeFlowAction,
 } from "./actions/types";
-export type {
-	Action,
-	CompoundAction,
-	ExternalUrlAction,
-	FlowAction,
-} from "./actions/types";
+export type { Action, CompoundAction, ExternalUrlAction, FlowAction } from "./actions/types";
 
 // ===== Intents =====
 export { IntentDispatcher } from "./intents/dispatcher";
@@ -24,12 +19,12 @@ export type { Intent, IntentController } from "./intents/types";
 export { Container } from "./dependencies/container";
 export { DEP_KEYS, makeDependencies } from "./dependencies/make-dependencies";
 export type {
-	FeatureFlags,
-	Locale,
-	Logger,
-	MetricsRecorder,
-	Net,
-	Storage,
+    FeatureFlags,
+    Locale,
+    Logger,
+    MetricsRecorder,
+    Net,
+    Storage,
 } from "./dependencies/make-dependencies";
 
 // ===== Router =====
@@ -74,34 +69,22 @@ export type { RenderMode, RouteDefinition } from "./bootstrap/define-routes";
 // ===== Utils =====
 export { LruMap } from "./utils/lru-map";
 export { isNone, isSome, type None, type Optional } from "./utils/optional";
-export {
-	buildUrl,
-	getBaseUrl,
-	removeHost,
-	removeQueryParams,
-	removeScheme,
-} from "./utils/url";
+export { buildUrl, getBaseUrl, removeHost, removeQueryParams, removeScheme } from "./utils/url";
 export { generateUuid } from "./utils/uuid";
 
 // ===== Middleware =====
-export {
-	createBrowserContext,
-	createServerContext,
-} from "./middleware/context";
-export type {
-	BrowserContextOptions,
-	ServerContextOptions,
-} from "./middleware/context";
+export { createBrowserContext, createServerContext } from "./middleware/context";
+export type { BrowserContextOptions, ServerContextOptions } from "./middleware/context";
 export { runAfterLoadGuards, runBeforeLoadGuards } from "./middleware/pipeline";
 export { deny, next, redirect, rewrite } from "./middleware/types";
 export type {
-	AfterLoadGuard,
-	BeforeLoadGuard,
-	DenyResult,
-	MiddlewareResult,
-	NavigationContext,
-	NextResult,
-	PostLoadContext,
-	RedirectResult,
-	RewriteResult,
+    AfterLoadGuard,
+    BeforeLoadGuard,
+    DenyResult,
+    MiddlewareResult,
+    NavigationContext,
+    NextResult,
+    PostLoadContext,
+    RedirectResult,
+    RewriteResult,
 } from "./middleware/types";

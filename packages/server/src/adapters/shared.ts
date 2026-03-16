@@ -7,19 +7,13 @@
 
 import { generateProxyCode } from "../proxy";
 import type {
-	AdapterContext,
-	BuildBundleOptions,
-	CopyStaticAssetsOptions,
-	GenerateSSREntryOptions,
+    AdapterContext,
+    BuildBundleOptions,
+    CopyStaticAssetsOptions,
+    GenerateSSREntryOptions,
 } from "./types";
 
-const BUILD_TOOL_EXTERNALS = [
-	"vite",
-	"esbuild",
-	"rollup",
-	"fsevents",
-	"lightningcss",
-];
+const BUILD_TOOL_EXTERNALS = ["vite", "esbuild", "rollup", "fsevents", "lightningcss"];
 
 /**
  * 生成 SSR serverless/edge 入口源码
@@ -27,25 +21,20 @@ const BUILD_TOOL_EXTERNALS = [
  * 内联 parseAcceptLanguage / injectSSR 以避免
  * @finesoft/front → @finesoft/server → vite-plugin → import("vite") 依赖链。
  */
-export function generateSSREntry(
-	ctx: AdapterContext,
-	opts: GenerateSSREntryOptions,
-): string {
-	const setupImport = ctx.setupPath
-		? `import _setupDefault from "./${ctx.setupPath}";`
-		: ``;
-	const setupCall = ctx.setupPath
-		? `if (typeof _setupDefault === "function") await _setupDefault(app);`
-		: ``;
+export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOptions): string {
+    const setupImport = ctx.setupPath ? `import _setupDefault from "./${ctx.setupPath}";` : ``;
+    const setupCall = ctx.setupPath
+        ? `if (typeof _setupDefault === "function") await _setupDefault(app);`
+        : ``;
 
-	const locales = JSON.stringify(ctx.locales);
-	const defaultLocale = JSON.stringify(ctx.defaultLocale);
-	const renderModes = JSON.stringify(ctx.renderModes ?? {});
+    const locales = JSON.stringify(ctx.locales);
+    const defaultLocale = JSON.stringify(ctx.defaultLocale);
+    const renderModes = JSON.stringify(ctx.renderModes ?? {});
 
-	// 平台缓存实现：平台自定义 或 内置内存 Map
-	const cacheImpl = opts.platformCache
-		? opts.platformCache
-		: `
+    // 平台缓存实现：平台自定义 或 内置内存 Map
+    const cacheImpl = opts.platformCache
+        ? opts.platformCache
+        : `
 const ISR_CACHE_MAX = 1000;
 const _isrMap = new Map();
 async function platformCacheGet(url) {
@@ -59,7 +48,7 @@ async function platformCacheSet(url, html) {
   _isrMap.set(url, html);
 }`;
 
-	return `
+    return `
 import { Hono } from "hono";
 ${opts.platformImport}
 import { render, serializeServerData } from "./${ctx.ssrEntry}";
@@ -184,48 +173,45 @@ ${opts.platformExport}
 }
 
 /** 用 Vite SSR 模式构建 bundle */
-export async function buildBundle(
-	ctx: AdapterContext,
-	opts: BuildBundleOptions,
-): Promise<void> {
-	await ctx.vite.build({
-		root: ctx.root,
-		build: {
-			ssr: opts.entry,
-			outDir: opts.outDir,
-			emptyOutDir: true,
-			target: opts.target ?? "node18",
-			rollupOptions: {
-				output: { entryFileNames: opts.fileName ?? "index.mjs" },
-			},
-		},
-		ssr: {
-			noExternal: opts.noExternal !== false,
-			external: opts.external ?? BUILD_TOOL_EXTERNALS,
-		},
-		resolve: ctx.resolvedResolve,
-		css: ctx.resolvedCss,
-	});
+export async function buildBundle(ctx: AdapterContext, opts: BuildBundleOptions): Promise<void> {
+    await ctx.vite.build({
+        root: ctx.root,
+        build: {
+            ssr: opts.entry,
+            outDir: opts.outDir,
+            emptyOutDir: true,
+            target: opts.target ?? "node18",
+            rollupOptions: {
+                output: { entryFileNames: opts.fileName ?? "index.mjs" },
+            },
+        },
+        ssr: {
+            noExternal: opts.noExternal !== false,
+            external: opts.external ?? BUILD_TOOL_EXTERNALS,
+        },
+        resolve: ctx.resolvedResolve,
+        css: ctx.resolvedCss,
+    });
 }
 
 /** 复制 dist/client 静态资源到目标目录 */
 export function copyStaticAssets(
-	ctx: AdapterContext,
-	destDir: string,
-	opts?: CopyStaticAssetsOptions,
+    ctx: AdapterContext,
+    destDir: string,
+    opts?: CopyStaticAssetsOptions,
 ): void {
-	const { fs, path } = ctx;
-	fs.cpSync(path.resolve(ctx.root, "dist/client"), destDir, {
-		recursive: true,
-	});
-	if (opts?.excludeHtml !== false) {
-		fs.rmSync(path.join(destDir, "index.html"), { force: true });
-	}
+    const { fs, path } = ctx;
+    fs.cpSync(path.resolve(ctx.root, "dist/client"), destDir, {
+        recursive: true,
+    });
+    if (opts?.excludeHtml !== false) {
+        fs.rmSync(path.join(destDir, "index.html"), { force: true });
+    }
 }
 
 export interface PrerenderResult {
-	url: string;
-	html: string;
+    url: string;
+    html: string;
 }
 
 /**
@@ -235,121 +221,109 @@ export interface PrerenderResult {
  * 2. 合并 ctx.renderModes 配置覆盖
  * 3. 渲染每个 URL × locale
  */
-export async function prerenderRoutes(
-	ctx: AdapterContext,
-): Promise<PrerenderResult[]> {
-	const { fs, path, root, vite } = ctx;
-	const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
+export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderResult[]> {
+    const { fs, path, root, vite } = ctx;
+    const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
 
-	const routesExport = ctx.bootstrapEntry ?? "src/lib/bootstrap.ts";
+    const routesExport = ctx.bootstrapEntry ?? "src/lib/bootstrap.ts";
 
-	// ── 1. 尝试构建并加载路由定义（文件不存在则跳过） ──
-	let routes: Array<{ path: string; renderMode?: string }> = [];
-	const routesFileExists = fs.existsSync(path.resolve(root, routesExport));
+    // ── 1. 尝试构建并加载路由定义（文件不存在则跳过） ──
+    let routes: Array<{ path: string; renderMode?: string }> = [];
+    const routesFileExists = fs.existsSync(path.resolve(root, routesExport));
 
-	if (routesFileExists) {
-		await vite.build({
-			root,
-			build: {
-				ssr: routesExport,
-				outDir: path.resolve(root, "dist/server"),
-				emptyOutDir: false,
-				rollupOptions: {
-					output: { entryFileNames: "_routes_prerender.mjs" },
-				},
-			},
-			resolve: ctx.resolvedResolve,
-		});
+    if (routesFileExists) {
+        await vite.build({
+            root,
+            build: {
+                ssr: routesExport,
+                outDir: path.resolve(root, "dist/server"),
+                emptyOutDir: false,
+                rollupOptions: {
+                    output: { entryFileNames: "_routes_prerender.mjs" },
+                },
+            },
+            resolve: ctx.resolvedResolve,
+        });
 
-		const routesPath = pathToFileURL(
-			path.resolve(root, "dist/server/_routes_prerender.mjs"),
-		).href;
-		const routesMod = await import(/* @vite-ignore */ routesPath);
-		routes = routesMod.routes ?? routesMod.default ?? [];
+        const routesPath = pathToFileURL(
+            path.resolve(root, "dist/server/_routes_prerender.mjs"),
+        ).href;
+        const routesMod = await import(/* @vite-ignore */ routesPath);
+        routes = routesMod.routes ?? routesMod.default ?? [];
 
-		// 清理临时文件
-		fs.rmSync(path.resolve(root, "dist/server/_routes_prerender.mjs"), {
-			force: true,
-		});
-	}
+        // 清理临时文件
+        fs.rmSync(path.resolve(root, "dist/server/_routes_prerender.mjs"), {
+            force: true,
+        });
+    }
 
-	// ── 2. 收集 prerender 路径 ──
-	const prerenderPaths = new Set<string>();
+    // ── 2. 收集 prerender 路径 ──
+    const prerenderPaths = new Set<string>();
 
-	// 路由定义级别
-	for (const r of routes) {
-		if (r.renderMode === "prerender" && r.path && !r.path.includes(":")) {
-			prerenderPaths.add(r.path);
-		}
-	}
+    // 路由定义级别
+    for (const r of routes) {
+        if (r.renderMode === "prerender" && r.path && !r.path.includes(":")) {
+            prerenderPaths.add(r.path);
+        }
+    }
 
-	// Vite 配置覆盖级别
-	if (ctx.renderModes) {
-		for (const [pattern, mode] of Object.entries(ctx.renderModes)) {
-			if (
-				mode === "prerender" &&
-				!pattern.includes("*") &&
-				!pattern.includes(":")
-			) {
-				prerenderPaths.add(pattern);
-			}
-		}
-	}
+    // Vite 配置覆盖级别
+    if (ctx.renderModes) {
+        for (const [pattern, mode] of Object.entries(ctx.renderModes)) {
+            if (mode === "prerender" && !pattern.includes("*") && !pattern.includes(":")) {
+                prerenderPaths.add(pattern);
+            }
+        }
+    }
 
-	if (prerenderPaths.size === 0) return [];
+    if (prerenderPaths.size === 0) return [];
 
-	// ── 3. 加载 SSR 模块 ──
-	const ssrPath = pathToFileURL(
-		path.resolve(root, "dist/server/ssr.js"),
-	).href;
-	const ssrModule = await import(/* @vite-ignore */ ssrPath);
+    // ── 3. 加载 SSR 模块 ──
+    const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
+    const ssrModule = await import(/* @vite-ignore */ ssrPath);
 
-	// ── 4. 渲染每个 URL × locale ──
-	const results: PrerenderResult[] = [];
+    // ── 4. 渲染每个 URL × locale ──
+    const results: PrerenderResult[] = [];
 
-	for (const routePath of prerenderPaths) {
-		for (const locale of ctx.locales) {
-			const url =
-				locale === ctx.defaultLocale
-					? routePath
-					: `/${locale}${routePath === "/" ? "" : routePath}`;
-			try {
-				const {
-					html: appHtml,
-					head,
-					css,
-					serverData,
-				} = await ssrModule.render(url, locale);
+    for (const routePath of prerenderPaths) {
+        for (const locale of ctx.locales) {
+            const url =
+                locale === ctx.defaultLocale
+                    ? routePath
+                    : `/${locale}${routePath === "/" ? "" : routePath}`;
+            try {
+                const {
+                    html: appHtml,
+                    head,
+                    css,
+                    serverData,
+                } = await ssrModule.render(url, locale);
 
-				const serializedData =
-					ssrModule.serializeServerData(serverData);
+                const serializedData = ssrModule.serializeServerData(serverData);
 
-				const finalHtml = ctx.templateHtml
-					.replace("<!--ssr-lang-->", locale)
-					.replace(
-						"<!--ssr-head-->",
-						head + "\n<style>" + css + "</style>",
-					)
-					.replace("<!--ssr-body-->", appHtml)
-					.replace(
-						"<!--ssr-data-->",
-						'<script id="serialized-server-data" type="application/json">' +
-							serializedData +
-							"</script>",
-					);
+                const finalHtml = ctx.templateHtml
+                    .replace("<!--ssr-lang-->", locale)
+                    .replace("<!--ssr-head-->", head + "\n<style>" + css + "</style>")
+                    .replace("<!--ssr-body-->", appHtml)
+                    .replace(
+                        "<!--ssr-data-->",
+                        '<script id="serialized-server-data" type="application/json">' +
+                            serializedData +
+                            "</script>",
+                    );
 
-				results.push({ url, html: finalHtml });
-			} catch (e) {
-				console.warn(`  [prerender] Failed to render ${url}:`, e);
-			}
-		}
-	}
+                results.push({ url, html: finalHtml });
+            } catch (e) {
+                console.warn(`  [prerender] Failed to render ${url}:`, e);
+            }
+        }
+    }
 
-	if (results.length > 0) {
-		console.log(
-			`  Pre-rendered ${results.length} pages (${prerenderPaths.size} routes × ${ctx.locales.length} locales)\n`,
-		);
-	}
+    if (results.length > 0) {
+        console.log(
+            `  Pre-rendered ${results.length} pages (${prerenderPaths.size} routes × ${ctx.locales.length} locales)\n`,
+        );
+    }
 
-	return results;
+    return results;
 }

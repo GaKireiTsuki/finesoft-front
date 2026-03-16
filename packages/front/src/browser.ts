@@ -6,19 +6,19 @@ export * from "@finesoft/core";
 
 // ===== Browser =====
 export {
-	History,
-	createPrefetchedIntentsFromDom,
-	deserializeServerData,
-	registerActionHandlers,
-	registerExternalUrlHandler,
-	registerFlowActionHandler,
-	startBrowserApp,
-	tryScroll,
+    History,
+    createPrefetchedIntentsFromDom,
+    deserializeServerData,
+    registerActionHandlers,
+    registerExternalUrlHandler,
+    registerFlowActionHandler,
+    startBrowserApp,
+    tryScroll,
 } from "@finesoft/browser";
 export type {
-	ActionHandlerDependencies,
-	BrowserAppConfig,
-	ExternalUrlDependencies,
-	FlowActionCallbacks,
-	FlowActionDependencies,
+    ActionHandlerDependencies,
+    BrowserAppConfig,
+    ExternalUrlDependencies,
+    FlowActionCallbacks,
+    FlowActionDependencies,
 } from "@finesoft/browser";

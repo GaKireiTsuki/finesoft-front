@@ -5,9 +5,9 @@
  */
 
 export interface BasePage {
-	id: string;
-	pageType: string;
-	title: string;
-	description?: string;
-	url?: string;
+    id: string;
+    pageType: string;
+    title: string;
+    description?: string;
+    url?: string;
 }

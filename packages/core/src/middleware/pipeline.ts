@@ -5,33 +5,33 @@
  */
 
 import type {
-	AfterLoadGuard,
-	BeforeLoadGuard,
-	MiddlewareResult,
-	NavigationContext,
-	PostLoadContext,
+    AfterLoadGuard,
+    BeforeLoadGuard,
+    MiddlewareResult,
+    NavigationContext,
+    PostLoadContext,
 } from "./types";
 
 /** 执行 beforeLoad 守卫链 */
 export async function runBeforeLoadGuards(
-	guards: BeforeLoadGuard[],
-	ctx: NavigationContext,
+    guards: BeforeLoadGuard[],
+    ctx: NavigationContext,
 ): Promise<MiddlewareResult> {
-	for (const guard of guards) {
-		const result = await guard(ctx);
-		if (result.kind !== "next") return result;
-	}
-	return { kind: "next" };
+    for (const guard of guards) {
+        const result = await guard(ctx);
+        if (result.kind !== "next") return result;
+    }
+    return { kind: "next" };
 }
 
 /** 执行 afterLoad 守卫链 */
 export async function runAfterLoadGuards(
-	guards: AfterLoadGuard[],
-	ctx: PostLoadContext,
+    guards: AfterLoadGuard[],
+    ctx: PostLoadContext,
 ): Promise<MiddlewareResult> {
-	for (const guard of guards) {
-		const result = await guard(ctx);
-		if (result.kind !== "next") return result;
-	}
-	return { kind: "next" };
+    for (const guard of guards) {
+        const result = await guard(ctx);
+        if (result.kind !== "next") return result;
+    }
+    return { kind: "next" };
 }

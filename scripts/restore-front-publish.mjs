@@ -6,10 +6,10 @@ const packageJsonPath = resolve(process.cwd(), "package.json");
 const backupPath = resolve(process.cwd(), "package.json.publish-backup");
 
 try {
-	await access(backupPath, constants.F_OK);
+    await access(backupPath, constants.F_OK);
 } catch {
-	console.log("No publish backup found for packages/front/package.json.");
-	process.exit(0);
+    console.log("No publish backup found for packages/front/package.json.");
+    process.exit(0);
 }
 
 await writeFile(packageJsonPath, await readFile(backupPath));

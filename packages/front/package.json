@@ -1,63 +1,62 @@
 {
-	"name": "@finesoft/front",
-	"version": "0.1.39",
-	"description": "Full-stack framework: router, DI, actions, SSR, and server — all in one package",
-	"license": "MIT",
-	"type": "module",
-	"main": "dist/index.cjs",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		".": {
-			"browser": {
-				"types": "./dist/browser.d.ts",
-				"default": "./dist/browser.js"
-			},
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			},
-			"require": {
-				"types": "./dist/index.d.cts",
-				"default": "./dist/index.cjs"
-			}
-		}
-	},
-	"files": [
-		"dist",
-		"README.md"
-	],
-	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
-		"prepack": "node ../../scripts/prepare-front-publish.mjs",
-		"postpack": "node ../../scripts/restore-front-publish.mjs"
-	},
-	"dependencies": {},
-	"peerDependencies": {
-		"hono": "^4.0.0",
-		"@hono/node-server": "^1.0.0",
-		"vite": ">=5.0.0"
-	},
-	"peerDependenciesMeta": {
-		"@hono/node-server": {
-			"optional": true
-		},
-		"vite": {
-			"optional": true
-		}
-	},
-	"devDependencies": {
-		"@finesoft/core": "workspace:*",
-		"@finesoft/browser": "workspace:*",
-		"@finesoft/ssr": "workspace:*",
-		"@finesoft/server": "workspace:*",
-		"@hono/node-server": "^1.14.1",
-		"@types/node": "^22.19.15",
-		"dotenv": "^17.3.1",
-		"hono": "^4.7.10",
-		"tsup": "^8.5.0",
-		"typescript": "^5.3.0",
-		"vite": "^5.0.0"
-	}
+    "name": "@finesoft/front",
+    "version": "0.1.39",
+    "description": "Full-stack framework: router, DI, actions, SSR, and server — all in one package",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "type": "module",
+    "main": "dist/index.cjs",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "browser": {
+                "types": "./dist/browser.d.ts",
+                "default": "./dist/browser.js"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.cts",
+                "default": "./dist/index.cjs"
+            }
+        }
+    },
+    "scripts": {
+        "build": "vp pack",
+        "dev": "vp pack --watch",
+        "prepack": "node ../../scripts/prepare-front-publish.mjs",
+        "postpack": "node ../../scripts/restore-front-publish.mjs"
+    },
+    "dependencies": {},
+    "devDependencies": {
+        "@finesoft/browser": "workspace:*",
+        "@finesoft/core": "workspace:*",
+        "@finesoft/server": "workspace:*",
+        "@finesoft/ssr": "workspace:*",
+        "@hono/node-server": "^1.14.1",
+        "@types/node": "catalog:",
+        "dotenv": "^17.3.1",
+        "hono": "^4.7.10",
+        "vite": "catalog:",
+        "vite-plus": "catalog:"
+    },
+    "peerDependencies": {
+        "@hono/node-server": "^1.0.0",
+        "hono": "^4.0.0",
+        "vite": ">=5.0.0"
+    },
+    "peerDependenciesMeta": {
+        "@hono/node-server": {
+            "optional": true
+        },
+        "vite": {
+            "optional": true
+        }
+    }
 }

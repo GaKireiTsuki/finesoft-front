@@ -9,28 +9,28 @@ import type { Hono } from "hono";
 
 /** 代理路由认证配置 */
 export interface ProxyAuthConfig {
-	/** 认证类型 */
-	type: "bearer" | "basic";
-	/** 环境变量名称（运行时从 process.env 读取） */
-	envKey: string;
+    /** 认证类型 */
+    type: "bearer" | "basic";
+    /** 环境变量名称（运行时从 process.env 读取） */
+    envKey: string;
 }
 
 /** 声明式代理路由配置 */
 export interface ProxyRouteConfig {
-	/** URL 前缀，如 "/api/apple"（必须以 "/" 开头） */
-	prefix: string;
-	/** 代理目标地址（必须以 "https://" 开头） */
-	target: string;
-	/** HTTP 方法（默认 ["all"]） */
-	methods?: ("all" | "get" | "post" | "put" | "delete" | "patch")[];
-	/** 附加到代理请求的头部 */
-	headers?: Record<string, string>;
-	/** 认证配置 */
-	auth?: ProxyAuthConfig;
-	/** Cache-Control 响应头 */
-	cache?: string;
-	/** 是否跟随重定向（默认 false） */
-	followRedirects?: boolean;
+    /** URL 前缀，如 "/api/apple"（必须以 "/" 开头） */
+    prefix: string;
+    /** 代理目标地址（必须以 "https://" 开头） */
+    target: string;
+    /** HTTP 方法（默认 ["all"]） */
+    methods?: ("all" | "get" | "post" | "put" | "delete" | "patch")[];
+    /** 附加到代理请求的头部 */
+    headers?: Record<string, string>;
+    /** 认证配置 */
+    auth?: ProxyAuthConfig;
+    /** Cache-Control 响应头 */
+    cache?: string;
+    /** 是否跟随重定向（默认 false） */
+    followRedirects?: boolean;
 }
 
 /**
@@ -38,8 +38,8 @@ export interface ProxyRouteConfig {
  * 返回规范化的路径，或 null 表示非法。
  */
 function sanitizeProxyPath(raw: string): string | null {
-	if (raw.startsWith("//")) return null;
-	return raw.startsWith("/") ? raw : `/${raw}`;
+    if (raw.startsWith("//")) return null;
+    return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
 /**
@@ -47,95 +47,83 @@ function sanitizeProxyPath(raw: string): string | null {
  * 在注册时（启动阶段）调用，非法配置直接抛错阻止启动。
  */
 function validateConfig(config: ProxyRouteConfig): void {
-	if (!config.prefix.startsWith("/")) {
-		throw new Error(
-			`[proxy] prefix must start with "/": "${config.prefix}"`,
-		);
-	}
-	if (!config.target.startsWith("https://")) {
-		throw new Error(`[proxy] target must use HTTPS: "${config.target}"`);
-	}
+    if (!config.prefix.startsWith("/")) {
+        throw new Error(`[proxy] prefix must start with "/": "${config.prefix}"`);
+    }
+    if (!config.target.startsWith("https://")) {
+        throw new Error(`[proxy] target must use HTTPS: "${config.target}"`);
+    }
 }
 
 /**
  * 注册声明式代理路由到 Hono app（运行时使用：dev / preview / createServer）
  */
-export function registerProxyRoutes(
-	app: Hono,
-	configs: ProxyRouteConfig[],
-): void {
-	for (const config of configs) {
-		validateConfig(config);
+export function registerProxyRoutes(app: Hono, configs: ProxyRouteConfig[]): void {
+    for (const config of configs) {
+        validateConfig(config);
 
-		const methods = config.methods ?? ["all"];
-		const pattern = `${config.prefix}/*`;
+        const methods = config.methods ?? ["all"];
+        const pattern = `${config.prefix}/*`;
 
-		const handler = async (c: any) => {
-			const subPath = sanitizeProxyPath(
-				c.req.path.replace(config.prefix, ""),
-			);
-			if (!subPath) return c.text("Invalid path", 400);
+        const handler = async (c: any) => {
+            const subPath = sanitizeProxyPath(c.req.path.replace(config.prefix, ""));
+            if (!subPath) return c.text("Invalid path", 400);
 
-			const targetUrl = new URL(subPath, config.target);
+            const targetUrl = new URL(subPath, config.target);
 
-			// 转发 query 参数
-			const reqUrl = new URL(c.req.url);
-			reqUrl.searchParams.forEach((v, k) =>
-				targetUrl.searchParams.set(k, v),
-			);
+            // 转发 query 参数
+            const reqUrl = new URL(c.req.url);
+            reqUrl.searchParams.forEach((v, k) => targetUrl.searchParams.set(k, v));
 
-			// 构建请求头
-			const headers: Record<string, string> = { ...config.headers };
-			if (config.auth) {
-				const token = process.env[config.auth.envKey] ?? "";
-				if (token) {
-					headers.Authorization =
-						config.auth.type === "bearer"
-							? `Bearer ${token}`
-							: `Basic ${token}`;
-				}
-			}
+            // 构建请求头
+            const headers: Record<string, string> = { ...config.headers };
+            if (config.auth) {
+                const token = process.env[config.auth.envKey] ?? "";
+                if (token) {
+                    headers.Authorization =
+                        config.auth.type === "bearer" ? `Bearer ${token}` : `Basic ${token}`;
+                }
+            }
 
-			try {
-				const resp = await fetch(targetUrl.toString(), {
-					headers,
-					redirect: config.followRedirects ? "follow" : "manual",
-				});
-				const body = await resp.text();
-				const respHeaders: Record<string, string> = {
-					"Content-Type":
-						resp.headers.get("Content-Type") ?? "application/json",
-				};
-				if (config.cache) {
-					respHeaders["Cache-Control"] = config.cache;
-				}
-				return c.newResponse(body, resp.status as any, respHeaders);
-			} catch (e) {
-				console.error(`[Proxy ${config.prefix}]`, e);
-				return c.json({ error: "Proxy request failed" }, 502);
-			}
-		};
+            try {
+                const resp = await fetch(targetUrl.toString(), {
+                    headers,
+                    redirect: config.followRedirects ? "follow" : "manual",
+                });
+                const body = await resp.text();
+                const respHeaders: Record<string, string> = {
+                    "Content-Type": resp.headers.get("Content-Type") ?? "application/json",
+                };
+                if (config.cache) {
+                    respHeaders["Cache-Control"] = config.cache;
+                }
+                return c.newResponse(body, resp.status as any, respHeaders);
+            } catch (e) {
+                console.error(`[Proxy ${config.prefix}]`, e);
+                return c.json({ error: "Proxy request failed" }, 502);
+            }
+        };
 
-		for (const method of methods) {
-			(app as any)[method](pattern, handler);
-		}
-	}
+        for (const method of methods) {
+            (app as any)[method](pattern, handler);
+        }
+    }
 }
 
 /**
  * 生成代理路由的内联代码（用于 serverless/edge 入口，避免运行时依赖）
  */
 export function generateProxyCode(configs: ProxyRouteConfig[]): string {
-	if (!configs || configs.length === 0) return "";
+    if (!configs || configs.length === 0) return "";
 
-	// 运行时也校验一遍
-	for (const config of configs) {
-		validateConfig(config);
-	}
+    // 运行时也校验一遍
+    for (const config of configs) {
+        validateConfig(config);
+    }
 
-	const blocks: string[] = [];
+    const blocks: string[] = [];
 
-	blocks.push(`
+    blocks.push(`
 // ─── 框架声明式代理路由 ───
 function _sanitizeProxyPath(raw) {
   if (raw.startsWith("//")) return null;
@@ -143,26 +131,24 @@ function _sanitizeProxyPath(raw) {
 }
 `);
 
-	for (const config of configs) {
-		const methods = config.methods ?? ["all"];
-		const pattern = `"${config.prefix}/*"`;
-		const headersJson = JSON.stringify(config.headers ?? {});
-		const cacheStr = config.cache ? JSON.stringify(config.cache) : "null";
-		const redirect = config.followRedirects ? '"follow"' : '"manual"';
+    for (const config of configs) {
+        const methods = config.methods ?? ["all"];
+        const pattern = `"${config.prefix}/*"`;
+        const headersJson = JSON.stringify(config.headers ?? {});
+        const cacheStr = config.cache ? JSON.stringify(config.cache) : "null";
+        const redirect = config.followRedirects ? '"follow"' : '"manual"';
 
-		let authCode = "";
-		if (config.auth) {
-			const envKey = JSON.stringify(config.auth.envKey);
-			const prefix = config.auth.type === "bearer" ? "Bearer " : "Basic ";
-			authCode = `
+        let authCode = "";
+        if (config.auth) {
+            const envKey = JSON.stringify(config.auth.envKey);
+            const prefix = config.auth.type === "bearer" ? "Bearer " : "Basic ";
+            authCode = `
   const _token = (typeof process !== "undefined" && process.env && process.env[${envKey}]) || "";
   if (_token) _headers.Authorization = "${prefix}" + _token;`;
-		}
+        }
 
-		const handlerCode = `async (c) => {
-  const _sub = _sanitizeProxyPath(c.req.path.replace(${JSON.stringify(
-		config.prefix,
-  )}, ""));
+        const handlerCode = `async (c) => {
+  const _sub = _sanitizeProxyPath(c.req.path.replace(${JSON.stringify(config.prefix)}, ""));
   if (!_sub) return c.text("Invalid path", 400);
   const _target = new URL(_sub, ${JSON.stringify(config.target)});
   const _reqUrl = new URL(c.req.url);
@@ -180,10 +166,10 @@ function _sanitizeProxyPath(raw) {
   }
 }`;
 
-		for (const method of methods) {
-			blocks.push(`app.${method}(${pattern}, ${handlerCode});`);
-		}
-	}
+        for (const method of methods) {
+            blocks.push(`app.${method}(${pattern}, ${handlerCode});`);
+        }
+    }
 
-	return blocks.join("\n");
+    return blocks.join("\n");
 }

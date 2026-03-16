@@ -1,0 +1,78 @@
+name: Release
+
+on:
+    push:
+        branches:
+            - main
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+env:
+    CI: true
+    NPM_CONFIG_PROVENANCE: false
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+    prepare-release:
+        name: Prepare Release
+        if: "${{ !startsWith(github.event.head_commit.message, 'chore: release @finesoft/front ') }}"
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
+                  registry-url: https://registry.npmjs.org
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Build packages
+              run: pnpm build:packages
+
+            - name: Generate auto changeset
+              run: pnpm release:auto:changeset
+
+            - name: Version packages
+              run: pnpm changeset version
+
+            - name: Commit and push release version
+              id: commit_release
+              shell: bash
+              run: |
+                  if git diff --quiet; then
+                    echo "version_changed=false" >> "$GITHUB_OUTPUT"
+                    echo "No version changes to commit."
+                    exit 0
+                  fi
+
+                  VERSION=$(node -p "require('./packages/front/package.json').version")
+                  echo "version_changed=true" >> "$GITHUB_OUTPUT"
+                  echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+                  git add -A .changeset packages/front/package.json packages/front/CHANGELOG.md template-project/package.json template-project/CHANGELOG.md
+                  git commit -m "chore: release @finesoft/front ${VERSION}"
+                  git push
+
+            - name: Publish packages
+              if: steps.commit_release.outputs.version_changed == 'true'
+              uses: changesets/action@v1
+              with:
+                  publish: pnpm release
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

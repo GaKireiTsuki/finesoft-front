@@ -20,18 +20,18 @@ export const MAX_SSR_DEPTH = 5;
  * @param depth - 当前 SSR 深度（由 catch-all handler 从请求头读取后 +1 传入）
  */
 export function createInternalFetch(
-	appFetch: (request: Request) => Response | Promise<Response>,
-	depth: number = 1,
+    appFetch: (request: Request) => Response | Promise<Response>,
+    depth: number = 1,
 ): typeof globalThis.fetch {
-	return ((input: RequestInfo | URL, init?: RequestInit) => {
-		// 只拦截相对路径（以 / 开头），其他一律走真实网络
-		if (typeof input === "string" && input.startsWith("/")) {
-			const request = new Request(`http://localhost${input}`, init);
-			request.headers.set(SSR_DEPTH_HEADER, String(depth));
-			return Promise.resolve(appFetch(request));
-		}
+    return ((input: RequestInfo | URL, init?: RequestInit) => {
+        // 只拦截相对路径（以 / 开头），其他一律走真实网络
+        if (typeof input === "string" && input.startsWith("/")) {
+            const request = new Request(`http://localhost${input}`, init);
+            request.headers.set(SSR_DEPTH_HEADER, String(depth));
+            return Promise.resolve(appFetch(request));
+        }
 
-		// 绝对 URL / URL 对象 / Request 对象 → 走正常网络
-		return globalThis.fetch(input, init);
-	}) as typeof globalThis.fetch;
+        // 绝对 URL / URL 对象 / Request 对象 → 走正常网络
+        return globalThis.fetch(input, init);
+    }) as typeof globalThis.fetch;
 }

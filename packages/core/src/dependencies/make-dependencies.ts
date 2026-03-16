@@ -13,151 +13,143 @@ export type { Logger, LoggerFactory };
 
 /** 网络请求层 */
 export interface Net {
-	fetch(url: string, options?: RequestInit): Promise<Response>;
+    fetch(url: string, options?: RequestInit): Promise<Response>;
 }
 
 /** 多语言状态 */
 export interface Locale {
-	language: string;
-	storefront: string;
-	setActiveLocale(language: string, storefront: string): void;
+    language: string;
+    storefront: string;
+    setActiveLocale(language: string, storefront: string): void;
 }
 
 /** 存储接口 */
 export interface Storage {
-	get(key: string): string | undefined;
-	set(key: string, value: string): void;
-	delete(key: string): void;
+    get(key: string): string | undefined;
+    set(key: string, value: string): void;
+    delete(key: string): void;
 }
 
 /** Feature Flags */
 export interface FeatureFlags {
-	isEnabled(key: string): boolean;
-	getString(key: string): string | undefined;
-	getNumber(key: string): number | undefined;
+    isEnabled(key: string): boolean;
+    getString(key: string): string | undefined;
+    getNumber(key: string): number | undefined;
 }
 
 /** Metrics 记录器 */
 export interface MetricsRecorder {
-	recordPageView(page: string, fields?: Record<string, unknown>): void;
-	recordEvent(name: string, fields?: Record<string, unknown>): void;
+    recordPageView(page: string, fields?: Record<string, unknown>): void;
+    recordEvent(name: string, fields?: Record<string, unknown>): void;
 }
 
 // ===== 依赖 Key 常量 =====
 
 export const DEP_KEYS = {
-	LOGGER: "logger",
-	LOGGER_FACTORY: "loggerFactory",
-	NET: "net",
-	LOCALE: "locale",
-	STORAGE: "storage",
-	FEATURE_FLAGS: "featureFlags",
-	METRICS: "metrics",
-	FETCH: "fetch",
+    LOGGER: "logger",
+    LOGGER_FACTORY: "loggerFactory",
+    NET: "net",
+    LOCALE: "locale",
+    STORAGE: "storage",
+    FEATURE_FLAGS: "featureFlags",
+    METRICS: "metrics",
+    FETCH: "fetch",
 } as const;
 
 // ===== 默认实现 =====
 
 class DefaultLocale implements Locale {
-	language = "en";
-	storefront = "us";
-	setActiveLocale(language: string, storefront: string) {
-		this.language = language;
-		this.storefront = storefront;
-	}
+    language = "en";
+    storefront = "us";
+    setActiveLocale(language: string, storefront: string) {
+        this.language = language;
+        this.storefront = storefront;
+    }
 }
 
 class MemoryStorage implements Storage {
-	private store = new Map<string, string>();
-	get(key: string) {
-		return this.store.get(key);
-	}
-	set(key: string, value: string) {
-		this.store.set(key, value);
-	}
-	delete(key: string) {
-		this.store.delete(key);
-	}
+    private store = new Map<string, string>();
+    get(key: string) {
+        return this.store.get(key);
+    }
+    set(key: string, value: string) {
+        this.store.set(key, value);
+    }
+    delete(key: string) {
+        this.store.delete(key);
+    }
 }
 
 class DefaultFeatureFlags implements FeatureFlags {
-	private flags: Record<string, boolean | string | number>;
-	constructor(flags: Record<string, boolean | string | number> = {}) {
-		this.flags = flags;
-	}
-	isEnabled(key: string) {
-		return this.flags[key] === true;
-	}
-	getString(key: string) {
-		const v = this.flags[key];
-		return typeof v === "string" ? v : undefined;
-	}
-	getNumber(key: string) {
-		const v = this.flags[key];
-		return typeof v === "number" ? v : undefined;
-	}
+    private flags: Record<string, boolean | string | number>;
+    constructor(flags: Record<string, boolean | string | number> = {}) {
+        this.flags = flags;
+    }
+    isEnabled(key: string) {
+        return this.flags[key] === true;
+    }
+    getString(key: string) {
+        const v = this.flags[key];
+        return typeof v === "string" ? v : undefined;
+    }
+    getNumber(key: string) {
+        const v = this.flags[key];
+        return typeof v === "number" ? v : undefined;
+    }
 }
 
 class ConsoleMetrics implements MetricsRecorder {
-	recordPageView(page: string, fields?: Record<string, unknown>) {
-		console.info(`[Metrics:PageView] ${page}`, fields ?? "");
-	}
-	recordEvent(name: string, fields?: Record<string, unknown>) {
-		console.info(`[Metrics:Event] ${name}`, fields ?? "");
-	}
+    recordPageView(page: string, fields?: Record<string, unknown>) {
+        console.info(`[Metrics:PageView] ${page}`, fields ?? "");
+    }
+    recordEvent(name: string, fields?: Record<string, unknown>) {
+        console.info(`[Metrics:Event] ${name}`, fields ?? "");
+    }
 }
 
 // ===== 依赖工厂 =====
 
 export interface MakeDependenciesOptions {
-	fetch?: typeof globalThis.fetch;
-	language?: string;
-	storefront?: string;
-	featureFlags?: Record<string, boolean | string | number>;
+    fetch?: typeof globalThis.fetch;
+    language?: string;
+    storefront?: string;
+    featureFlags?: Record<string, boolean | string | number>;
 }
 
 export function makeDependencies(
-	container: Container,
-	options: MakeDependenciesOptions = {},
+    container: Container,
+    options: MakeDependenciesOptions = {},
 ): void {
-	const {
-		fetch: fetchFn = globalThis.fetch?.bind(globalThis),
-		language = "en",
-		storefront = "us",
-		featureFlags = {},
-	} = options;
+    const {
+        fetch: fetchFn = globalThis.fetch?.bind(globalThis),
+        language = "en",
+        storefront = "us",
+        featureFlags = {},
+    } = options;
 
-	const loggerFactory = new ConsoleLoggerFactory();
-	container.register<LoggerFactory>(
-		DEP_KEYS.LOGGER_FACTORY,
-		() => loggerFactory,
-	);
+    const loggerFactory = new ConsoleLoggerFactory();
+    container.register<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY, () => loggerFactory);
 
-	container.register<Logger>(DEP_KEYS.LOGGER, () =>
-		loggerFactory.loggerFor("framework"),
-	);
+    container.register<Logger>(DEP_KEYS.LOGGER, () => loggerFactory.loggerFor("framework"));
 
-	container.register<Net>(DEP_KEYS.NET, () => ({
-		fetch: (url: string, opts?: RequestInit) => fetchFn(url, opts),
-	}));
+    container.register<Net>(DEP_KEYS.NET, () => ({
+        fetch: (url: string, opts?: RequestInit) => fetchFn(url, opts),
+    }));
 
-	container.register<Locale>(DEP_KEYS.LOCALE, () => {
-		const locale = new DefaultLocale();
-		locale.setActiveLocale(language, storefront);
-		return locale;
-	});
+    container.register<Locale>(DEP_KEYS.LOCALE, () => {
+        const locale = new DefaultLocale();
+        locale.setActiveLocale(language, storefront);
+        return locale;
+    });
 
-	container.register<Storage>(DEP_KEYS.STORAGE, () => new MemoryStorage());
+    container.register<Storage>(DEP_KEYS.STORAGE, () => new MemoryStorage());
 
-	container.register<FeatureFlags>(
-		DEP_KEYS.FEATURE_FLAGS,
-		() => new DefaultFeatureFlags(featureFlags),
-	);
+    container.register<FeatureFlags>(
+        DEP_KEYS.FEATURE_FLAGS,
+        () => new DefaultFeatureFlags(featureFlags),
+    );
 
-	container.register<MetricsRecorder>(
-		DEP_KEYS.METRICS,
-		() => new ConsoleMetrics(),
-	);
+    container.register<MetricsRecorder>(DEP_KEYS.METRICS, () => new ConsoleMetrics());
 
-	container.register(DEP_KEYS.FETCH, () => fetchFn);
+    container.register(DEP_KEYS.FETCH, () => fetchFn);
 }

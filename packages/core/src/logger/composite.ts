@@ -5,41 +5,36 @@
 import type { Logger, LoggerFactory } from "./types";
 
 export class CompositeLoggerFactory implements LoggerFactory {
-	constructor(private readonly factories: LoggerFactory[]) {}
+    constructor(private readonly factories: LoggerFactory[]) {}
 
-	loggerFor(name: string): Logger {
-		return new CompositeLogger(
-			this.factories.map((f) => f.loggerFor(name)),
-		);
-	}
+    loggerFor(name: string): Logger {
+        return new CompositeLogger(this.factories.map((f) => f.loggerFor(name)));
+    }
 }
 
 export class CompositeLogger implements Logger {
-	constructor(private readonly loggers: Logger[]) {}
+    constructor(private readonly loggers: Logger[]) {}
 
-	debug(...args: unknown[]): string {
-		return this.callAll("debug", args);
-	}
+    debug(...args: unknown[]): string {
+        return this.callAll("debug", args);
+    }
 
-	info(...args: unknown[]): string {
-		return this.callAll("info", args);
-	}
+    info(...args: unknown[]): string {
+        return this.callAll("info", args);
+    }
 
-	warn(...args: unknown[]): string {
-		return this.callAll("warn", args);
-	}
+    warn(...args: unknown[]): string {
+        return this.callAll("warn", args);
+    }
 
-	error(...args: unknown[]): string {
-		return this.callAll("error", args);
-	}
+    error(...args: unknown[]): string {
+        return this.callAll("error", args);
+    }
 
-	private callAll(
-		method: "debug" | "info" | "warn" | "error",
-		args: unknown[],
-	): string {
-		for (const logger of this.loggers) {
-			logger[method](...args);
-		}
-		return "";
-	}
+    private callAll(method: "debug" | "info" | "warn" | "error", args: unknown[]): string {
+        for (const logger of this.loggers) {
+            logger[method](...args);
+        }
+        return "";
+    }
 }

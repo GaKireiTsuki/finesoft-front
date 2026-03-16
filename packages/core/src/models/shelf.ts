@@ -7,16 +7,16 @@
 import type { Action } from "../actions/types";
 
 export interface BaseShelf {
-	id: string;
-	shelfType: string;
-	title?: string;
-	subtitle?: string;
-	seeAllAction?: Action;
-	isHorizontal?: boolean;
+    id: string;
+    shelfType: string;
+    title?: string;
+    subtitle?: string;
+    seeAllAction?: Action;
+    isHorizontal?: boolean;
 }
 
 export interface BaseItem {
-	id: string;
-	itemType: string;
-	clickAction?: Action;
+    id: string;
+    itemType: string;
+    clickAction?: Action;
 }

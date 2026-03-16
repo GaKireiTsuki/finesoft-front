@@ -1,16 +1,11 @@
 export { createSSRRender, type SSRRenderConfig } from "./create-render";
 export {
-	injectCSRShell,
-	injectSSRContent,
-	SSR_PLACEHOLDERS,
-	type InjectSSROptions,
+    injectCSRShell,
+    injectSSRContent,
+    SSR_PLACEHOLDERS,
+    type InjectSSROptions,
 } from "./inject";
-export {
-	ssrRender,
-	type SSRContext,
-	type SSRRenderOptions,
-	type SSRRenderResult,
-} from "./render";
+export { ssrRender, type SSRContext, type SSRRenderOptions, type SSRRenderResult } from "./render";
 export { serializeServerData } from "./server-data";
 
 // ===== Re-exports from @finesoft/core (convenience) =====

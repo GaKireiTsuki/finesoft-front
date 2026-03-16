@@ -3,49 +3,49 @@
  */
 
 export class LruMap<K, V> {
-	private map = new Map<K, V>();
-	private readonly capacity: number;
+    private map = new Map<K, V>();
+    private readonly capacity: number;
 
-	constructor(capacity: number) {
-		this.capacity = capacity;
-	}
+    constructor(capacity: number) {
+        this.capacity = capacity;
+    }
 
-	get(key: K): V | undefined {
-		const value = this.map.get(key);
-		if (value !== undefined) {
-			// 移到末尾（最近使用）
-			this.map.delete(key);
-			this.map.set(key, value);
-		}
-		return value;
-	}
+    get(key: K): V | undefined {
+        const value = this.map.get(key);
+        if (value !== undefined) {
+            // 移到末尾（最近使用）
+            this.map.delete(key);
+            this.map.set(key, value);
+        }
+        return value;
+    }
 
-	set(key: K, value: V): void {
-		if (this.map.has(key)) {
-			this.map.delete(key);
-		} else if (this.map.size >= this.capacity) {
-			// 删除最旧的（第一个）
-			const oldest = this.map.keys().next().value;
-			if (oldest !== undefined) {
-				this.map.delete(oldest);
-			}
-		}
-		this.map.set(key, value);
-	}
+    set(key: K, value: V): void {
+        if (this.map.has(key)) {
+            this.map.delete(key);
+        } else if (this.map.size >= this.capacity) {
+            // 删除最旧的（第一个）
+            const oldest = this.map.keys().next().value;
+            if (oldest !== undefined) {
+                this.map.delete(oldest);
+            }
+        }
+        this.map.set(key, value);
+    }
 
-	has(key: K): boolean {
-		return this.map.has(key);
-	}
+    has(key: K): boolean {
+        return this.map.has(key);
+    }
 
-	delete(key: K): boolean {
-		return this.map.delete(key);
-	}
+    delete(key: K): boolean {
+        return this.map.delete(key);
+    }
 
-	get size(): number {
-		return this.map.size;
-	}
+    get size(): number {
+        return this.map.size;
+    }
 
-	clear(): void {
-		this.map.clear();
-	}
+    clear(): void {
+        this.map.clear();
+    }
 }

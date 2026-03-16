@@ -5,24 +5,24 @@
  */
 
 export function stableStringify(obj: unknown, _seen?: Set<object>): string {
-	if (obj === null || obj === undefined) return String(obj);
-	if (typeof obj !== "object") return JSON.stringify(obj);
+    if (obj === null || obj === undefined) return String(obj);
+    if (typeof obj !== "object") return JSON.stringify(obj);
 
-	const seen = _seen ?? new Set<object>();
-	if (seen.has(obj as object)) return '"[Circular]"';
-	seen.add(obj as object);
+    const seen = _seen ?? new Set<object>();
+    if (seen.has(obj as object)) return '"[Circular]"';
+    seen.add(obj as object);
 
-	if (Array.isArray(obj)) {
-		return "[" + obj.map((v) => stableStringify(v, seen)).join(",") + "]";
-	}
-	const keys = Object.keys(obj as Record<string, unknown>).sort();
-	const parts = keys
-		.filter((k) => (obj as Record<string, unknown>)[k] !== undefined)
-		.map(
-			(k) =>
-				JSON.stringify(k) +
-				":" +
-				stableStringify((obj as Record<string, unknown>)[k], seen),
-		);
-	return "{" + parts.join(",") + "}";
+    if (Array.isArray(obj)) {
+        return "[" + obj.map((v) => stableStringify(v, seen)).join(",") + "]";
+    }
+    const keys = Object.keys(obj as Record<string, unknown>).sort();
+    const parts = keys
+        .filter((k) => (obj as Record<string, unknown>)[k] !== undefined)
+        .map(
+            (k) =>
+                JSON.stringify(k) +
+                ":" +
+                stableStringify((obj as Record<string, unknown>)[k], seen),
+        );
+    return "{" + parts.join(",") + "}";
 }

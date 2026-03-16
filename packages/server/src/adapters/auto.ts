@@ -12,20 +12,20 @@ import { resolveAdapter } from "./resolve";
 import type { Adapter } from "./types";
 
 export function autoAdapter(): Adapter {
-	return {
-		name: "auto",
-		async build(ctx) {
-			const detected = detectPlatform();
-			console.log(`  [auto] Detected platform: ${detected}\n`);
-			const adapter = resolveAdapter(detected);
-			return adapter.build(ctx);
-		},
-	};
+    return {
+        name: "auto",
+        async build(ctx) {
+            const detected = detectPlatform();
+            console.log(`  [auto] Detected platform: ${detected}\n`);
+            const adapter = resolveAdapter(detected);
+            return adapter.build(ctx);
+        },
+    };
 }
 
 function detectPlatform(): string {
-	if (process.env.VERCEL) return "vercel";
-	if (process.env.CF_PAGES) return "cloudflare";
-	if (process.env.NETLIFY) return "netlify";
-	return "node";
+    if (process.env.VERCEL) return "vercel";
+    if (process.env.CF_PAGES) return "cloudflare";
+    if (process.env.NETLIFY) return "netlify";
+    return "node";
 }

@@ -4,9 +4,7 @@ import { resolve } from "node:path";
 const changesetDir = resolve(process.cwd(), ".changeset");
 const frontPackagePath = resolve(process.cwd(), "packages/front/package.json");
 const runId =
-	process.env.GITHUB_RUN_ID ??
-	process.env.GITHUB_SHA?.slice(0, 7) ??
-	Date.now().toString();
+    process.env.GITHUB_RUN_ID ?? process.env.GITHUB_SHA?.slice(0, 7) ?? Date.now().toString();
 const shortSha = process.env.GITHUB_SHA?.slice(0, 7);
 const filePath = resolve(changesetDir, `ci-auto-${runId}.md`);
 const frontPackage = JSON.parse(await readFile(frontPackagePath, "utf8"));

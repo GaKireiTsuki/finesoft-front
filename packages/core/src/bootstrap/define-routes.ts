@@ -14,32 +14,32 @@ export type RenderMode = "ssr" | "csr" | "prerender";
 
 /** 单条路由定义 */
 export interface RouteDefinition {
-	/** URL pattern (如 "/product/:productId") */
-	path: string;
-	/** Intent ID (如 "product-page") */
-	intentId: string;
-	/**
-	 * Controller 实例（可选）。
-	 * 同一个 intentId 的多条路由只需在第一条提供 controller。
-	 */
-	controller?: IntentController;
-	/**
-	 * 渲染模式（可选，默认 "ssr"）。
-	 * - "ssr": 服务端渲染（默认）
-	 * - "csr": 客户端渲染（返回空壳 HTML，由客户端 JS 渲染）
-	 * - "prerender": 预渲染（构建时生成静态 HTML + ISR 缓存）
-	 */
-	renderMode?: RenderMode;
-	/**
-	 * 路由级 beforeLoad 守卫（可选）。
-	 * 在全局守卫之后执行，仅对匹配此路由的请求生效。
-	 */
-	beforeLoad?: BeforeLoadGuard[];
-	/**
-	 * 路由级 afterLoad 守卫（可选）。
-	 * 在全局守卫之后执行，仅对匹配此路由的请求生效。
-	 */
-	afterLoad?: AfterLoadGuard[];
+    /** URL pattern (如 "/product/:productId") */
+    path: string;
+    /** Intent ID (如 "product-page") */
+    intentId: string;
+    /**
+     * Controller 实例（可选）。
+     * 同一个 intentId 的多条路由只需在第一条提供 controller。
+     */
+    controller?: IntentController;
+    /**
+     * 渲染模式（可选，默认 "ssr"）。
+     * - "ssr": 服务端渲染（默认）
+     * - "csr": 客户端渲染（返回空壳 HTML，由客户端 JS 渲染）
+     * - "prerender": 预渲染（构建时生成静态 HTML + ISR 缓存）
+     */
+    renderMode?: RenderMode;
+    /**
+     * 路由级 beforeLoad 守卫（可选）。
+     * 在全局守卫之后执行，仅对匹配此路由的请求生效。
+     */
+    beforeLoad?: BeforeLoadGuard[];
+    /**
+     * 路由级 afterLoad 守卫（可选）。
+     * 在全局守卫之后执行，仅对匹配此路由的请求生效。
+     */
+    afterLoad?: AfterLoadGuard[];
 }
 
 /**
@@ -59,24 +59,21 @@ export interface RouteDefinition {
  * ]);
  * ```
  */
-export function defineRoutes(
-	framework: Framework,
-	definitions: RouteDefinition[],
-): void {
-	const registeredIntents = new Set<string>();
+export function defineRoutes(framework: Framework, definitions: RouteDefinition[]): void {
+    const registeredIntents = new Set<string>();
 
-	for (const def of definitions) {
-		// 注册 Controller（每个 intentId 只注册一次）
-		if (def.controller && !registeredIntents.has(def.intentId)) {
-			framework.registerIntent(def.controller);
-			registeredIntents.add(def.intentId);
-		}
+    for (const def of definitions) {
+        // 注册 Controller（每个 intentId 只注册一次）
+        if (def.controller && !registeredIntents.has(def.intentId)) {
+            framework.registerIntent(def.controller);
+            registeredIntents.add(def.intentId);
+        }
 
-		// 注册路由（含路由级守卫）
-		framework.router.add(def.path, def.intentId, {
-			renderMode: def.renderMode,
-			beforeGuards: def.beforeLoad,
-			afterGuards: def.afterLoad,
-		});
-	}
+        // 注册路由（含路由级守卫）
+        framework.router.add(def.path, def.intentId, {
+            renderMode: def.renderMode,
+            beforeGuards: def.beforeLoad,
+            afterGuards: def.afterLoad,
+        });
+    }
 }
