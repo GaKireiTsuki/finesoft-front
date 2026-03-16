@@ -1,0 +1,14 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "dist",
+        "paths": {
+            "@finesoft/front": ["../../packages/front/src/index.ts"],
+            "@finesoft/core": ["../../packages/core/src/index.ts"],
+            "@finesoft/browser": ["../../packages/browser/src/index.ts"],
+            "@finesoft/ssr": ["../../packages/ssr/src/index.ts"],
+            "@finesoft/server": ["../../packages/server/src/index.ts"]
+        }
+    },
+    "include": ["src", "vite.config.ts"]
+}
