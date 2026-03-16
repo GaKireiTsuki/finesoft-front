@@ -261,7 +261,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                 const listener = getRequestListener(app.fetch);
 
                 server.middlewares.use((req: any, res: any) => {
-                    listener(req, res);
+                    void listener(req, res);
                 });
             };
         },
@@ -270,7 +270,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         configurePreviewServer(server: any) {
             return async () => {
                 const { readFileSync } = await import(/* @vite-ignore */ "node:fs");
-                const { resolve } = await import(/* @vite-ignore */ "node:path");
+                const path = await import(/* @vite-ignore */ "node:path");
                 const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
                 const { Hono: HonoClass } = await import(/* @vite-ignore */ "hono");
                 const { injectSSRContent, injectCSRShell } = await import(
@@ -295,7 +295,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                 } else if (typeof options.setup === "string") {
                     try {
                         const setupPath = pathToFileURL(
-                            resolve(root, "dist/server/setup.mjs"),
+                            path.resolve(root, "dist/server/setup.mjs"),
                         ).href;
                         const mod = await import(/* @vite-ignore */ setupPath);
                         const fn = resolveSetupFn(mod as Record<string, unknown>);
@@ -307,10 +307,10 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                     }
                 }
 
-                const templatePath = resolve(root, "dist/client/index.html");
+                const templatePath = path.resolve(root, "dist/client/index.html");
                 const template = readFileSync(templatePath, "utf-8");
 
-                const ssrPath = pathToFileURL(resolve(root, "dist/server/ssr.js")).href;
+                const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
                 const ssrModule = (await import(/* @vite-ignore */ ssrPath)) as SSRModule;
 
                 app.get("*", async (c: any) => {
@@ -382,7 +382,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                 const listener = getRequestListener(app.fetch);
 
                 server.middlewares.use((req: any, res: any) => {
-                    listener(req, res);
+                    void listener(req, res);
                 });
             };
         },

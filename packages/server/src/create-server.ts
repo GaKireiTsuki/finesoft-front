@@ -61,8 +61,8 @@ export async function createServer(config: ServerConfig = {}): Promise<ServerIns
     // 1. 路径 + .env
     const root = rootOverride ?? process.cwd();
     const { existsSync } = await import(/* @vite-ignore */ "node:fs");
-    const { resolve } = await import(/* @vite-ignore */ "node:path");
-    const envPath = resolve(root, ".env");
+    const path = await import(/* @vite-ignore */ "node:path");
+    const envPath = path.resolve(root, ".env");
     if (existsSync(envPath)) {
         try {
             const { config: dotenvConfig } = await import(/* @vite-ignore */ "dotenv");

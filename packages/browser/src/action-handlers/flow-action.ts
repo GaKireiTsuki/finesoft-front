@@ -123,7 +123,7 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
 
                     if (afterResult.kind === "redirect") {
                         log.debug(`afterLoad → redirect to ${afterResult.url}`);
-                        navigateTo(afterResult.url, redirectCount + 1, thisNav);
+                        void navigateTo(afterResult.url, redirectCount + 1, thisNav);
                         return page;
                     }
 
@@ -257,10 +257,10 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
     });
 
     function didEnterPage(page: BasePage | null): void {
-        (async (): Promise<void> => {
+        void (async (): Promise<void> => {
             try {
                 if (page) {
-                    await framework.didEnterPage(page);
+                    framework.didEnterPage(page);
                 }
             } catch (e) {
                 log.error("didEnterPage error:", e);

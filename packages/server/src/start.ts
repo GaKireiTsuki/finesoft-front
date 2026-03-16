@@ -89,9 +89,9 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
     } else {
         // Node.js production
         const { serveStatic } = await import(/* @vite-ignore */ "@hono/node-server/serve-static");
-        const { resolve } = await import(/* @vite-ignore */ "node:path");
+        const path = await import(/* @vite-ignore */ "node:path");
         const prodApp = new Hono();
-        const clientDir = resolve(root, "dist/client");
+        const clientDir = path.resolve(root, "dist/client");
         prodApp.use(
             "/*",
             serveStatic({

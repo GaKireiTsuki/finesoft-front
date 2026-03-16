@@ -36,11 +36,11 @@ export async function resolveRoot(importMetaUrl: string, levelsUp = 0): Promise<
         return url.pathname;
     }
 
-    const { dirname, resolve, normalize } = await import(/* @vite-ignore */ "node:path");
+    const path = await import(/* @vite-ignore */ "node:path");
     const { fileURLToPath } = await import(/* @vite-ignore */ "node:url");
-    let dir = normalize(dirname(fileURLToPath(importMetaUrl)));
+    let dir = path.normalize(path.dirname(fileURLToPath(importMetaUrl)));
     for (let i = 0; i < levelsUp; i++) {
-        dir = resolve(dir, "..");
+        dir = path.resolve(dir, "..");
     }
     return dir;
 }
