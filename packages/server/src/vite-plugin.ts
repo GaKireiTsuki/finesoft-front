@@ -8,6 +8,7 @@
  * 或自定义 Adapter 对象。
  */
 
+import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import type { Hono } from "hono";
 import { resolveAdapter } from "./adapters/resolve";
 import { buildBundle, copyStaticAssets, generateSSREntry } from "./adapters/shared";
@@ -273,9 +274,6 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                 const path = await import(/* @vite-ignore */ "node:path");
                 const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
                 const { Hono: HonoClass } = await import(/* @vite-ignore */ "hono");
-                const { injectSSRContent, injectCSRShell } = await import(
-                    /* @vite-ignore */ "@finesoft/ssr"
-                );
                 const { parseAcceptLanguage } = await import("./locale");
                 const { getRequestListener } = await import(/* @vite-ignore */ "@hono/node-server");
 
