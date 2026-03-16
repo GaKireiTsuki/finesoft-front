@@ -1,13 +1,13 @@
-import "./shims/server-peer-modules.d.ts";
+/// <reference types="./shims/server-peer-modules.d.ts" />
 
 // ===== Core =====
 export * from "@finesoft/core";
 
 // ===== Browser (unique exports only) =====
 export {
-    History,
     createPrefetchedIntentsFromDom,
     deserializeServerData,
+    History,
     registerActionHandlers,
     registerExternalUrlHandler,
     registerFlowActionHandler,
@@ -24,11 +24,11 @@ export type {
 
 // ===== SSR (unique exports only) =====
 export {
-    SSR_PLACEHOLDERS,
     createSSRRender,
     injectCSRShell,
     injectSSRContent,
     serializeServerData,
+    SSR_PLACEHOLDERS,
     ssrRender,
 } from "@finesoft/ssr";
 export type {
