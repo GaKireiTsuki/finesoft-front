@@ -24,10 +24,7 @@
 <Navigation />
 <main>
 	{#if page}
-		{#if pageComponents[page.pageType]}
-			<svelte:component this={pageComponents[page.pageType]} {page} />
-		{:else}
-			<NotFound {page} />
-		{/if}
+		{@const PageComponent = pageComponents[page.pageType] ?? NotFound}
+		<PageComponent {page} />
 	{/if}
 </main>
