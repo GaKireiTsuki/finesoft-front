@@ -2,7 +2,7 @@
 	import type { BasePage } from "@finesoft/front";
 	import Home from "./pages/Home.svelte";
 
-	let page = $state<BasePage | null>(null);
+	let { page = null }: { page?: BasePage | null } = $props();
 
 	export function update(newPage: BasePage) {
 		page = newPage;

@@ -1,15 +1,18 @@
 import { createSSRRender, serializeServerData } from "@finesoft/front";
+import { createSSRApp } from "vue";
+import { renderToString } from "vue/server-renderer";
+import App from "./App.vue";
 import { bootstrap } from "./bootstrap";
 import { getErrorPage } from "./lib/controllers/error";
 
 export const render = createSSRRender({
     bootstrap,
     getErrorPage,
-    renderApp(page, _locale) {
-        // Vue SSR requires async renderToString — in production use vue/server-renderer.
-        // This simplified version returns the page title as head metadata.
+    async renderApp(page, _locale) {
+        const app = createSSRApp(App, { page });
+        const html = await renderToString(app);
         return {
-            html: `<div data-page="${page.pageType}">${page.title}</div>`,
+            html,
             head: `<title>${page.title}</title><meta name="description" content="${
                 page.description ?? ""
             }">`,

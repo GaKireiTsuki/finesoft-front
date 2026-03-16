@@ -3,17 +3,18 @@ import type { BasePage } from "@finesoft/front";
 import { shallowRef } from "vue";
 import Home from "./pages/Home.vue";
 
-const page = shallowRef<BasePage>();
+const props = defineProps<{ page?: BasePage }>();
+const currentPage = shallowRef<BasePage | undefined>(props.page);
 
 defineExpose({
     update(newPage: BasePage) {
-        page.value = newPage;
+        currentPage.value = newPage;
     },
 });
 </script>
 
 <template>
     <main>
-        <Home v-if="page" :page="page" />
+        <Home v-if="currentPage" :page="currentPage" />
     </main>
 </template>

@@ -7,7 +7,7 @@
 	import ProductDetail from "./pages/ProductDetail.svelte";
 	import Search from "./pages/Search.svelte";
 
-	let page = $state<BasePage | null>(null);
+	let { page = null }: { page?: BasePage | null } = $props();
 
 	const pageComponents: Record<string, any> = {
 		home: Home,

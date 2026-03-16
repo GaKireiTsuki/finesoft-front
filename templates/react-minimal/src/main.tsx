@@ -1,23 +1,28 @@
 import { startBrowserApp, type BasePage } from "@finesoft/front";
-import { createRoot } from "react-dom/client";
+import { hydrateRoot } from "react-dom/client";
 import App from "./App";
 import { bootstrap } from "./bootstrap";
+
+let isFirstMount = true;
 
 void startBrowserApp({
     bootstrap,
     mount(target) {
-        const root = createRoot(target);
-        root.render(<App />);
-
         return ({ page }) => {
             const resolve = async () => {
                 const resolved: BasePage = page instanceof Promise ? await page : page;
-                const updateApp = (
-                    window as unknown as {
-                        __updateApp?: (page: BasePage) => void;
-                    }
-                ).__updateApp;
-                if (updateApp) updateApp(resolved);
+
+                if (isFirstMount) {
+                    isFirstMount = false;
+                    hydrateRoot(target, <App initialPage={resolved} />);
+                } else {
+                    const updateApp = (
+                        window as unknown as {
+                            __updateApp?: (page: BasePage) => void;
+                        }
+                    ).__updateApp;
+                    if (updateApp) updateApp(resolved);
+                }
             };
             void resolve();
         };

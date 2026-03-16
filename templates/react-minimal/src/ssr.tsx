@@ -15,7 +15,7 @@ export const render = createSSRRender({
     },
     renderApp(page, _locale) {
         return {
-            html: renderToString(<App />),
+            html: renderToString(<App initialPage={page} />),
             head: `<title>${page.title}</title>`,
             css: "",
         };

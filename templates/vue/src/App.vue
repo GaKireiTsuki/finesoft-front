@@ -8,7 +8,8 @@ import NotFound from "./pages/NotFound.vue";
 import ProductDetail from "./pages/ProductDetail.vue";
 import Search from "./pages/Search.vue";
 
-const page = shallowRef<BasePage>();
+const props = defineProps<{ page?: BasePage }>();
+const currentPage = shallowRef<BasePage | undefined>(props.page);
 
 const pageComponents: Record<string, unknown> = {
     home: Home,
@@ -19,7 +20,7 @@ const pageComponents: Record<string, unknown> = {
 
 defineExpose({
     update(newPage: BasePage) {
-        page.value = newPage;
+        currentPage.value = newPage;
     },
 });
 </script>
@@ -27,6 +28,10 @@ defineExpose({
 <template>
     <Navigation />
     <main>
-        <component v-if="page" :is="pageComponents[page.pageType] ?? NotFound" :page="page" />
+        <component
+            v-if="currentPage"
+            :is="pageComponents[currentPage.pageType] ?? NotFound"
+            :page="currentPage"
+        />
     </main>
 </template>

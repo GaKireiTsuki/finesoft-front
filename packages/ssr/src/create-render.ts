@@ -23,7 +23,7 @@ export interface SSRRenderConfig {
      * @param locale - 当前语言
      * @returns SSR 渲染结果 { html, head, css }
      */
-    renderApp: (page: BasePage, locale: string) => SSRAppResult;
+    renderApp: (page: BasePage, locale: string) => SSRAppResult | Promise<SSRAppResult>;
 
     /** Framework 构造配置（可选） */
     frameworkConfig?: FrameworkConfig;

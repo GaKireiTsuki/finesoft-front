@@ -1,5 +1,6 @@
 import { createSSRRender, serializeServerData, type BasePage } from "@finesoft/front";
 import { createSSRApp } from "vue";
+import { renderToString } from "vue/server-renderer";
 import App from "./App.vue";
 import { bootstrap } from "./bootstrap";
 
@@ -13,13 +14,11 @@ export const render = createSSRRender({
             description: message,
         };
     },
-    renderApp(page, _locale) {
-        const app = createSSRApp(App);
-        const vm = app._instance?.exposed ?? {};
-        vm.update?.(page);
-
+    async renderApp(page, _locale) {
+        const app = createSSRApp(App, { page });
+        const html = await renderToString(app);
         return {
-            html: "", // Vue SSR requires async renderToString — handled below
+            html,
             head: `<title>${page.title}</title>`,
             css: "",
         };

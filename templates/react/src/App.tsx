@@ -1,5 +1,5 @@
 import type { BasePage } from "@finesoft/front";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Navigation from "./components/Navigation";
 import About from "./pages/About";
 import Home from "./pages/Home";
@@ -14,14 +14,20 @@ const pageComponents: Record<string, React.ComponentType<{ page: any }>> = {
     about: About,
 };
 
-export default function App() {
-    const [page, setPage] = useState<BasePage | null>(null);
+export default function App({ initialPage }: { initialPage?: BasePage | null }) {
+    const [page, setPage] = useState<BasePage | null>(initialPage ?? null);
 
-    (window as unknown as { __updateApp?: (page: BasePage) => void }).__updateApp = (
-        newPage: BasePage,
-    ) => {
-        setPage(newPage);
-    };
+    useEffect(() => {
+        (window as unknown as { __updateApp?: (page: BasePage) => void }).__updateApp = (
+            newPage: BasePage,
+        ) => {
+            setPage(newPage);
+        };
+        return () => {
+            (window as unknown as { __updateApp?: (page: BasePage) => void }).__updateApp =
+                undefined;
+        };
+    }, []);
 
     const PageComponent = page ? (pageComponents[page.pageType] ?? NotFound) : null;
 

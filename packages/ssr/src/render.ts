@@ -26,8 +26,8 @@ export interface SSRRenderOptions {
     bootstrap: (framework: Framework) => void;
     /** 获取错误页面 */
     getErrorPage: (status: number, message: string) => BasePage;
-    /** 应用层渲染函数（如 Svelte SSR render） */
-    renderApp: (page: BasePage, framework: Framework) => SSRAppResult;
+    /** 应用层渲染函数（如 Svelte SSR render / Vue renderToString） */
+    renderApp: (page: BasePage, framework: Framework) => SSRAppResult | Promise<SSRAppResult>;
     /** 可选的 SSR 请求上下文（如自定义 fetch） */
     ssrContext?: SSRContext;
 }
@@ -97,7 +97,7 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
             });
             const beforeResult = await framework.runBeforeLoad(navCtx, match.beforeGuards);
             if (beforeResult.kind !== "next") {
-                const earlyReturn = handleMiddlewareResult(
+                const earlyReturn = await handleMiddlewareResult(
                     beforeResult,
                     getErrorPage,
                     renderApp,
@@ -121,7 +121,7 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
             };
             const afterResult = await framework.runAfterLoad(postCtx, match.afterGuards);
             if (afterResult.kind !== "next") {
-                const lateReturn = handleMiddlewareResult(
+                const lateReturn = await handleMiddlewareResult(
                     afterResult,
                     getErrorPage,
                     renderApp,
@@ -133,7 +133,7 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
             page = getErrorPage(404, "Page not found");
         }
 
-        const result = renderApp(page, framework);
+        const result = await renderApp(page, framework);
 
         return {
             html: result.html,
@@ -151,12 +151,12 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
  * 将中间件结果转换为 SSRRenderResult（如果需要短路返回）。
  * 返回 null 表示继续正常流程。
  */
-function handleMiddlewareResult(
+async function handleMiddlewareResult(
     result: MiddlewareResult,
     getErrorPage: (status: number, message: string) => BasePage,
-    renderApp: (page: BasePage, framework: Framework) => SSRAppResult,
+    renderApp: (page: BasePage, framework: Framework) => SSRAppResult | Promise<SSRAppResult>,
     framework: Framework,
-): SSRRenderResult | null {
+): Promise<SSRRenderResult | null> {
     switch (result.kind) {
         case "next":
             return null;
@@ -178,7 +178,7 @@ function handleMiddlewareResult(
             };
         case "deny": {
             const errorPage = getErrorPage(result.status, result.message);
-            const rendered = renderApp(errorPage, framework);
+            const rendered = await renderApp(errorPage, framework);
             return {
                 html: rendered.html,
                 head: rendered.head,

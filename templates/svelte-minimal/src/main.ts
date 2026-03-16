@@ -1,12 +1,12 @@
 import { startBrowserApp, type BasePage } from "@finesoft/front";
-import { mount } from "svelte";
+import { hydrate } from "svelte";
 import App from "./App.svelte";
 import { bootstrap } from "./bootstrap";
 
 void startBrowserApp({
     bootstrap,
     mount(target) {
-        const app = mount(App, { target });
+        const app = hydrate(App, { target });
 
         return ({ page }) => {
             const resolve = async () => {
