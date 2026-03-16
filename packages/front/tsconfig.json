@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"baseUrl": ".",
+		"paths": {
+			"@finesoft/core": ["../core/src/index.ts"],
+			"@finesoft/browser": ["../browser/src/index.ts"],
+			"@finesoft/ssr": ["../ssr/src/index.ts"],
+			"@finesoft/server": ["../server/src/index.ts"]
+		}
+	},
+	"include": ["src"]
+}

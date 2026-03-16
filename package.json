@@ -1,0 +1,17 @@
+{
+  "name": "finesoft-front-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "build:packages": "pnpm -r --filter './packages/*' run build",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build:packages && changeset publish --access public",
+    "release:auto:changeset": "node ./scripts/auto-changeset.mjs"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.30.0",
+    "tsup": "^8.5.1"
+  }
+}
