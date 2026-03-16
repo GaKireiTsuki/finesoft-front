@@ -1,0 +1,27 @@
+{
+    "name": "create-finesoft-app",
+    "version": "0.1.0",
+    "description": "Scaffold a new Finesoft Front project",
+    "license": "MIT",
+    "bin": {
+        "create-finesoft-app": "dist/index.mjs"
+    },
+    "files": [
+        "dist",
+        "templates"
+    ],
+    "type": "module",
+    "scripts": {
+        "build": "vp pack",
+        "dev": "vp pack --watch",
+        "prepublishOnly": "node ../../scripts/prepare-create-cli.mjs"
+    },
+    "dependencies": {
+        "@clack/prompts": "^0.10.0",
+        "kolorist": "^1.8.0"
+    },
+    "devDependencies": {
+        "@types/node": "catalog:",
+        "vite-plus": "catalog:"
+    }
+}

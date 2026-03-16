@@ -1,0 +1,18 @@
+{
+    "name": "finesoft-svelte",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vp dev",
+        "build": "vp build",
+        "preview": "vp preview"
+    },
+    "dependencies": {
+        "@finesoft/front": "^0.1.40",
+        "svelte": "^5.0.0"
+    },
+    "devDependencies": {
+        "@sveltejs/vite-plugin-svelte": "^5.0.0",
+        "vite-plus": "catalog:"
+    }
+}
