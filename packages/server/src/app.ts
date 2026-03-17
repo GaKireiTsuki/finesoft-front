@@ -8,6 +8,7 @@
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
+import { dynamicImport } from "./dynamic-import";
 import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal-fetch";
 import { parseAcceptLanguage } from "./locale";
 
@@ -134,12 +135,12 @@ export function createSSRApp(options: SSRAppOptions): Hono {
             return (await vite.ssrLoadModule(ssrEntryPath)) as SSRModule;
         }
         if (ssrProductionModule) {
-            return import(/* @vite-ignore */ ssrProductionModule) as Promise<SSRModule>;
+            return dynamicImport(ssrProductionModule) as Promise<SSRModule>;
         }
         const path = await import(/* @vite-ignore */ "node:path");
         const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
         const absPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
-        return import(/* @vite-ignore */ absPath) as Promise<SSRModule>;
+        return dynamicImport(absPath) as Promise<SSRModule>;
     }
 
     app.get("*", async (c) => {

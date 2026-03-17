@@ -7,6 +7,7 @@
  * 输出：dist/static/ — 纯静态站点，可部署到任何静态托管。
  */
 
+import { dynamicImport } from "../dynamic-import";
 import type { Adapter, AdapterContext } from "./types";
 
 export interface StaticAdapterOptions {
@@ -36,7 +37,7 @@ export function staticAdapter(opts: StaticAdapterOptions = {}): Adapter {
             // 加载 SSR 模块
             const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
             const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
-            const ssrModule = await import(/* @vite-ignore */ ssrPath);
+            const ssrModule = await dynamicImport(ssrPath);
 
             // 先复制静态资源（JS/CSS 等），排除模板 index.html
             ctx.copyStaticAssets(outputDir, { excludeHtml: true });
@@ -154,7 +155,7 @@ async function extractRoutesWithModes(
         const routesPath = pathToFileURL(
             ctx.path.resolve(ctx.root, "dist/server/_routes.mjs"),
         ).href;
-        const routesMod = await import(/* @vite-ignore */ routesPath);
+        const routesMod = await dynamicImport(routesPath);
 
         // 查找导出的 routes 数组
         const routes: Array<{ path: string; renderMode?: string }> =

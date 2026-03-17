@@ -5,6 +5,7 @@
  * 避免各适配器重复实现相同逻辑。
  */
 
+import { dynamicImport } from "../dynamic-import";
 import { generateProxyCode } from "../proxy";
 import type {
     AdapterContext,
@@ -248,7 +249,7 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
         const routesPath = pathToFileURL(
             path.resolve(root, "dist/server/_routes_prerender.mjs"),
         ).href;
-        const routesMod = await import(/* @vite-ignore */ routesPath);
+        const routesMod = await dynamicImport(routesPath);
         routes = routesMod.routes ?? routesMod.default ?? [];
 
         // 清理临时文件
@@ -280,7 +281,7 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
 
     // ── 3. 加载 SSR 模块 ──
     const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
-    const ssrModule = await import(/* @vite-ignore */ ssrPath);
+    const ssrModule = await dynamicImport(ssrPath);
 
     // ── 4. 渲染每个 URL × locale ──
     const results: PrerenderResult[] = [];

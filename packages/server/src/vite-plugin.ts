@@ -14,6 +14,7 @@ import { resolveAdapter } from "./adapters/resolve";
 import { buildBundle, copyStaticAssets, generateSSREntry } from "./adapters/shared";
 import type { Adapter } from "./adapters/types";
 import type { SSRModule } from "./app";
+import { dynamicImport } from "./dynamic-import";
 import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal-fetch";
 import { registerProxyRoutes, type ProxyRouteConfig } from "./proxy";
 
@@ -295,7 +296,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                         const setupPath = pathToFileURL(
                             path.resolve(root, "dist/server/setup.mjs"),
                         ).href;
-                        const mod = await import(/* @vite-ignore */ setupPath);
+                        const mod = await dynamicImport(setupPath);
                         const fn = resolveSetupFn(mod as Record<string, unknown>);
                         if (fn) await fn(app);
                     } catch {
@@ -309,7 +310,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                 const template = readFileSync(templatePath, "utf-8");
 
                 const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
-                const ssrModule = (await import(/* @vite-ignore */ ssrPath)) as SSRModule;
+                const ssrModule = (await dynamicImport(ssrPath)) as SSRModule;
 
                 app.get("*", async (c: any) => {
                     // 递归深度保护
