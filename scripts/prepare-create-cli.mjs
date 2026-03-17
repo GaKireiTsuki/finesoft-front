@@ -1,6 +1,6 @@
 /**
  * Copies template directories from `templates/` into
- * `packages/create-finesoft-app/templates/` before publish.
+ * `packages/create-app/templates/` before publish.
  *
  * Skips `node_modules` and `dist` directories.
  */
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const srcDir = path.join(root, "templates");
-const destDir = path.join(root, "packages", "create-finesoft-app", "templates");
+const destDir = path.join(root, "packages", "create-app", "templates");
 
 const SKIP = new Set(["node_modules", "dist", ".turbo"]);
 
@@ -52,4 +52,4 @@ for (const tpl of templates) {
     copyDir(from, to);
 }
 
-console.log(`✓ ${templates.length} templates copied to packages/create-finesoft-app/templates/`);
+console.log(`✓ ${templates.length} templates copied to packages/create-app/templates/`);
