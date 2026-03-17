@@ -33,6 +33,57 @@ function copyDir(src, dest) {
     }
 }
 
+// ── Resolve monorepo-only references ──
+
+/** Read @finesoft/front version for workspace:* replacement */
+const frontPkgPath = path.join(root, "packages", "front", "package.json");
+const frontVersion = JSON.parse(fs.readFileSync(frontPkgPath, "utf-8")).version;
+
+/** Read pnpm catalog for catalog: replacement */
+function readCatalog() {
+    const wsPath = path.join(root, "pnpm-workspace.yaml");
+    const raw = fs.readFileSync(wsPath, "utf-8");
+    const entries = {};
+    let inCatalog = false;
+    for (const line of raw.split("\n")) {
+        if (line.startsWith("catalog:")) {
+            inCatalog = true;
+            continue;
+        }
+        if (inCatalog && /^\s{4}\S/.test(line)) {
+            const m = line.match(/^\s{4}(.+?):\s*(.+)$/);
+            if (m) entries[m[1].trim().replace(/"/g, "")] = m[2].trim().replace(/"/g, "");
+        } else if (inCatalog && /^\S/.test(line)) {
+            inCatalog = false;
+        }
+    }
+    return entries;
+}
+
+const catalog = readCatalog();
+
+/**
+ * Rewrite a template package.json:
+ * - "workspace:*" → "^<front-version>"
+ * - "catalog:"    → resolved value from pnpm catalog
+ */
+function rewriteTemplatePkg(pkgJsonPath) {
+    const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+    for (const section of ["dependencies", "devDependencies"]) {
+        if (!pkg[section]) continue;
+        for (const [name, value] of Object.entries(pkg[section])) {
+            if (typeof value === "string" && value.startsWith("workspace:")) {
+                pkg[section][name] = `^${frontVersion}`;
+            } else if (value === "catalog:") {
+                pkg[section][name] = catalog[name] ?? "latest";
+            }
+        }
+    }
+    fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 4) + "\n");
+}
+
+// ── Copy templates ──
+
 // Clean previous templates
 if (fs.existsSync(destDir)) {
     fs.rmSync(destDir, { recursive: true, force: true });
@@ -50,6 +101,14 @@ for (const tpl of templates) {
     const to = path.join(destDir, tpl.name);
     console.log(`  Copying ${tpl.name}...`);
     copyDir(from, to);
+
+    // Rewrite monorepo-only references in the copied template
+    const pkgJson = path.join(to, "package.json");
+    if (fs.existsSync(pkgJson)) {
+        rewriteTemplatePkg(pkgJson);
+    }
 }
 
-console.log(`✓ ${templates.length} templates copied to packages/create-app/templates/`);
+console.log(
+    `✓ ${templates.length} templates copied (workspace:* → ^${frontVersion}, catalog: resolved)`,
+);

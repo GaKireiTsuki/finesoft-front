@@ -117,11 +117,14 @@ async function main() {
     if (fs.existsSync(pkgPath)) {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
         pkg.name = project.name;
-        // Remove catalog: references — they only work inside the monorepo
-        if (pkg.devDependencies) {
-            for (const [key, value] of Object.entries(pkg.devDependencies)) {
-                if (value === "catalog:") {
-                    pkg.devDependencies[key] = "latest";
+        // Remove monorepo-only references — they only work inside the workspace
+        for (const section of ["dependencies", "devDependencies"] as const) {
+            if (!pkg[section]) continue;
+            for (const [key, value] of Object.entries(pkg[section])) {
+                if (typeof value === "string" && value.startsWith("workspace:")) {
+                    pkg[section][key] = "latest";
+                } else if (value === "catalog:") {
+                    pkg[section][key] = "latest";
                 }
             }
         }
