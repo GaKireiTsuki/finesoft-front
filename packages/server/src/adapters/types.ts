@@ -91,6 +91,8 @@ export interface BuildBundleOptions {
     external?: string[];
     /** 是否打包所有依赖（默认 true） */
     noExternal?: boolean;
+    /** 构建前是否清空 outDir（默认 true）。与 SSR 构建共享目录时应设为 false */
+    emptyOutDir?: boolean;
 }
 
 export interface CopyStaticAssetsOptions {

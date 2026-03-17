@@ -17,6 +17,31 @@ import type {
 const BUILD_TOOL_EXTERNALS = ["vite", "esbuild", "rollup", "fsevents", "lightningcss"];
 
 /**
+ * Common Node.js built-in modules. Listed explicitly so that Rolldown's
+ * vite-resolve plugin does not emit "Automatically externalized" warnings.
+ */
+export const NODE_BUILTINS = [
+    "node:async_hooks",
+    "node:buffer",
+    "node:crypto",
+    "node:fs",
+    "node:http",
+    "node:http2",
+    "node:module",
+    "node:net",
+    "node:os",
+    "node:path",
+    "node:stream",
+    "node:url",
+    "node:util",
+    "node:zlib",
+    "crypto",
+    "http",
+    "http2",
+    "stream",
+];
+
+/**
  * 生成 SSR serverless/edge 入口源码
  *
  * 内联 parseAcceptLanguage / injectSSR 以避免
@@ -180,7 +205,7 @@ export async function buildBundle(ctx: AdapterContext, opts: BuildBundleOptions)
         build: {
             ssr: opts.entry,
             outDir: opts.outDir,
-            emptyOutDir: true,
+            emptyOutDir: opts.emptyOutDir ?? true,
             target: opts.target ?? "node18",
             rollupOptions: {
                 output: { entryFileNames: opts.fileName ?? "index.mjs" },
@@ -188,7 +213,7 @@ export async function buildBundle(ctx: AdapterContext, opts: BuildBundleOptions)
         },
         ssr: {
             noExternal: opts.noExternal !== false,
-            external: opts.external ?? BUILD_TOOL_EXTERNALS,
+            external: [...(opts.external ?? BUILD_TOOL_EXTERNALS), ...NODE_BUILTINS],
         },
         resolve: ctx.resolvedResolve,
         css: ctx.resolvedCss,

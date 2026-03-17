@@ -11,9 +11,9 @@
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import type { Hono } from "hono";
 import { resolveAdapter } from "./adapters/resolve";
-import { buildBundle, copyStaticAssets, generateSSREntry } from "./adapters/shared";
+import { buildBundle, copyStaticAssets, generateSSREntry, NODE_BUILTINS } from "./adapters/shared";
 import type { Adapter } from "./adapters/types";
-import type { SSRModule } from "./app";
+import { createSSRApp, type SSRModule } from "./app";
 import { dynamicImport } from "./dynamic-import";
 import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal-fetch";
 import { registerProxyRoutes, type ProxyRouteConfig } from "./proxy";
@@ -110,11 +110,11 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
     return {
         name: "finesoft-front",
 
-        config(userConfig: Record<string, any>, env: { command: string }) {
+        config(userConfig: Record<string, any>) {
             const overrides: Record<string, any> = {
                 appType: "custom",
             };
-            if (env.command === "build" && !process.env.__FINESOFT_SUB_BUILD__) {
+            if (!process.env.__FINESOFT_SUB_BUILD__) {
                 overrides.build = {
                     outDir: userConfig.build?.outDir ?? "dist/client",
                 };
@@ -229,7 +229,6 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         configureServer(server: any) {
             return async () => {
                 const { Hono: HonoClass } = await dynamicImport("hono");
-                const { createSSRApp } = await import("./app");
                 const { getRequestListener } = await dynamicImport("@hono/node-server");
 
                 const app = new HonoClass();
@@ -404,6 +403,9 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                     build: {
                         ssr: ssrEntry,
                         outDir: "dist/server",
+                    },
+                    ssr: {
+                        external: NODE_BUILTINS,
                     },
                     resolve: resolvedResolve,
                     css: resolvedCss,

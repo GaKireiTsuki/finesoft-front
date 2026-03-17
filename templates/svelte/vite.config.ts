@@ -15,6 +15,7 @@ export default defineConfig({
                     target: "https://jsonplaceholder.typicode.com",
                 },
             ],
+            adapter: "auto",
         }),
     ],
 });

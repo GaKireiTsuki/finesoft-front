@@ -56,6 +56,7 @@ serve({ fetch: app.fetch, port }, (info) => {
                     entry: ".node-entry.tmp.mjs",
                     outDir: path.resolve(root, "dist/server"),
                     target: "node18",
+                    emptyOutDir: false,
                 });
             } finally {
                 fs.rmSync(tempEntry, { force: true });

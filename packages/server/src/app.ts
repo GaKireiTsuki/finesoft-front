@@ -118,8 +118,12 @@ export function createSSRApp(options: SSRAppOptions): Hono {
 
         const isDeno = typeof (globalThis as any).Deno !== "undefined";
         if (isDeno) {
+            // The relative path is resolved at runtime on Deno only.
+            // Construct via string concatenation to avoid Vite's static
+            // `new URL(..., import.meta.url)` analysis at build time.
+            const base = import.meta.url;
             templateCache = (globalThis as any).Deno.readTextFileSync(
-                new URL("../dist/client/index.html", import.meta.url),
+                new URL("../dist/client/index.html", base),
             );
             return templateCache!;
         }
