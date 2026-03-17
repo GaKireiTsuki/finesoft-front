@@ -16,13 +16,6 @@ export interface Net {
     fetch(url: string, options?: RequestInit): Promise<Response>;
 }
 
-/** 多语言状态 */
-export interface Locale {
-    language: string;
-    storefront: string;
-    setActiveLocale(language: string, storefront: string): void;
-}
-
 /** 存储接口 */
 export interface Storage {
     get(key: string): string | undefined;
@@ -49,7 +42,6 @@ export const DEP_KEYS = {
     LOGGER: "logger",
     LOGGER_FACTORY: "loggerFactory",
     NET: "net",
-    LOCALE: "locale",
     STORAGE: "storage",
     FEATURE_FLAGS: "featureFlags",
     METRICS: "metrics",
@@ -57,15 +49,6 @@ export const DEP_KEYS = {
 } as const;
 
 // ===== 默认实现 =====
-
-class DefaultLocale implements Locale {
-    language = "en";
-    storefront = "us";
-    setActiveLocale(language: string, storefront: string) {
-        this.language = language;
-        this.storefront = storefront;
-    }
-}
 
 class MemoryStorage implements Storage {
     private store = new Map<string, string>();
@@ -111,8 +94,6 @@ class ConsoleMetrics implements MetricsRecorder {
 
 export interface MakeDependenciesOptions {
     fetch?: typeof globalThis.fetch;
-    language?: string;
-    storefront?: string;
     featureFlags?: Record<string, boolean | string | number>;
 }
 
@@ -120,12 +101,7 @@ export function makeDependencies(
     container: Container,
     options: MakeDependenciesOptions = {},
 ): void {
-    const {
-        fetch: fetchFn = globalThis.fetch?.bind(globalThis),
-        language = "en",
-        storefront = "us",
-        featureFlags = {},
-    } = options;
+    const { fetch: fetchFn = globalThis.fetch?.bind(globalThis), featureFlags = {} } = options;
 
     const loggerFactory = new ConsoleLoggerFactory();
     container.register<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY, () => loggerFactory);
@@ -135,12 +111,6 @@ export function makeDependencies(
     container.register<Net>(DEP_KEYS.NET, () => ({
         fetch: (url: string, opts?: RequestInit) => fetchFn(url, opts),
     }));
-
-    container.register<Locale>(DEP_KEYS.LOCALE, () => {
-        const locale = new DefaultLocale();
-        locale.setActiveLocale(language, storefront);
-        return locale;
-    });
 
     container.register<Storage>(DEP_KEYS.STORAGE, () => new MemoryStorage());
 

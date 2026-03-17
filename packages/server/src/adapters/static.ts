@@ -44,57 +44,33 @@ export function staticAdapter(opts: StaticAdapterOptions = {}): Adapter {
 
             // 提取路由列表（含 renderMode）
             const { paths: routePaths, defs: routeDefs } = await extractRoutesWithModes(ctx, opts);
-            const allUrls: string[] = [];
 
-            // 对每个路由 × 每个 locale 生成 URL
-            for (const routePath of routePaths) {
-                for (const locale of ctx.locales) {
-                    const url =
-                        locale === ctx.defaultLocale
-                            ? routePath
-                            : `/${locale}${routePath === "/" ? "" : routePath}`;
-                    allUrls.push(url);
-                }
-            }
-
-            console.log(
-                `  Pre-rendering ${allUrls.length} pages (${routePaths.length} routes × ${ctx.locales.length} locales)...\n`,
-            );
+            console.log(`  Pre-rendering ${routePaths.length} pages...\n`);
 
             // 预渲染每个 URL
-            for (const url of allUrls) {
+            for (const url of routePaths) {
                 try {
-                    // 从 URL 推断 locale
-                    const locale = inferLocale(url, ctx.locales, ctx.defaultLocale);
-
                     // 检查渲染模式：路由级 + Vite 配置覆盖
-                    const routeDef = routeDefs.find(
-                        (r) => r.path === stripLocalePrefix(url, ctx.locales),
-                    );
-                    const mode = resolveRenderMode(
-                        stripLocalePrefix(url, ctx.locales),
-                        routeDef?.renderMode,
-                        ctx.renderModes,
-                    );
+                    const routeDef = routeDefs.find((r) => r.path === url);
+                    const mode = resolveRenderMode(url, routeDef?.renderMode, ctx.renderModes);
 
                     let finalHtml: string;
 
                     if (mode === "csr") {
                         // CSR: 空壳 HTML，客户端 JS 渲染
-                        finalHtml = injectCSRShellForStatic(ctx.templateHtml, locale);
+                        finalHtml = injectCSRShellForStatic(ctx.templateHtml);
                     } else {
                         const {
                             html: appHtml,
                             head,
                             css,
                             serverData,
-                        } = await ssrModule.render(url, locale);
+                        } = await ssrModule.render(url);
 
                         const serializedData = ssrModule.serializeServerData(serverData);
 
                         finalHtml = injectSSRForStatic(
                             ctx.templateHtml,
-                            locale,
                             head,
                             css,
                             appHtml,
@@ -192,53 +168,29 @@ async function extractRoutesWithModes(
     return { paths, defs };
 }
 
-/** 从 URL 推断 locale */
-function inferLocale(url: string, locales: string[], defaultLocale: string): string {
-    const segments = url.split("/").filter(Boolean);
-    if (segments.length > 0 && locales.includes(segments[0])) {
-        return segments[0];
-    }
-    return defaultLocale;
-}
-
-/** 内联 SSR 注入（同 shared 中的逻辑） */
+/** 内联 SSR 注入 */
 function injectSSRForStatic(
     template: string,
-    locale: string,
     head: string,
     css: string,
     html: string,
     serializedData: string,
 ): string {
-    return template
-        .replace("<!--ssr-lang-->", locale)
-        .replace("<!--ssr-head-->", head + "\n<style>" + css + "</style>")
-        .replace("<!--ssr-body-->", html)
-        .replace(
-            "<!--ssr-data-->",
+    const PLACEHOLDER_REGEX = /<!--ssr-([a-z][a-z0-9-]*)-->/g;
+    const replacements: Record<string, string> = {
+        head: head + "\n<style>" + css + "</style>",
+        body: html,
+        data:
             '<script id="serialized-server-data" type="application/json">' +
-                serializedData +
-                "</script>",
-        );
+            serializedData +
+            "</script>",
+    };
+    return template.replace(PLACEHOLDER_REGEX, (_, name: string) => replacements[name] ?? "");
 }
 
 /** CSR 空壳注入 */
-function injectCSRShellForStatic(template: string, locale: string): string {
-    return template
-        .replace("<!--ssr-lang-->", locale)
-        .replace("<!--ssr-head-->", "")
-        .replace("<!--ssr-body-->", "")
-        .replace("<!--ssr-data-->", "");
-}
-
-/** 从 URL 去除 locale 前缀，还原路由路径 */
-function stripLocalePrefix(url: string, locales: string[]): string {
-    const segments = url.split("/").filter(Boolean);
-    if (segments.length > 0 && locales.includes(segments[0])) {
-        const rest = segments.slice(1).join("/");
-        return rest ? `/${rest}` : "/";
-    }
-    return url;
+function injectCSRShellForStatic(template: string): string {
+    return template.replace(/<!--ssr-([a-z][a-z0-9-]*)-->/g, () => "");
 }
 
 /** 解析最终渲染模式：Vite 配置覆盖 > 路由级 > 默认 "ssr" */

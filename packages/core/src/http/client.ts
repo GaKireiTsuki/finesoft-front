@@ -120,7 +120,18 @@ export abstract class HttpClient {
             throw new HttpError(response.status, response.statusText, body);
         }
 
-        return response.json();
+        try {
+            return await response.json();
+        } catch (e) {
+            if (e instanceof SyntaxError) {
+                throw new HttpError(
+                    response.status,
+                    "Invalid JSON response",
+                    await response.text().catch(() => undefined),
+                );
+            }
+            throw e;
+        }
     }
 
     /** 构建完整 URL — 子类可覆写以自定义 URL 拼接逻辑 */

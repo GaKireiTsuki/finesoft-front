@@ -7,6 +7,9 @@ export class LruMap<K, V> {
     private readonly capacity: number;
 
     constructor(capacity: number) {
+        if (capacity < 1) {
+            throw new Error(`[LruMap] capacity must be >= 1, got ${capacity}`);
+        }
         this.capacity = capacity;
     }
 

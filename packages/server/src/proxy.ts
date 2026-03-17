@@ -33,12 +33,27 @@ export interface ProxyRouteConfig {
     followRedirects?: boolean;
 }
 
+/** 代理路径最大长度 */
+const MAX_PROXY_PATH_LENGTH = 2048;
+/** 代理响应最大体积（10 MB） */
+const MAX_RESPONSE_SIZE = 10 * 1024 * 1024;
+
 /**
- * 校验代理路径，防止 SSRF（协议相对 URL 绕过）。
+ * 校验代理路径，防止 SSRF（协议相对 URL 绕过、编码绕过）。
  * 返回规范化的路径，或 null 表示非法。
  */
 function sanitizeProxyPath(raw: string): string | null {
+    if (raw.length > MAX_PROXY_PATH_LENGTH) return null;
+    // 解码后比对防止 %2F 等编码绕过
+    try {
+        const decoded = decodeURIComponent(raw);
+        if (decoded !== raw) return null;
+    } catch {
+        return null;
+    }
     if (raw.startsWith("//")) return null;
+    // 仅允许安全路径字符
+    if (!/^[/\w.\-~%:@!$&'()*+,;=]*$/.test(raw)) return null;
     return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
@@ -71,6 +86,12 @@ export function registerProxyRoutes(app: Hono, configs: ProxyRouteConfig[]): voi
 
             const targetUrl = new URL(subPath, config.target);
 
+            // 防止开放重定向：校验构建后的 URL origin 不变
+            const expectedOrigin = new URL(config.target).origin;
+            if (targetUrl.origin !== expectedOrigin) {
+                return c.text("Invalid proxy target", 400);
+            }
+
             // 转发 query 参数
             const reqUrl = new URL(c.req.url);
             reqUrl.searchParams.forEach((v, k) => targetUrl.searchParams.set(k, v));
@@ -78,8 +99,12 @@ export function registerProxyRoutes(app: Hono, configs: ProxyRouteConfig[]): voi
             // 构建请求头
             const headers: Record<string, string> = { ...config.headers };
             if (config.auth) {
-                const token = process.env[config.auth.envKey] ?? "";
-                if (token) {
+                const token = process.env[config.auth.envKey];
+                if (!token) {
+                    console.warn(
+                        `[Proxy ${config.prefix}] Auth env var "${config.auth.envKey}" is not set`,
+                    );
+                } else {
                     headers.Authorization =
                         config.auth.type === "bearer" ? `Bearer ${token}` : `Basic ${token}`;
                 }
@@ -90,7 +115,18 @@ export function registerProxyRoutes(app: Hono, configs: ProxyRouteConfig[]): voi
                     headers,
                     redirect: config.followRedirects ? "follow" : "manual",
                 });
+
+                // 响应大小限制
+                const contentLength = resp.headers.get("Content-Length");
+                if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
+                    return c.text("Proxy response too large", 502);
+                }
+
                 const body = await resp.text();
+                if (body.length > MAX_RESPONSE_SIZE) {
+                    return c.text("Proxy response too large", 502);
+                }
+
                 const respHeaders: Record<string, string> = {
                     "Content-Type": resp.headers.get("Content-Type") ?? "application/json",
                 };
@@ -126,7 +162,10 @@ export function generateProxyCode(configs: ProxyRouteConfig[]): string {
     blocks.push(`
 // ─── 框架声明式代理路由 ───
 function _sanitizeProxyPath(raw) {
+  if (raw.length > 2048) return null;
+  try { if (decodeURIComponent(raw) !== raw) return null; } catch { return null; }
   if (raw.startsWith("//")) return null;
+  if (!/^/[\\w.\\-~%:@!$&'()*+,;=\\/]*$/.test(raw) && raw !== "/") return null;
   return raw.startsWith("/") ? raw : "/" + raw;
 }
 `);

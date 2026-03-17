@@ -6,7 +6,7 @@ import { bootstrap } from "./bootstrap";
 void startBrowserApp({
     bootstrap,
     mountId: "app",
-    mount: (target: HTMLElement, { framework }: { framework: Framework; locale: string }) => {
+    mount: (target: HTMLElement, { framework }: { framework: Framework }) => {
         let root: ReturnType<typeof createRoot> | null = null;
         let currentPage: BasePage | null = null;
 

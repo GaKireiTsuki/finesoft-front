@@ -59,7 +59,6 @@ export default defineConfig({
         vue(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
-            locales: ["en", "zh"],
             proxies: [{ prefix: "/api", target: "https://api.example.com" }],
             adapter: "auto",
         }),
@@ -72,8 +71,6 @@ export default defineConfig({
 | Option           | Type                         | Description                                                |
 | ---------------- | ---------------------------- | ---------------------------------------------------------- |
 | `ssr.entry`      | `string`                     | SSR entry file (default `"src/ssr.ts"`)                    |
-| `locales`        | `string[]`                   | Supported locales                                          |
-| `defaultLocale`  | `string`                     | Default locale                                             |
 | `proxies`        | `ProxyRouteConfig[]`         | Declarative proxy routes with SSRF protection              |
 | `setup`          | `Function \| string`         | Custom Hono routes                                         |
 | `adapter`        | `string \| Adapter`          | Deploy adapter (see [Adapters](#adapters))                 |
@@ -197,7 +194,7 @@ import { bootstrap } from "./bootstrap";
 export const render = createSSRRender({
     bootstrap,
     getErrorPage: () => ({ title: "Error", kind: "error" }),
-    async renderApp(page, locale) {
+    async renderApp(page) {
         const app = createSSRApp(App, { page });
         const html = await renderToString(app);
         return { html, head: `<title>${page.title}</title>`, css: "" };

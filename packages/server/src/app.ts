@@ -10,7 +10,6 @@ import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
 import { dynamicImport } from "./dynamic-import";
 import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal-fetch";
-import { parseAcceptLanguage } from "./locale";
 
 /**
  * 匹配 Vite 配置级别的 renderMode 覆盖。
@@ -33,7 +32,6 @@ function matchRenderModeOverride(url: string, renderModes?: Record<string, strin
 export interface SSRModule {
     render: (
         url: string,
-        locale: string,
         ssrContext?: {
             fetch?: typeof globalThis.fetch;
             request?: Request;
@@ -45,6 +43,7 @@ export interface SSRModule {
         serverData: unknown;
         renderMode?: string;
         redirect?: { url: string; status: number };
+        slots?: Record<string, string>;
     }>;
     serializeServerData: (data: unknown) => string;
 }
@@ -60,10 +59,6 @@ export interface SSRAppOptions {
     ssrEntryPath?: string;
     /** 生产环境 SSR 模块路径（如 "../dist/server/ssr.js"） */
     ssrProductionModule?: string;
-    /** 支持的语言列表 */
-    supportedLocales?: string[];
-    /** 默认语言 */
-    defaultLocale?: string;
     /**
      * 父级 Hono app 的 fetch 函数，用于 SSR 内部路由回环。
      * SSR 渲染时，控制器的 fetch 请求（如 /api/apple/*）会通过此函数
@@ -84,8 +79,6 @@ export function createSSRApp(options: SSRAppOptions): Hono {
         isProduction,
         ssrEntryPath = "/src/ssr.ts",
         ssrProductionModule,
-        supportedLocales,
-        defaultLocale,
         parentFetch,
         renderModes,
     } = options;
@@ -158,23 +151,27 @@ export function createSSRApp(options: SSRAppOptions): Hono {
 
         try {
             const template = await readTemplate(url);
-            const { render, serializeServerData } = await loadSSRModule();
+            const ssrMod = await loadSSRModule();
 
-            const locale = parseAcceptLanguage(
-                c.req.header("accept-language"),
-                supportedLocales,
-                defaultLocale,
-            );
+            if (
+                typeof ssrMod.render !== "function" ||
+                typeof ssrMod.serializeServerData !== "function"
+            ) {
+                throw new Error(
+                    "[SSR] Module missing required exports: render, serializeServerData",
+                );
+            }
+
+            const { render, serializeServerData } = ssrMod;
 
             // Vite 配置级别覆盖：CSR 直接返回空壳
             const overrideMode = matchRenderModeOverride(url, renderModes);
             if (overrideMode === "csr") {
-                return c.html(injectCSRShell(template, locale));
+                return c.html(injectCSRShell(template));
             }
 
-            // ISR 缓存命中（key 含 locale，避免跨语言缓存污染）
-            const cacheKey = `${locale}:${url}`;
-            const cached = isrCache.get(cacheKey);
+            // ISR 缓存命中
+            const cached = isrCache.get(url);
             if (cached) return c.html(cached);
 
             // 每请求创建 internalFetch，深度通过请求头传递
@@ -195,7 +192,8 @@ export function createSSRApp(options: SSRAppOptions): Hono {
                 serverData,
                 renderMode,
                 redirect: middlewareRedirect,
-            } = await render(url, locale, ssrContext);
+                slots,
+            } = await render(url, ssrContext);
 
             // 中间件要求重定向
             if (middlewareRedirect) {
@@ -204,23 +202,23 @@ export function createSSRApp(options: SSRAppOptions): Hono {
 
             // CSR 模式：返回空壳 HTML
             if (renderMode === "csr") {
-                return c.html(injectCSRShell(template, locale));
+                return c.html(injectCSRShell(template));
             }
 
             const serializedData = serializeServerData(serverData);
 
             const finalHtml = injectSSRContent({
                 template,
-                locale,
                 head,
                 css,
                 html: appHtml,
                 serializedData,
+                slots,
             });
 
             // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级）
             if (renderMode === "prerender" || overrideMode === "prerender") {
-                isrSet(cacheKey, finalHtml);
+                isrSet(url, finalHtml);
             }
 
             return c.html(finalHtml);

@@ -7,8 +7,6 @@ export default defineConfig({
         react(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.tsx" },
-            locales: ["en", "zh"],
-            defaultLocale: "en",
             proxies: [
                 {
                     prefix: "/api",

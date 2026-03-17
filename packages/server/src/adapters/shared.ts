@@ -44,7 +44,7 @@ export const NODE_BUILTINS = [
 /**
  * 生成 SSR serverless/edge 入口源码
  *
- * 内联 parseAcceptLanguage / injectSSR 以避免
+ * 内联 injectSSR 以避免
  * @finesoft/front → @finesoft/server → vite-plugin → import("vite") 依赖链。
  */
 export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOptions): string {
@@ -53,8 +53,6 @@ export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOpti
         ? `if (typeof _setupDefault === "function") await _setupDefault(app);`
         : ``;
 
-    const locales = JSON.stringify(ctx.locales);
-    const defaultLocale = JSON.stringify(ctx.defaultLocale);
     const renderModes = JSON.stringify(ctx.renderModes ?? {});
 
     // 平台缓存实现：平台自定义 或 内置内存 Map
@@ -81,38 +79,23 @@ import { render, serializeServerData } from "./${ctx.ssrEntry}";
 ${setupImport}
 
 const TEMPLATE = ${JSON.stringify(ctx.templateHtml)};
-const LOCALES = ${locales};
-const DEFAULT_LOCALE = ${defaultLocale};
 const RENDER_MODES = ${renderModes};
 ${cacheImpl}
 
-function parseAcceptLanguage(header) {
-  if (!header) return DEFAULT_LOCALE;
-  const langs = header.split(",").map(p => {
-    const [l, q] = p.trim().split(";q=");
-    return { l: l.trim().toLowerCase(), q: q ? (+q || 0) : 1 };
-  }).sort((a, b) => b.q - a.q);
-  for (const { l } of langs) {
-    const prefix = l.split("-")[0];
-    if (LOCALES.includes(prefix)) return prefix;
-  }
-  return DEFAULT_LOCALE;
+function injectSSR(t, head, css, html, data) {
+  return t
+    .replace(/<!--ssr-([a-z][a-z0-9-]*)-->/g, (_, name) => {
+      const replacements = {
+        head: head + "\\n<style>" + css + "</style>",
+        body: html,
+        data: '<script id="serialized-server-data" type="application/json">' + data + "</script>",
+      };
+      return replacements[name] ?? "";
+    });
 }
 
-function injectSSR(t, locale, head, css, html, data) {
-  return t
-    .replace("<!--ssr-lang-->", locale)
-    .replace("<!--ssr-head-->", head + "\\n<style>" + css + "</style>")
-    .replace("<!--ssr-body-->", html)
-    .replace("<!--ssr-data-->", '<script id="serialized-server-data" type="application/json">' + data + "</script>");
-}
-
-function injectCSRShell(t, locale) {
-  return t
-    .replace("<!--ssr-lang-->", locale)
-    .replace("<!--ssr-head-->", "")
-    .replace("<!--ssr-body-->", "")
-    .replace("<!--ssr-data-->", "");
+function injectCSRShell(t) {
+  return t.replace(/<!--ssr-([a-z][a-z0-9-]*)-->/g, () => "");
 }
 
 function matchRenderMode(url) {
@@ -158,32 +141,29 @@ app.get("*", async (c) => {
 
   const url = c.req.path + (c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "");
   try {
-    const locale = parseAcceptLanguage(c.req.header("accept-language"));
-
     // Vite 配置级别覆盖: CSR 直接返回空壳
     const overrideMode = matchRenderMode(url);
     if (overrideMode === "csr") {
-      return c.html(injectCSRShell(TEMPLATE, locale));
+      return c.html(injectCSRShell(TEMPLATE));
     }
 
-    // ISR 缓存命中（key 含 locale，避免跨语言缓存污染）
-    const _cacheKey = locale + ":" + url;
-    const cached = await platformCacheGet(_cacheKey);
+    // ISR 缓存命中
+    const cached = await platformCacheGet(url);
     if (cached) return c.html(cached);
 
-    const { html: appHtml, head, css, serverData, renderMode } = await render(url, locale, { fetch: _createInternalFetch(_ssrDepth + 1) });
+    const { html: appHtml, head, css, serverData, renderMode } = await render(url, { fetch: _createInternalFetch(_ssrDepth + 1) });
 
     // 路由级 CSR
     if (renderMode === "csr") {
-      return c.html(injectCSRShell(TEMPLATE, locale));
+      return c.html(injectCSRShell(TEMPLATE));
     }
 
     const serializedData = serializeServerData(serverData);
-    const finalHtml = injectSSR(TEMPLATE, locale, head, css, appHtml, serializedData);
+    const finalHtml = injectSSR(TEMPLATE, head, css, appHtml, serializedData);
 
     // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级）
     if (renderMode === "prerender" || overrideMode === "prerender") {
-      await platformCacheSet(_cacheKey, finalHtml);
+      await platformCacheSet(url, finalHtml);
       ${opts.platformPrerenderResponseHook ?? ""}
     }
 
@@ -308,47 +288,38 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
     const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
     const ssrModule = await dynamicImport(ssrPath);
 
-    // ── 4. 渲染每个 URL × locale ──
+    // ── 4. 渲染每个 URL ──
     const results: PrerenderResult[] = [];
 
-    for (const routePath of prerenderPaths) {
-        for (const locale of ctx.locales) {
-            const url =
-                locale === ctx.defaultLocale
-                    ? routePath
-                    : `/${locale}${routePath === "/" ? "" : routePath}`;
-            try {
-                const {
-                    html: appHtml,
-                    head,
-                    css,
-                    serverData,
-                } = await ssrModule.render(url, locale);
+    for (const url of prerenderPaths) {
+        try {
+            const { html: appHtml, head, css, serverData } = await ssrModule.render(url);
 
-                const serializedData = ssrModule.serializeServerData(serverData);
+            const serializedData = ssrModule.serializeServerData(serverData);
 
-                const finalHtml = ctx.templateHtml
-                    .replace("<!--ssr-lang-->", locale)
-                    .replace("<!--ssr-head-->", head + "\n<style>" + css + "</style>")
-                    .replace("<!--ssr-body-->", appHtml)
-                    .replace(
-                        "<!--ssr-data-->",
-                        '<script id="serialized-server-data" type="application/json">' +
+            const finalHtml = ctx.templateHtml.replace(
+                /<!--ssr-([a-z][a-z0-9-]*)-->/g,
+                (_match, name: string) => {
+                    const builtIn: Record<string, string> = {
+                        head: head + "\n<style>" + css + "</style>",
+                        body: appHtml,
+                        data:
+                            '<script id="serialized-server-data" type="application/json">' +
                             serializedData +
                             "</script>",
-                    );
+                    };
+                    return builtIn[name] ?? "";
+                },
+            );
 
-                results.push({ url, html: finalHtml });
-            } catch (e) {
-                console.warn(`  [prerender] Failed to render ${url}:`, e);
-            }
+            results.push({ url, html: finalHtml });
+        } catch (e) {
+            console.warn(`  [prerender] Failed to render ${url}:`, e);
         }
     }
 
     if (results.length > 0) {
-        console.log(
-            `  Pre-rendered ${results.length} pages (${prerenderPaths.size} routes × ${ctx.locales.length} locales)\n`,
-        );
+        console.log(`  Pre-rendered ${results.length} pages (${prerenderPaths.size} routes)\n`);
     }
 
     return results;

@@ -44,6 +44,7 @@ export class Framework {
 
     private readonly beforeGuards: BeforeLoadGuard[] = [];
     private readonly afterGuards: AfterLoadGuard[] = [];
+    private _logger?: Logger;
 
     private constructor(container: Container, prefetchedIntents: PrefetchedIntents) {
         this.container = container;
@@ -65,9 +66,13 @@ export class Framework {
         return fw;
     }
 
+    private getLogger(): Logger {
+        return (this._logger ??= this.container.resolve<Logger>(DEP_KEYS.LOGGER));
+    }
+
     /** 分发 Intent — 获取页面数据 */
     async dispatch<T>(intent: Intent<T>): Promise<T> {
-        const logger = this.container.resolve<Logger>(DEP_KEYS.LOGGER);
+        const logger = this.getLogger();
 
         const cached = this.prefetchedIntents.get(intent);
         if (cached !== undefined) {
@@ -84,7 +89,7 @@ export class Framework {
 
     /** 执行 Action — 处理用户交互 */
     async perform(action: Action): Promise<void> {
-        const logger = this.container.resolve<Logger>(DEP_KEYS.LOGGER);
+        const logger = this.getLogger();
         logger.debug(`[Framework] perform action: ${action.kind}`);
         return this.actionDispatcher.perform(action);
     }

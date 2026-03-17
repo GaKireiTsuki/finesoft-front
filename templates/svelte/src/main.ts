@@ -6,7 +6,7 @@ import type { AppPage } from "./lib/models/product";
 
 void startBrowserApp({
     bootstrap,
-    mount(target: HTMLElement, { framework }: { framework: Framework; locale: string }) {
+    mount(target: HTMLElement, { framework }: { framework: Framework }) {
         // Svelte 5 中必须用 hydrate() 激活 SSR 输出，new Component() 已被移除
         const app = hydrate(App, { target, props: { framework } });
 

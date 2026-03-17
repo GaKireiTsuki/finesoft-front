@@ -5,7 +5,7 @@ import { bootstrap } from "./bootstrap";
 
 void startBrowserApp({
     bootstrap,
-    mount(target: HTMLElement, { framework }: { framework: Framework; locale: string }) {
+    mount(target: HTMLElement, { framework }: { framework: Framework }) {
         const state = reactive<{ page: BasePage | null; loading: boolean }>({
             page: null,
             loading: false,

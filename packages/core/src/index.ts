@@ -20,7 +20,6 @@ export { Container } from "./dependencies/container";
 export { DEP_KEYS, makeDependencies } from "./dependencies/make-dependencies";
 export type {
     FeatureFlags,
-    Locale,
     Logger,
     MetricsRecorder,
     Net,

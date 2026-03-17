@@ -16,10 +16,6 @@ import { startServer } from "./start";
 export interface ServerConfig {
     /** 项目根路径（默认 process.cwd()） */
     root?: string;
-    /** 支持的语言列表 */
-    locales?: string[];
-    /** 默认语言 */
-    defaultLocale?: string;
     /** 端口号（默认 3000） */
     port?: number;
     /** 注册自定义路由（在 SSR catch-all 之前调用，但在声明式代理之后） */
@@ -42,7 +38,6 @@ export interface ServerInstance {
  * @example
  * ```ts
  * const { app } = await createServer({
- *   locales: ["zh", "en"],
  *   setup: (app) => registerProxies(app),
  * });
  * export { app };
@@ -51,8 +46,6 @@ export interface ServerInstance {
 export async function createServer(config: ServerConfig = {}): Promise<ServerInstance> {
     const {
         root: rootOverride,
-        locales,
-        defaultLocale,
         port = Number(process.env.PORT) || 3000,
         setup,
         proxies,
@@ -68,8 +61,8 @@ export async function createServer(config: ServerConfig = {}): Promise<ServerIns
         try {
             const { config: dotenvConfig } = await dynamicImport("dotenv");
             dotenvConfig({ path: envPath });
-        } catch {
-            // dotenv 未安装则跳过，调用方可自行加载 .env
+        } catch (e) {
+            console.warn(`[Server] Failed to load .env: ${(e as Error).message}`);
         }
     }
 
@@ -101,8 +94,6 @@ export async function createServer(config: ServerConfig = {}): Promise<ServerIns
         root,
         vite,
         isProduction: runtime.isProduction,
-        supportedLocales: locales,
-        defaultLocale,
         parentFetch: app.fetch.bind(app),
         ...ssr,
     });
@@ -116,7 +107,6 @@ export async function createServer(config: ServerConfig = {}): Promise<ServerIns
         isProduction: runtime.isProduction,
         vite,
         runtime,
-        locales,
         ssrEntryPath: ssr?.ssrEntryPath,
     });
 

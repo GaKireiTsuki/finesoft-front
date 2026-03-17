@@ -2,7 +2,7 @@
  * createSSRRender — 工厂函数，返回可直接被 SSR 服务器调用的 render 函数
  *
  * 将一次性配置（bootstrap / getErrorPage / renderApp）绑定后，
- * 返回 `(url, locale) => Promise<SSRRenderResult>` 签名，
+ * 返回 `(url, ssrContext?) => Promise<SSRRenderResult>` 签名，
  * 与 @finesoft/server 的 SSRModule 接口对齐。
  */
 
@@ -20,10 +20,9 @@ export interface SSRRenderConfig {
      * 应用层渲染函数
      *
      * @param page - 当前页面数据
-     * @param locale - 当前语言
-     * @returns SSR 渲染结果 { html, head, css }
+     * @returns SSR 渲染结果 { html, head, css, slots? }
      */
-    renderApp: (page: BasePage, locale: string) => SSRAppResult | Promise<SSRAppResult>;
+    renderApp: (page: BasePage) => SSRAppResult | Promise<SSRAppResult>;
 
     /** Framework 构造配置（可选） */
     frameworkConfig?: FrameworkConfig;
@@ -32,20 +31,20 @@ export interface SSRRenderConfig {
 /**
  * 创建 render 函数
  *
- * @returns `render(url, locale, ssrContext?)` — 供 @finesoft/server SSRModule 使用
+ * @returns `render(url, ssrContext?)` — 供 @finesoft/server SSRModule 使用
  */
 export function createSSRRender(
     config: SSRRenderConfig,
-): (url: string, locale: string, ssrContext?: SSRContext) => Promise<SSRRenderResult> {
+): (url: string, ssrContext?: SSRContext) => Promise<SSRRenderResult> {
     const { bootstrap, getErrorPage, renderApp, frameworkConfig } = config;
 
-    return (url: string, locale: string, ssrContext?: SSRContext) =>
+    return (url: string, ssrContext?: SSRContext) =>
         ssrRender({
             url,
             frameworkConfig: frameworkConfig ?? {},
             bootstrap,
             getErrorPage,
-            renderApp: (page) => renderApp(page, locale),
+            renderApp: (page) => renderApp(page),
             ssrContext,
         });
 }

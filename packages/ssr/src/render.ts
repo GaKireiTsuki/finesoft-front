@@ -44,6 +44,8 @@ export interface SSRAppResult {
     html: string;
     head: string;
     css: string;
+    /** 自定义 slot 替换：`{ "my-slot": "<div>...</div>" }` 对应 HTML 中的 `<!--ssr-my-slot-->` */
+    slots?: Record<string, string>;
 }
 
 export interface SSRRenderResult {
@@ -55,6 +57,8 @@ export interface SSRRenderResult {
     renderMode?: string;
     /** 中间件要求的重定向（服务端应返回 HTTP 301/302） */
     redirect?: { url: string; status: number };
+    /** 自定义 slot 替换 */
+    slots?: Record<string, string>;
 }
 
 export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderResult> {
@@ -141,6 +145,7 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
             css: result.css,
             serverData,
             renderMode: match?.renderMode,
+            slots: result.slots,
         };
     } finally {
         framework.dispose();
@@ -184,6 +189,7 @@ async function handleMiddlewareResult(
                 head: rendered.head,
                 css: rendered.css,
                 serverData: [],
+                slots: rendered.slots,
             };
         }
     }

@@ -19,10 +19,6 @@ import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal
 import { registerProxyRoutes, type ProxyRouteConfig } from "./proxy";
 
 export interface FinesoftFrontViteOptions {
-    /** 支持的语言列表 */
-    locales?: string[];
-    /** 默认语言 */
-    defaultLocale?: string;
     /** SSR 配置 */
     ssr?: {
         /** SSR 入口文件路径（默认 "src/ssr.ts"） */
@@ -176,7 +172,8 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                 const cssUrls: string[] = [];
                 const visited = new Set<string>();
 
-                function walk(mod: any): void {
+                function walk(mod: any, depth = 0): void {
+                    if (depth > 100) return;
                     if (!mod?.url || visited.has(mod.url)) return;
                     visited.add(mod.url);
                     // 收集 CSS，但排除 .svelte 组件 CSS（由 SSR 渲染处理）
@@ -185,7 +182,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                     }
                     if (mod.importedModules) {
                         for (const imported of mod.importedModules) {
-                            walk(imported);
+                            walk(imported, depth + 1);
                         }
                     }
                 }
@@ -252,8 +249,6 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                     vite: server,
                     isProduction: false,
                     ssrEntryPath: "/" + ssrEntry,
-                    supportedLocales: options.locales,
-                    defaultLocale: options.defaultLocale,
                     parentFetch: app.fetch.bind(app),
                     renderModes: options.renderModes,
                 });
@@ -274,13 +269,20 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                 const path = await dynamicImport("node:path");
                 const { pathToFileURL } = await dynamicImport("node:url");
                 const { Hono: HonoClass } = await dynamicImport("hono");
-                const { parseAcceptLanguage } = await import("./locale");
                 const { getRequestListener } = await dynamicImport("@hono/node-server");
 
                 const app = new HonoClass();
 
-                // ISR 内存缓存
+                // ISR 内存缓存（有容量上限）
+                const ISR_CACHE_MAX = 1000;
                 const isrCache = new Map<string, string>();
+                function isrSet(key: string, val: string) {
+                    if (isrCache.size >= ISR_CACHE_MAX) {
+                        const first = isrCache.keys().next().value;
+                        if (first !== undefined) isrCache.delete(first);
+                    }
+                    isrCache.set(key, val);
+                }
 
                 // 声明式代理路由（框架层，优先注册）
                 if (options.proxies?.length) {
@@ -322,21 +324,14 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                         c.req.path + (c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "");
 
                     try {
-                        const locale = parseAcceptLanguage(
-                            c.req.header("accept-language"),
-                            options.locales,
-                            options.defaultLocale,
-                        );
-
                         // Vite 配置级别覆盖
                         const overrideMode = matchRenderModeConfig(url, options.renderModes);
                         if (overrideMode === "csr") {
-                            return c.html(injectCSRShell(template, locale));
+                            return c.html(injectCSRShell(template));
                         }
 
-                        // ISR 缓存命中（key 含 locale，避免跨语言缓存污染）
-                        const cacheKey = `${locale}:${url}`;
-                        const cached = isrCache.get(cacheKey);
+                        // ISR 缓存命中
+                        const cached = isrCache.get(url);
                         if (cached) return c.html(cached);
 
                         const {
@@ -345,20 +340,19 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                             css,
                             serverData,
                             renderMode,
-                        } = await ssrModule.render(url, locale, {
+                        } = await ssrModule.render(url, {
                             fetch: createInternalFetch(app.fetch.bind(app), ssrDepth + 1),
                         });
 
                         // 路由级 CSR
                         if (renderMode === "csr") {
-                            return c.html(injectCSRShell(template, locale));
+                            return c.html(injectCSRShell(template));
                         }
 
                         const serializedData = ssrModule.serializeServerData(serverData);
 
                         const finalHtml = injectSSRContent({
                             template,
-                            locale,
                             head,
                             css,
                             html: appHtml,
@@ -367,7 +361,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
 
                         // Prerender ISR 缓存
                         if (renderMode === "prerender" || overrideMode === "prerender") {
-                            isrCache.set(cacheKey, finalHtml);
+                            isrSet(url, finalHtml);
                         }
 
                         return c.html(finalHtml);
@@ -432,8 +426,6 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                 if (options.adapter) {
                     const adapter = resolveAdapter(options.adapter);
 
-                    const locales = options.locales ?? ["zh", "en"];
-                    const defaultLocale = options.defaultLocale ?? locales[0] ?? "en";
                     const templateHtml = fs.readFileSync(
                         path.resolve(root, "dist/client/index.html"),
                         "utf-8",
@@ -444,8 +436,6 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                         ssrEntry,
                         setupPath: typeof options.setup === "string" ? options.setup : undefined,
                         bootstrapEntry: options.bootstrapEntry,
-                        locales,
-                        defaultLocale,
                         templateHtml,
                         renderModes: options.renderModes,
                         proxies: options.proxies,

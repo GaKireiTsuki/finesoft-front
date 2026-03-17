@@ -52,6 +52,11 @@ export class Router {
             .map((segment) => {
                 const paramMatch = segment.match(/^\/:(\w+)(\?)?$/);
                 if (paramMatch) {
+                    if (paramNames.includes(paramMatch[1])) {
+                        throw new Error(
+                            `[Router] Duplicate parameter name ":${paramMatch[1]}" in pattern "${pattern}"`,
+                        );
+                    }
                     paramNames.push(paramMatch[1]);
                     return paramMatch[2] ? "(?:/([^/]+))?" : "/([^/]+)";
                 }
@@ -75,8 +80,7 @@ export class Router {
 
     /** 解析 URL → RouteMatch */
     resolve(urlOrPath: string): RouteMatch | null {
-        const path = this.extractPath(urlOrPath);
-        const queryParams = this.extractQueryParams(urlOrPath);
+        const { path, queryParams } = this.parseUrl(urlOrPath);
 
         for (const route of this.routes) {
             const match = path.match(route.regex);
@@ -108,25 +112,19 @@ export class Router {
         return this.routes.map((r) => `${r.pattern} → ${r.intentId}`);
     }
 
-    private extractPath(url: string): string {
-        try {
-            const parsed = new URL(url, "http://localhost");
-            return parsed.pathname;
-        } catch {
-            return url.split("?")[0].split("#")[0];
-        }
-    }
-
-    private extractQueryParams(url: string): Record<string, string> {
+    private parseUrl(url: string): {
+        path: string;
+        queryParams: Record<string, string>;
+    } {
         try {
             const parsed = new URL(url, "http://localhost");
             const params: Record<string, string> = {};
             parsed.searchParams.forEach((v, k) => {
                 params[k] = v;
             });
-            return params;
+            return { path: parsed.pathname, queryParams: params };
         } catch {
-            return {};
+            return { path: url.split("?")[0].split("#")[0], queryParams: {} };
         }
     }
 }

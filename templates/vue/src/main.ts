@@ -6,7 +6,7 @@ import type { AppPage } from "./lib/models/product";
 
 void startBrowserApp({
     bootstrap,
-    mount(target: HTMLElement, { framework }: { framework: Framework; locale: string }) {
+    mount(target: HTMLElement, { framework }: { framework: Framework }) {
         const state = reactive<{ page: AppPage | null; loading: boolean }>({
             page: null,
             loading: false,

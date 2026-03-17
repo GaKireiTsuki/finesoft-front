@@ -31,7 +31,6 @@ export default defineConfig({
         vue(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
-            locales: ["en", "zh"],
             proxies: [{ prefix: "/api", target: "https://api.example.com" }],
             adapter: "auto",
         }),

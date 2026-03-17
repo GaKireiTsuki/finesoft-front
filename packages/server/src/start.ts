@@ -24,14 +24,12 @@ export interface StartServerOptions {
     runtime?: RuntimeInfo;
     /** 已注册的路由列表（用于启动日志） */
     routes?: string[];
-    /** 支持的语言列表（用于启动日志） */
-    locales?: string[];
     /** SSR 入口路径（用于启动日志） */
     ssrEntryPath?: string;
 }
 
 export async function startServer(options: StartServerOptions): Promise<{ vite?: ViteDevServer }> {
-    const { app, root, port = 3000, isProduction, vite, routes, locales, ssrEntryPath } = options;
+    const { app, root, port = 3000, isProduction, vite, routes, ssrEntryPath } = options;
 
     const { isDeno, isBun, isVercel } = options.runtime ?? detectRuntime();
 
@@ -44,13 +42,10 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
             }
             lines.push("");
         }
-        if (locales && locales.length > 0) {
-            lines.push(`  Locales: ${locales.join(", ")}`);
-        }
         if (ssrEntryPath) {
             lines.push(`  SSR Entry: ${ssrEntryPath}`);
         }
-        if (locales?.length || ssrEntryPath) {
+        if (ssrEntryPath) {
             lines.push("");
         }
         console.log(lines.join("\n"));

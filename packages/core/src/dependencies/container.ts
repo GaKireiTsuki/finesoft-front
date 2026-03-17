@@ -12,6 +12,7 @@ interface Registration<T> {
 
 export class Container {
     private registrations = new Map<string, Registration<unknown>>();
+    private resolutionStack = new Set<string>();
 
     /** 注册依赖（默认单例） */
     register<T>(key: string, factory: Factory<T>, singleton = true): this {
@@ -28,7 +29,20 @@ export class Container {
 
         if (reg.singleton) {
             if (reg.instance === undefined) {
-                reg.instance = reg.factory();
+                if (this.resolutionStack.has(key)) {
+                    throw new Error(
+                        `[Container] Circular dependency detected: ${[
+                            ...this.resolutionStack,
+                            key,
+                        ].join(" → ")}`,
+                    );
+                }
+                this.resolutionStack.add(key);
+                try {
+                    reg.instance = reg.factory();
+                } finally {
+                    this.resolutionStack.delete(key);
+                }
             }
             return reg.instance as T;
         }

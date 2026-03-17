@@ -18,9 +18,6 @@ export interface BrowserAppConfig {
     /** 注册 controllers 和路由的引导函数 */
     bootstrap: (framework: Framework) => void;
 
-    /** 默认语言（回退值） */
-    defaultLocale?: string;
-
     /** DOM 挂载点 ID（默认 "app"） */
     mountId?: string;
 
@@ -38,7 +35,7 @@ export interface BrowserAppConfig {
      */
     mount: (
         target: HTMLElement,
-        context: { framework: Framework; locale: string },
+        context: { framework: Framework },
     ) => (props: { page: Promise<BasePage> | BasePage; isFirstPage?: boolean }) => void;
 
     /** FlowAction / ExternalUrl 回调 */
@@ -51,7 +48,7 @@ export interface BrowserAppConfig {
  * 自动执行 hydration 全流程。
  */
 export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
-    const { bootstrap, defaultLocale = "en", mountId = "app", mount, callbacks } = config;
+    const { bootstrap, mountId = "app", mount, callbacks } = config;
 
     // 1. 从 DOM 提取 PrefetchedIntents 缓存
     const prefetchedIntents = createPrefetchedIntentsFromDom();
@@ -67,9 +64,14 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     const initialAction = framework.routeUrl(window.location.pathname + window.location.search);
 
     // 4. 挂载应用（框架无关）
-    const locale = document.documentElement.lang || defaultLocale;
-    const target = document.getElementById(mountId)!;
-    const updateApp = mount(target, { framework, locale });
+    const target = document.getElementById(mountId);
+    if (!target) {
+        throw new Error(
+            `[startBrowserApp] Mount target not found: #${mountId}. ` +
+                `Ensure your HTML has <div id="${mountId}"></div>.`,
+        );
+    }
+    const updateApp = mount(target, { framework });
 
     // 5. 注册 Action Handlers
     registerActionHandlers({

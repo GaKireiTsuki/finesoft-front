@@ -7,8 +7,6 @@ export default defineConfig({
         svelte(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
-            locales: ["en", "zh"],
-            defaultLocale: "en",
             proxies: [
                 {
                     prefix: "/api",

@@ -3,7 +3,7 @@ import { render } from "svelte/server";
 import App from "../App.svelte";
 import type { AppPage } from "./models/product";
 
-export function renderApp(page: BasePage, _locale: string) {
+export function renderApp(page: BasePage) {
     const result = render(App, { props: { page: page as AppPage } });
     return {
         html: result.body ?? "",

@@ -7,7 +7,7 @@ import type { AppPage } from "./lib/models/product";
 void startBrowserApp({
     bootstrap,
     mountId: "app",
-    mount: (target: HTMLElement, { framework }: { framework: Framework; locale: string }) => {
+    mount: (target: HTMLElement, { framework }: { framework: Framework }) => {
         let root: ReturnType<typeof createRoot> | null = null;
         let currentPage: AppPage | null = null;
 

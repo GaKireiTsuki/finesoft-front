@@ -17,10 +17,6 @@ export interface AdapterContext {
     setupPath?: string;
     /** 路由定义入口文件（用于预渲染时加载路由），如 "src/lib/bootstrap.ts" */
     bootstrapEntry?: string;
-    /** 支持的语言列表 */
-    locales: string[];
-    /** 默认语言 */
-    defaultLocale: string;
     /** dist/client/index.html 的内容 */
     templateHtml: string;
     /** Vite 的 resolve 配置 */
