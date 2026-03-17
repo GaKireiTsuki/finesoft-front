@@ -1,7 +1,6 @@
 import { createSSRRender, serializeServerData } from "@finesoft/front";
-import { render as svelteRender } from "svelte/server";
-import App from "./App.svelte";
 import { bootstrap } from "./bootstrap";
+import { renderApp } from "./lib/render";
 
 export const render = createSSRRender({
     bootstrap,
@@ -13,14 +12,7 @@ export const render = createSSRRender({
             description: message,
         };
     },
-    renderApp(page, _locale) {
-        const { html, head } = svelteRender(App, { props: { page } });
-        return {
-            html,
-            head: `<title>${page.title}</title>${head}`,
-            css: "",
-        };
-    },
+    renderApp,
 });
 
 export { serializeServerData };

@@ -1,11 +1,10 @@
 <script lang="ts">
-	import type { Action } from "@finesoft/front";
+	import { getPerform } from "../lib/framework-svelte";
 	import type { ProductItem } from "../lib/models/product";
 
-	let {
-		item,
-		onaction,
-	}: { item: ProductItem; onaction?: (action: Action) => void } = $props();
+	let { item }: { item: ProductItem } = $props();
+
+	const perform = getPerform();
 </script>
 
 <div class="product-card">
@@ -15,9 +14,9 @@
 		<a
 			href={item.clickAction.url}
 			onclick={(e) => {
-				if (onaction && item.clickAction) {
+				if (perform && item.clickAction) {
 					e.preventDefault();
-					onaction(item.clickAction);
+					void perform(item.clickAction);
 				}
 			}}>View Details &rarr;</a
 		>

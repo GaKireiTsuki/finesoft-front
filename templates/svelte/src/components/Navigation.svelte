@@ -4,14 +4,12 @@
 		makeFlowAction,
 		type Action,
 	} from "@finesoft/front";
+	import { getPerform } from "../lib/framework-svelte";
 
-	let {
-		currentPath = "/",
-		onaction,
-	}: {
-		currentPath?: string;
-		onaction?: (action: Action) => void;
-	} = $props();
+	let { currentPath = "/" }: { currentPath?: string } = $props();
+
+	// 在组件初始化阶段获取 perform，getContext 只能在此阶段调用
+	const perform = getPerform();
 
 	const links = [
 		{
@@ -38,9 +36,9 @@
 
 	function handleNavClick(action: Action) {
 		return (e: MouseEvent) => {
-			if (onaction) {
+			if (perform) {
 				e.preventDefault();
-				onaction(action);
+				void perform(action);
 			}
 		};
 	}

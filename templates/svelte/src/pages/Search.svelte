@@ -1,12 +1,8 @@
 <script lang="ts">
-	import type { Action } from "@finesoft/front";
 	import ProductCard from "../components/ProductCard.svelte";
 	import type { SearchPage } from "../lib/models/product";
 
-	let {
-		page,
-		onaction,
-	}: { page: SearchPage; onaction?: (action: Action) => void } = $props();
+	let { page }: { page: SearchPage } = $props();
 </script>
 
 <div>
@@ -15,7 +11,7 @@
 
 	<div class="results">
 		{#each page.results as item}
-			<ProductCard {item} {onaction} />
+			<ProductCard {item} />
 		{/each}
 	</div>
 

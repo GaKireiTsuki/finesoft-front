@@ -1,21 +1,20 @@
 <script lang="ts">
-	import type { Action } from "@finesoft/front";
 	import { NAV_ACTIONS } from "../actions";
+	import { getPerform } from "../lib/framework-svelte";
 	import type { ProductPage } from "../lib/models/product";
 
-	let {
-		page,
-		onaction,
-	}: { page: ProductPage; onaction?: (action: Action) => void } = $props();
+	let { page }: { page: ProductPage } = $props();
+
+	const perform = getPerform();
 </script>
 
 <div>
 	<a
 		href="/"
 		onclick={(e) => {
-			if (onaction) {
+			if (perform) {
 				e.preventDefault();
-				onaction(NAV_ACTIONS.home);
+				void perform(NAV_ACTIONS.home);
 			}
 		}}>← Back</a
 	>
