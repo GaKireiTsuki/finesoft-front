@@ -1,37 +1,29 @@
 <script setup lang="ts">
-import type { BasePage } from "@finesoft/front";
-import { shallowRef } from "vue";
-import Navigation from "./components/Navigation.vue";
-import About from "./pages/About.vue";
-import Home from "./pages/Home.vue";
-import NotFound from "./pages/NotFound.vue";
-import ProductDetail from "./pages/ProductDetail.vue";
-import Search from "./pages/Search.vue";
+import type { Action } from "@finesoft/front";
+import { computed } from "vue";
+import Layout from "./components/Layout.vue";
+import Loading from "./components/Loading.vue";
+import PageRenderer from "./components/PageRenderer.vue";
+import type { AppPage } from "./lib/models/product";
 
-const props = defineProps<{ page?: BasePage }>();
-const currentPage = shallowRef<BasePage | undefined>(props.page);
+// state: reactive object for CSR; page: initial prop for SSR
+const {
+    state,
+    page: ssrPage,
+    onAction,
+} = defineProps<{
+    state?: { page: AppPage | null; loading: boolean };
+    page?: AppPage;
+    onAction?: (action: Action) => void;
+}>();
 
-const pageComponents: Record<string, unknown> = {
-    home: Home,
-    product: ProductDetail,
-    search: Search,
-    about: About,
-};
-
-defineExpose({
-    update(newPage: BasePage) {
-        currentPage.value = newPage;
-    },
-});
+const currentPage = computed(() => state?.page ?? ssrPage ?? null);
+const loading = computed(() => state?.loading ?? false);
 </script>
 
 <template>
-    <Navigation />
-    <main>
-        <component
-            v-if="currentPage"
-            :is="pageComponents[currentPage.pageType] ?? NotFound"
-            :page="currentPage"
-        />
-    </main>
+    <Layout :current-path="currentPage?.url ?? '/'" :on-action="onAction">
+        <Loading v-if="loading" />
+        <PageRenderer v-else-if="currentPage" :page="currentPage" :on-action="onAction" />
+    </Layout>
 </template>

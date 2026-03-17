@@ -1,4 +1,4 @@
-import { createSSRRender, serializeServerData, type BasePage } from "@finesoft/front";
+import { createSSRRender, serializeServerData } from "@finesoft/front";
 import { createSSRApp } from "vue";
 import { renderToString } from "vue/server-renderer";
 import App from "./App.vue";
@@ -6,7 +6,7 @@ import { bootstrap } from "./bootstrap";
 
 export const render = createSSRRender({
     bootstrap,
-    getErrorPage(status, message): BasePage {
+    getErrorPage(status, message) {
         return {
             id: "error",
             pageType: "error",

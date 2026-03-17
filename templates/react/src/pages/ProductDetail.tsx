@@ -1,9 +1,23 @@
+import type { Action } from "@finesoft/front";
+import { makeFlowAction } from "@finesoft/front";
 import type { ProductPage } from "../lib/models/product";
 
-export default function ProductDetail({ page }: { page: ProductPage }) {
+interface ProductDetailProps {
+    page: ProductPage;
+    onAction?: (action: Action) => void;
+}
+
+export default function ProductDetail({ page, onAction }: ProductDetailProps) {
+    const handleBack = (e: React.MouseEvent) => {
+        e.preventDefault();
+        onAction?.(makeFlowAction("/"));
+    };
+
     return (
         <div>
-            <a href="/">← Back</a>
+            <a href="/" onClick={handleBack}>
+                ← Back
+            </a>
             <h1>{page.product.name}</h1>
             <p
                 style={{

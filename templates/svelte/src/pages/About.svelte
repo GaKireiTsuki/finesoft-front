@@ -1,7 +1,11 @@
 <script lang="ts">
+	import type { Action } from "@finesoft/front";
 	import type { AboutPage } from "../lib/models/product";
 
-	let { page }: { page: AboutPage } = $props();
+	let {
+		page,
+		onaction: _onaction,
+	}: { page: AboutPage; onaction?: (action: Action) => void } = $props();
 </script>
 
 <div>

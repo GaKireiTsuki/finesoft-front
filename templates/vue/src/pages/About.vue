@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import type { Action } from "@finesoft/front";
 import type { AboutPage } from "../lib/models/product";
 
-const { page } = defineProps<{ page: AboutPage }>();
+const { page, onAction: _onAction } = defineProps<{
+    page: AboutPage;
+    onAction?: (action: Action) => void;
+}>();
 </script>
 
 <template>

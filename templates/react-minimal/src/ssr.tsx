@@ -1,11 +1,11 @@
-import { createSSRRender, serializeServerData, type BasePage } from "@finesoft/front";
+import { createSSRRender, serializeServerData } from "@finesoft/front";
 import { renderToString } from "react-dom/server";
 import App from "./App";
 import { bootstrap } from "./bootstrap";
 
 export const render = createSSRRender({
     bootstrap,
-    getErrorPage(status, message): BasePage {
+    getErrorPage(status, message) {
         return {
             id: "error",
             pageType: "error",
@@ -15,7 +15,7 @@ export const render = createSSRRender({
     },
     renderApp(page, _locale) {
         return {
-            html: renderToString(<App initialPage={page} />),
+            html: renderToString(<App page={page} />),
             head: `<title>${page.title}</title>`,
             css: "",
         };

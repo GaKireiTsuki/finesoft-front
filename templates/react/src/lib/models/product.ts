@@ -38,3 +38,11 @@ export interface AboutPage extends BasePage {
     pageType: "about";
     content: string;
 }
+
+export interface ErrorPage extends BasePage {
+    pageType: "error";
+    status: number;
+}
+
+/** 所有页面类型联合 */
+export type AppPage = HomePage | ProductPage | SearchPage | AboutPage | ErrorPage;

@@ -1,30 +1,41 @@
-import { startBrowserApp, type BasePage } from "@finesoft/front";
-import { hydrateRoot } from "react-dom/client";
+import { startBrowserApp, type Action, type BasePage, type Framework } from "@finesoft/front";
+import { createRoot } from "react-dom/client";
 import App from "./App";
 import { bootstrap } from "./bootstrap";
-
-let isFirstMount = true;
+import type { AppPage } from "./lib/models/product";
 
 void startBrowserApp({
     bootstrap,
-    mount(target) {
-        return ({ page }) => {
-            const resolve = async () => {
-                const resolved: BasePage = page instanceof Promise ? await page : page;
+    mountId: "app",
+    mount: (target: HTMLElement, { framework }: { framework: Framework; locale: string }) => {
+        let root: ReturnType<typeof createRoot> | null = null;
+        let currentPage: AppPage | null = null;
 
-                if (isFirstMount) {
-                    isFirstMount = false;
-                    hydrateRoot(target, <App initialPage={resolved} />);
-                } else {
-                    const updateApp = (
-                        window as unknown as {
-                            __updateApp?: (page: BasePage) => void;
-                        }
-                    ).__updateApp;
-                    if (updateApp) updateApp(resolved);
-                }
+        function render(page: AppPage | null, loading: boolean) {
+            const handleAction = (action: Action) => {
+                void framework.perform(action);
             };
-            void resolve();
+            if (!root) root = createRoot(target);
+            root.render(<App page={page} loading={loading} onAction={handleAction} />);
+        }
+
+        return ({
+            page,
+            isFirstPage,
+        }: {
+            page: Promise<BasePage> | BasePage;
+            isFirstPage?: boolean;
+        }) => {
+            if (page instanceof Promise) {
+                if (!isFirstPage) render(currentPage, true);
+                void page.then((p) => {
+                    currentPage = p as AppPage;
+                    render(currentPage, false);
+                });
+            } else {
+                currentPage = page as AppPage;
+                render(currentPage, false);
+            }
         };
     },
     callbacks: {

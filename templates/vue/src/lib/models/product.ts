@@ -38,3 +38,10 @@ export interface AboutPage extends BasePage {
     pageType: "about";
     content: string;
 }
+
+export interface ErrorPage extends BasePage {
+    pageType: "error";
+    status: number;
+}
+
+export type AppPage = HomePage | ProductPage | SearchPage | AboutPage | ErrorPage;

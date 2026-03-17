@@ -8,6 +8,7 @@ export class AboutController extends BaseController<Record<string, string>, Abou
         return {
             id: "about",
             pageType: "about",
+            url: "/about",
             title: "About",
             description: "About Finesoft Front",
             content:

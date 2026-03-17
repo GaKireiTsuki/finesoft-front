@@ -21,6 +21,7 @@ export class ProductDetailController extends BaseController<{ id: string }, Prod
             pageType: "product",
             title: `Product ${params.id}`,
             description: `Details for product ${params.id}`,
+            url: `/products/${params.id}`,
             product: {
                 id: params.id,
                 name: `Product ${params.id}`,
@@ -38,6 +39,7 @@ export class ProductDetailController extends BaseController<{ id: string }, Prod
             pageType: "product",
             title: "Product Not Found",
             description: error.message,
+            url: `/products/${params.id}`,
             product: {
                 id: params.id,
                 name: "Unknown Product",

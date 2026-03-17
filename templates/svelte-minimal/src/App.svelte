@@ -1,16 +1,26 @@
 <script lang="ts">
-	import type { BasePage } from "@finesoft/front";
+	import type { Action, BasePage } from "@finesoft/front";
 	import Home from "./pages/Home.svelte";
 
-	let { page = null }: { page?: BasePage | null } = $props();
+	let {
+		page: ssrPage = null,
+		onaction: _onaction,
+	}: { page?: BasePage | null; onaction?: (action: Action) => void } =
+		$props();
 
-	export function update(newPage: BasePage) {
-		page = newPage;
+	let page = $state<BasePage | null>(ssrPage);
+	let loading = $state(false);
+
+	export function setPage(newPage: BasePage | null, isLoading: boolean) {
+		loading = isLoading;
+		if (newPage) page = newPage;
 	}
 </script>
 
-<main>
-	{#if page}
+<main style="padding: 1rem">
+	{#if loading}
+		<p style="text-align: center; color: #999">Loading…</p>
+	{:else if page}
 		<Home {page} />
 	{/if}
 </main>

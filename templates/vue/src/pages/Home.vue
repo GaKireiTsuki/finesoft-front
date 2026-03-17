@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import type { Action } from "@finesoft/front";
 import ProductCard from "../components/ProductCard.vue";
 import type { HomePage } from "../lib/models/product";
 
-const { page } = defineProps<{ page: HomePage }>();
+const { page, onAction } = defineProps<{ page: HomePage; onAction?: (action: Action) => void }>();
 </script>
 
 <template>
@@ -13,7 +14,12 @@ const { page } = defineProps<{ page: HomePage }>();
         <section v-for="shelf in page.shelves" :key="shelf.id">
             <h2>{{ shelf.title }}</h2>
             <div class="shelf" :class="{ horizontal: shelf.isHorizontal }">
-                <ProductCard v-for="item in shelf.items" :key="item.id" :item="item" />
+                <ProductCard
+                    v-for="item in shelf.items"
+                    :key="item.id"
+                    :item="item"
+                    :on-action="onAction"
+                />
             </div>
         </section>
     </div>

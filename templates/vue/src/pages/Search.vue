@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import type { Action } from "@finesoft/front";
 import ProductCard from "../components/ProductCard.vue";
 import type { SearchPage } from "../lib/models/product";
 
-const { page } = defineProps<{ page: SearchPage }>();
+const { page, onAction } = defineProps<{ page: SearchPage; onAction?: (action: Action) => void }>();
 </script>
 
 <template>
@@ -11,7 +12,12 @@ const { page } = defineProps<{ page: SearchPage }>();
         <p>{{ page.description }}</p>
 
         <div class="results">
-            <ProductCard v-for="item in page.results" :key="item.id" :item="item" />
+            <ProductCard
+                v-for="item in page.results"
+                :key="item.id"
+                :item="item"
+                :on-action="onAction"
+            />
         </div>
 
         <p v-if="page.results.length === 0">No products found.</p>

@@ -1,11 +1,11 @@
-import { createSSRRender, serializeServerData, type BasePage } from "@finesoft/front";
+import { createSSRRender, serializeServerData } from "@finesoft/front";
 import { render as svelteRender } from "svelte/server";
 import App from "./App.svelte";
 import { bootstrap } from "./bootstrap";
 
 export const render = createSSRRender({
     bootstrap,
-    getErrorPage(status, message): BasePage {
+    getErrorPage(status, message) {
         return {
             id: "error",
             pageType: "error",

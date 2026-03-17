@@ -7,6 +7,7 @@ export class HomeController extends BaseController<Record<string, string>, BaseP
         return {
             id: "home",
             pageType: "home",
+            url: "/",
             title: "Home",
             description: "Welcome to Finesoft Front",
         };

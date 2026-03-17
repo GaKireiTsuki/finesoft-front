@@ -48,6 +48,7 @@ export class SearchController extends BaseController<{ q?: string }, SearchPage>
         return {
             id: "search",
             pageType: "search",
+            url: "/search",
             title: query ? `Search: ${query}` : "All Products",
             description: `${results.length} result(s)`,
             query,

@@ -1,26 +1,20 @@
-import type { BasePage } from "@finesoft/front";
-import { useEffect, useState } from "react";
+import type { Action, BasePage } from "@finesoft/front";
 
-export default function App({ initialPage }: { initialPage?: BasePage | null }) {
-    const [page, setPage] = useState<BasePage | null>(initialPage ?? null);
+interface AppProps {
+    page?: BasePage | null;
+    loading?: boolean;
+    onAction?: (action: Action) => void;
+}
 
-    // Expose updater on window for framework navigation updates (client-only)
-    useEffect(() => {
-        (window as unknown as { __updateApp?: (page: BasePage) => void }).__updateApp = (
-            newPage: BasePage,
-        ) => {
-            setPage(newPage);
-        };
-        return () => {
-            (window as unknown as { __updateApp?: (page: BasePage) => void }).__updateApp =
-                undefined;
-        };
-    }, []);
-
+export default function App({ page, loading = false }: AppProps) {
+    if (loading)
+        return (
+            <main style={{ padding: "2rem", textAlign: "center", color: "#999" }}>Loading…</main>
+        );
     if (!page) return null;
 
     return (
-        <main>
+        <main style={{ padding: "1rem" }}>
             <h1>{page.title}</h1>
             <p>{page.description}</p>
         </main>
