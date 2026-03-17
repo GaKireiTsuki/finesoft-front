@@ -165,7 +165,7 @@ function _sanitizeProxyPath(raw) {
   if (raw.length > 2048) return null;
   try { if (decodeURIComponent(raw) !== raw) return null; } catch { return null; }
   if (raw.startsWith("//")) return null;
-  if (!/^/[\\w.\\-~%:@!$&'()*+,;=\\/]*$/.test(raw) && raw !== "/") return null;
+  if (!/^[/\\w.\\-~%:@!$&'()*+,;=]*$/.test(raw)) return null;
   return raw.startsWith("/") ? raw : "/" + raw;
 }
 `);
