@@ -1,5 +1,11 @@
 # @finesoft/front
 
+## 0.1.46
+
+### Patch Changes
+
+- Auto-generated patch release from CI (18dc81e).
+
 ## 0.1.45
 
 ### Patch Changes
