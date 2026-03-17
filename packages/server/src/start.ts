@@ -6,6 +6,7 @@
 
 import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
+import { dynamicImport } from "./dynamic-import";
 import { detectRuntime, type RuntimeInfo } from "./runtime";
 
 export interface StartServerOptions {
@@ -62,7 +63,7 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
     if (!isProduction) {
         let devVite = vite;
         if (!devVite) {
-            const { createServer: createViteServer } = await import(/* @vite-ignore */ "vite");
+            const { createServer: createViteServer } = await dynamicImport("vite");
             devVite = await createViteServer({
                 root,
                 server: { middlewareMode: true },
@@ -70,8 +71,8 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
             });
         }
 
-        const { getRequestListener } = await import(/* @vite-ignore */ "@hono/node-server");
-        const { createServer } = await import(/* @vite-ignore */ "node:http");
+        const { getRequestListener } = await dynamicImport("@hono/node-server");
+        const { createServer } = await dynamicImport("node:http");
         const listener = getRequestListener(app.fetch);
         const server = createServer((req: any, res: any) => {
             devVite!.middlewares(req, res, () => listener(req, res));
@@ -88,8 +89,8 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
         // Bun uses export default
     } else {
         // Node.js production
-        const { serveStatic } = await import(/* @vite-ignore */ "@hono/node-server/serve-static");
-        const path = await import(/* @vite-ignore */ "node:path");
+        const { serveStatic } = await dynamicImport("@hono/node-server/serve-static");
+        const path = await dynamicImport("node:path");
         const prodApp = new Hono();
         const clientDir = path.resolve(root, "dist/client");
         prodApp.use(
@@ -103,7 +104,7 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
         );
         prodApp.route("/", app);
 
-        const { serve } = await import(/* @vite-ignore */ "@hono/node-server");
+        const { serve } = await dynamicImport("@hono/node-server");
         serve({ fetch: prodApp.fetch, port }, () => {
             printStartupBanner();
         });

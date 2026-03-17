@@ -224,7 +224,7 @@ export interface PrerenderResult {
  */
 export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderResult[]> {
     const { fs, path, root, vite } = ctx;
-    const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
+    const { pathToFileURL } = await dynamicImport("node:url");
 
     const routesExport = ctx.bootstrapEntry ?? "src/lib/bootstrap.ts";
 

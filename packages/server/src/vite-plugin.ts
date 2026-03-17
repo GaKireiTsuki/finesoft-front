@@ -228,9 +228,9 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         // ─── Dev ───────────────────────────────────────────────
         configureServer(server: any) {
             return async () => {
-                const { Hono: HonoClass } = await import(/* @vite-ignore */ "hono");
+                const { Hono: HonoClass } = await dynamicImport("hono");
                 const { createSSRApp } = await import("./app");
-                const { getRequestListener } = await import(/* @vite-ignore */ "@hono/node-server");
+                const { getRequestListener } = await dynamicImport("@hono/node-server");
 
                 const app = new HonoClass();
 
@@ -271,12 +271,12 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         // ─── Preview ───────────────────────────────────────────
         configurePreviewServer(server: any) {
             return async () => {
-                const { readFileSync } = await import(/* @vite-ignore */ "node:fs");
-                const path = await import(/* @vite-ignore */ "node:path");
-                const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
-                const { Hono: HonoClass } = await import(/* @vite-ignore */ "hono");
+                const { readFileSync } = await dynamicImport("node:fs");
+                const path = await dynamicImport("node:path");
+                const { pathToFileURL } = await dynamicImport("node:url");
+                const { Hono: HonoClass } = await dynamicImport("hono");
                 const { parseAcceptLanguage } = await import("./locale");
-                const { getRequestListener } = await import(/* @vite-ignore */ "@hono/node-server");
+                const { getRequestListener } = await dynamicImport("@hono/node-server");
 
                 const app = new HonoClass();
 
@@ -393,9 +393,9 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
 
             process.env.__FINESOFT_SUB_BUILD__ = "1";
             try {
-                const vite: any = await import(/* @vite-ignore */ "vite");
-                const fs = await import(/* @vite-ignore */ "node:fs");
-                const path = await import(/* @vite-ignore */ "node:path");
+                const vite: any = await dynamicImport("vite");
+                const fs = await dynamicImport("node:fs");
+                const path = await dynamicImport("node:path");
 
                 // ── 1. SSR 构建 ──
                 console.log("\n  Building SSR bundle...\n");

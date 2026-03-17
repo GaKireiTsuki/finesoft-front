@@ -8,6 +8,7 @@
 import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
 import { createSSRApp, type SSRAppOptions } from "./app";
+import { dynamicImport } from "./dynamic-import";
 import { registerProxyRoutes, type ProxyRouteConfig } from "./proxy";
 import { detectRuntime, type RuntimeInfo } from "./runtime";
 import { startServer } from "./start";
@@ -60,12 +61,12 @@ export async function createServer(config: ServerConfig = {}): Promise<ServerIns
 
     // 1. 路径 + .env
     const root = rootOverride ?? process.cwd();
-    const { existsSync } = await import(/* @vite-ignore */ "node:fs");
-    const path = await import(/* @vite-ignore */ "node:path");
+    const { existsSync } = await dynamicImport("node:fs");
+    const path = await dynamicImport("node:path");
     const envPath = path.resolve(root, ".env");
     if (existsSync(envPath)) {
         try {
-            const { config: dotenvConfig } = await import(/* @vite-ignore */ "dotenv");
+            const { config: dotenvConfig } = await dynamicImport("dotenv");
             dotenvConfig({ path: envPath });
         } catch {
             // dotenv 未安装则跳过，调用方可自行加载 .env
@@ -78,7 +79,7 @@ export async function createServer(config: ServerConfig = {}): Promise<ServerIns
     // 3. Vite（仅开发模式）
     let vite: ViteDevServer | undefined;
     if (!runtime.isProduction && !runtime.isVercel) {
-        const { createServer: createViteServer } = await import(/* @vite-ignore */ "vite");
+        const { createServer: createViteServer } = await dynamicImport("vite");
         vite = await createViteServer({
             root,
             server: { middlewareMode: true },

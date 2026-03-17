@@ -35,7 +35,7 @@ export function staticAdapter(opts: StaticAdapterOptions = {}): Adapter {
             fs.mkdirSync(outputDir, { recursive: true });
 
             // 加载 SSR 模块
-            const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
+            const { pathToFileURL } = await dynamicImport("node:url");
             const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
             const ssrModule = await dynamicImport(ssrPath);
 
@@ -136,7 +136,7 @@ async function extractRoutesWithModes(
 
     try {
         // 使用 Vite SSR 构建加载路由文件
-        const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
+        const { pathToFileURL } = await dynamicImport("node:url");
 
         // 先构建路由文件
         await ctx.vite.build({

@@ -108,8 +108,8 @@ export function createSSRApp(options: SSRAppOptions): Hono {
 
     async function readTemplate(url: string): Promise<string> {
         if (!isProduction && vite) {
-            const { readFileSync } = await import(/* @vite-ignore */ "node:fs");
-            const path = await import(/* @vite-ignore */ "node:path");
+            const { readFileSync } = await dynamicImport("node:fs");
+            const path = await dynamicImport("node:path");
             const raw = readFileSync(path.resolve(root, "index.html"), "utf-8");
             return vite.transformIndexHtml(url, raw);
         }
@@ -124,8 +124,8 @@ export function createSSRApp(options: SSRAppOptions): Hono {
             return templateCache!;
         }
 
-        const { readFileSync } = await import(/* @vite-ignore */ "node:fs");
-        const path = await import(/* @vite-ignore */ "node:path");
+        const { readFileSync } = await dynamicImport("node:fs");
+        const path = await dynamicImport("node:path");
         templateCache = readFileSync(path.resolve(root, "dist/client/index.html"), "utf-8");
         return templateCache!;
     }
@@ -137,8 +137,8 @@ export function createSSRApp(options: SSRAppOptions): Hono {
         if (ssrProductionModule) {
             return dynamicImport(ssrProductionModule) as Promise<SSRModule>;
         }
-        const path = await import(/* @vite-ignore */ "node:path");
-        const { pathToFileURL } = await import(/* @vite-ignore */ "node:url");
+        const path = await dynamicImport("node:path");
+        const { pathToFileURL } = await dynamicImport("node:url");
         const absPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
         return dynamicImport(absPath) as Promise<SSRModule>;
     }

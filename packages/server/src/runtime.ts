@@ -2,6 +2,8 @@
  * runtime — 运行时检测 + 项目根路径推导
  */
 
+import { dynamicImport } from "./dynamic-import";
+
 export interface RuntimeInfo {
     isDeno: boolean;
     isBun: boolean;
@@ -36,8 +38,8 @@ export async function resolveRoot(importMetaUrl: string, levelsUp = 0): Promise<
         return url.pathname;
     }
 
-    const path = await import(/* @vite-ignore */ "node:path");
-    const { fileURLToPath } = await import(/* @vite-ignore */ "node:url");
+    const path = await dynamicImport("node:path");
+    const { fileURLToPath } = await dynamicImport("node:url");
     let dir = path.normalize(path.dirname(fileURLToPath(importMetaUrl)));
     for (let i = 0; i < levelsUp; i++) {
         dir = path.resolve(dir, "..");

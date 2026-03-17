@@ -2,14 +2,16 @@ packages:
     - "packages/*"
     - "templates/*"
 
-catalogMode: prefer
-
 catalog:
     "@types/node": ^22
-    typescript: ^5
+    typescript: ^5.9.3
     vite: npm:@voidzero-dev/vite-plus-core@latest
-    vitest: npm:@voidzero-dev/vite-plus-test@latest
     vite-plus: latest
+    vitest: npm:@voidzero-dev/vite-plus-test@latest
+
+catalogMode: prefer
+onlyBuiltDependencies:
+    - esbuild
 overrides:
     vite: "catalog:"
     vitest: "catalog:"
