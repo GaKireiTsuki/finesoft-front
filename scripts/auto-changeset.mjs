@@ -12,6 +12,7 @@ const packageName = frontPackage.name;
 
 const content = `---
 '${packageName}': patch
+'@finesoft/create-app': patch
 ---
 
 Auto-generated patch release from CI${shortSha ? ` (${shortSha})` : ""}.
