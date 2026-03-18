@@ -1,94 +1,146 @@
-/**
- * tryScroll — 框架级滚动位置恢复
- *
- * 基于 ResizeObserver 的事件驱动方案：
- * - 监听滚动容器尺寸变化（覆盖图片加载、懒组件、字体渲染、CSS 动画等全部场景）
- * - 首帧同步尝试（内容已就绪时零延迟恢复）
- * - 超时兜底：5 秒后放弃并滚动到能到达的最远位置
- */
-
 import type { Logger } from "@finesoft/core";
 
-/** 最大等待时间 (ms) */
 const MAX_WAIT_MS = 5000;
-/** 滚动位置容差 (px) */
-const FUDGE = 16;
+const POLL_INTERVAL_MS = 100;
+const SCROLL_TOLERANCE = 2;
 
-let teardown: (() => void) | null = null;
+type Cleanup = () => void;
+
+let pendingCleanup: Cleanup | null = null;
+
+export function cancelTryScroll(): void {
+    pendingCleanup?.();
+}
 
 export function tryScroll(
     log: Logger,
     getScrollableElement: () => HTMLElement | null,
     scrollY: number,
 ): void {
-    // 取消上一次未完成的滚动恢复
-    if (teardown) {
-        teardown();
-        teardown = null;
-    }
+    cancelTryScroll();
 
-    // scrollY <= 0: 直接归顶，无需等待
-    if (scrollY <= 0) {
-        const el = getScrollableElement();
-        if (el) el.scrollTop = 0;
-        return;
-    }
+    const target = Math.max(0, scrollY);
+    const startedAt = Date.now();
 
-    const el = getScrollableElement();
-    if (!el) {
-        log.warn("could not restore scroll: scrollable element missing");
-        return;
-    }
-
-    // ── 尝试滚动 ──
-
-    function attemptScroll(): boolean {
-        if (!el) return false;
-        if (scrollY + el.offsetHeight <= el.scrollHeight + FUDGE) {
-            el.scrollTop = scrollY;
-            log.info("scroll restored to", scrollY);
-            return true;
-        }
-        return false;
-    }
-
-    // 首帧同步尝试 — SSR hydration 后内容通常已就绪
-    if (attemptScroll()) return;
-
-    // ── ResizeObserver 驱动 ──
-
-    let resizeObserver: ResizeObserver | null = null;
+    let disposed = false;
+    let pendingFrame: number | null = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let mutationObserver: MutationObserver | null = null;
 
-    function cleanup() {
-        if (resizeObserver) {
-            resizeObserver.disconnect();
-            resizeObserver = null;
+    pendingCleanup = cleanup;
+
+    observeDocumentActivity();
+    document.addEventListener("load", scheduleAttempt, true);
+    intervalId = setInterval(scheduleAttempt, POLL_INTERVAL_MS);
+    timeoutId = setTimeout(scheduleAttempt, MAX_WAIT_MS);
+    scheduleAttempt();
+
+    function scheduleAttempt(): void {
+        if (disposed || pendingFrame !== null) {
+            return;
         }
+
+        pendingFrame = requestAnimationFrame(() => {
+            pendingFrame = null;
+            attemptRestore();
+        });
+    }
+
+    function attemptRestore(): void {
+        if (disposed) {
+            return;
+        }
+
+        const elapsedMs = Date.now() - startedAt;
+        const element = getScrollableElement();
+
+        if (!element) {
+            if (elapsedMs >= MAX_WAIT_MS) {
+                log.warn("tryScroll: timed out waiting for the scrollable element", {
+                    target,
+                    elapsedMs,
+                });
+                cleanup();
+            }
+            return;
+        }
+
+        element.scrollTop = target;
+        const actual = element.scrollTop;
+
+        if (actual >= target - SCROLL_TOLERANCE) {
+            log.info("scroll restored", {
+                target,
+                actual,
+                elapsedMs,
+            });
+            cleanup();
+            return;
+        }
+
+        if (elapsedMs >= MAX_WAIT_MS) {
+            log.warn("tryScroll: timed out before reaching the target", {
+                target,
+                actual,
+                elapsedMs,
+                scrollHeight: element.scrollHeight,
+                clientHeight: element.clientHeight,
+            });
+            cleanup();
+        }
+    }
+
+    function observeDocumentActivity(): void {
+        if (typeof MutationObserver === "undefined") {
+            return;
+        }
+
+        const root = document.body ?? document.documentElement;
+        if (!root) {
+            return;
+        }
+
+        // Watch for async DOM/layout work instead of relying on a fixed frame budget.
+        mutationObserver = new MutationObserver(() => {
+            scheduleAttempt();
+        });
+        mutationObserver.observe(root, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+            attributes: true,
+        });
+    }
+
+    function cleanup(): void {
+        if (disposed) {
+            return;
+        }
+
+        disposed = true;
+
+        if (pendingCleanup === cleanup) {
+            pendingCleanup = null;
+        }
+
+        if (pendingFrame !== null) {
+            cancelAnimationFrame(pendingFrame);
+            pendingFrame = null;
+        }
+
+        if (intervalId !== null) {
+            clearInterval(intervalId);
+            intervalId = null;
+        }
+
         if (timeoutId !== null) {
             clearTimeout(timeoutId);
             timeoutId = null;
         }
-        teardown = null;
+
+        mutationObserver?.disconnect();
+        mutationObserver = null;
+        document.removeEventListener("load", scheduleAttempt, true);
     }
-
-    resizeObserver = new ResizeObserver(() => {
-        if (attemptScroll()) {
-            cleanup();
-        }
-    });
-    resizeObserver.observe(el);
-
-    // 超时兜底：滚动到能到达的最远位置
-    timeoutId = setTimeout(() => {
-        log.warn(
-            `tryScroll: timed out after ${MAX_WAIT_MS}ms, target=${scrollY}, ` +
-                `scrollHeight=${el.scrollHeight}`,
-        );
-        // 尽力滚动到最远位置
-        el.scrollTop = el.scrollHeight;
-        cleanup();
-    }, MAX_WAIT_MS);
-
-    teardown = cleanup;
 }

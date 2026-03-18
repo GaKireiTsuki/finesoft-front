@@ -4,7 +4,7 @@
 
 import type { Logger } from "@finesoft/core";
 import { LruMap, generateUuid } from "@finesoft/core";
-import { tryScroll } from "./try-scroll";
+import { cancelTryScroll, tryScroll } from "./try-scroll";
 
 const HISTORY_SIZE_LIMIT = 10;
 
@@ -30,6 +30,7 @@ export class History<State> {
     }
 
     replaceState(state: State, url: string): void {
+        cancelTryScroll();
         const id = generateUuid();
         window.history.replaceState({ id }, "", url);
         this.currentStateId = id;
@@ -39,6 +40,7 @@ export class History<State> {
     }
 
     pushState(state: State, url: string): void {
+        cancelTryScroll();
         const id = generateUuid();
         window.history.pushState({ id }, "", url);
         this.currentStateId = id;
@@ -48,6 +50,7 @@ export class History<State> {
     }
 
     beforeTransition(): void {
+        cancelTryScroll();
         const { state } = window.history;
         if (!state) return;
 
@@ -64,6 +67,7 @@ export class History<State> {
 
     onPopState(listener: (url: string, state?: State) => void | Promise<void>): void {
         window.addEventListener("popstate", async (event: PopStateEvent) => {
+            cancelTryScroll();
             this.currentStateId = event.state?.id;
 
             if (!this.currentStateId) {
@@ -77,7 +81,7 @@ export class History<State> {
 
             const entry = this.currentStateId ? this.entries.get(this.currentStateId) : undefined;
 
-            await listener(window.location.href, entry?.state);
+            listener(window.location.href, entry?.state);
 
             if (!entry) {
                 return;
@@ -91,6 +95,7 @@ export class History<State> {
 
     /** 仅推入 URL，不缓存页面状态（用于页面加载失败场景） */
     pushUrl(url: string): void {
+        cancelTryScroll();
         const id = generateUuid();
         window.history.pushState({ id }, "", url);
         this.currentStateId = id;
@@ -100,6 +105,7 @@ export class History<State> {
 
     /** 仅替换 URL，不缓存页面状态（用于页面加载失败场景） */
     replaceUrl(url: string): void {
+        cancelTryScroll();
         const id = generateUuid();
         window.history.replaceState({ id }, "", url);
         this.currentStateId = id;
