@@ -42,8 +42,18 @@ const moduleCache = new Map<string, unknown>();
 
 // ── Core import function ───────────────────────────────────────
 
-// oxlint-disable-next-line no-implied-eval -- intentional: hides import() from Vite static analysis
-const rawImport = new Function("u", "return import(u)") as (specifier: string) => Promise<unknown>;
+/**
+ * Opaque dynamic import wrapper.
+ *
+ * Uses native `import()` directly — compatible with all JS runtimes
+ * including Cloudflare Workers (which forbid `new Function`).
+ *
+ * This may produce "dynamic import cannot be analyzed" warnings in Vite dev
+ * mode when the `@vite-ignore` comment is stripped by tsdown during bundling.
+ * These warnings are harmless: all specifiers are either well-known Node.js
+ * built-ins (externalized) or absolute file:// URLs constructed by the framework.
+ */
+const rawImport = (specifier: string): Promise<unknown> => import(/* @vite-ignore */ specifier);
 
 const debugEnabled = typeof process !== "undefined" && process.env?.FINESOFT_DEBUG === "1";
 
