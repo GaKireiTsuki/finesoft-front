@@ -19,7 +19,7 @@ export interface ProxyAuthConfig {
 export interface ProxyRouteConfig {
     /** URL 前缀，如 "/api/apple"（必须以 "/" 开头） */
     prefix: string;
-    /** 代理目标地址（必须以 "https://" 开头） */
+    /** 代理目标地址（以 "https://" 或 "http://" 开头，推荐 HTTPS） */
     target: string;
     /** HTTP 方法（默认 ["all"]） */
     methods?: ("all" | "get" | "post" | "put" | "delete" | "patch")[];
@@ -65,8 +65,18 @@ function validateConfig(config: ProxyRouteConfig): void {
     if (!config.prefix.startsWith("/")) {
         throw new Error(`[proxy] prefix must start with "/": "${config.prefix}"`);
     }
-    if (!config.target.startsWith("https://")) {
-        throw new Error(`[proxy] target must use HTTPS: "${config.target}"`);
+    const isHttps = config.target.startsWith("https://");
+    const isHttp = config.target.startsWith("http://");
+    if (!isHttps && !isHttp) {
+        throw new Error(
+            `[proxy] target must start with "https://" or "http://": "${config.target}"`,
+        );
+    }
+    if (isHttp) {
+        console.warn(
+            `[proxy] ⚠ target "${config.target}" uses plain HTTP — traffic will not be encrypted. ` +
+                `Use HTTPS in production to prevent data interception.`,
+        );
     }
 }
 
@@ -190,6 +200,9 @@ function _sanitizeProxyPath(raw) {
   const _sub = _sanitizeProxyPath(c.req.path.replace(${JSON.stringify(config.prefix)}, ""));
   if (!_sub) return c.text("Invalid path", 400);
   const _target = new URL(_sub, ${JSON.stringify(config.target)});
+  if (_target.origin !== ${JSON.stringify(
+      new URL(config.target).origin,
+  )}) return c.text("Invalid proxy target", 400);
   const _reqUrl = new URL(c.req.url);
   _reqUrl.searchParams.forEach((v, k) => _target.searchParams.set(k, v));
   const _headers = ${headersJson};${authCode}
