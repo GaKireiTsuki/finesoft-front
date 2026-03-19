@@ -1,0 +1,7 @@
+{
+    "home.title": "Hello from Finesoft Front",
+    "home.description": "This page uses locale JSON files loaded by finesoftFrontViteConfig.",
+    "home.localeLabel": "Current locale",
+    "home.runtimeBadge": "Hydration kept the translator alive on the client.",
+    "home.switchHint": "Change frameworkConfig.locale in src/bootstrap.ts to load another JSON file."
+}

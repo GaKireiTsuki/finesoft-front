@@ -1,0 +1,7 @@
+{
+    "home.title": "你好，来自 Finesoft Front",
+    "home.description": "这个页面的文案来自 finesoftFrontViteConfig 自动加载的 JSON 翻译文件。",
+    "home.localeLabel": "当前语言",
+    "home.runtimeBadge": "浏览器接管后，翻译器仍然可用。",
+    "home.switchHint": "把 src/bootstrap.ts 里的 frameworkConfig.locale 改成 zh-Hans，就会加载这份翻译文件。"
+}

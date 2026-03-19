@@ -155,8 +155,8 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
             const overrides: Record<string, any> = {
                 appType: "custom",
                 define: {
-                    __FINESOFT_I18N_LOADER_MODULE__: options.i18n?.messagesDir
-                        ? JSON.stringify(GENERATED_I18N_LOADER_ID)
+                    __FINESOFT_I18N_LOADER_IMPORTER__: options.i18n?.messagesDir
+                        ? `async () => import(${JSON.stringify(GENERATED_I18N_LOADER_ID)})`
                         : "undefined",
                 },
             };

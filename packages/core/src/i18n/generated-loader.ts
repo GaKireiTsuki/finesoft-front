@@ -4,7 +4,9 @@ interface GeneratedMessagesLoaderModule {
     loadMessages?: MessagesLoader;
 }
 
-declare const __FINESOFT_I18N_LOADER_MODULE__: string | undefined;
+declare const __FINESOFT_I18N_LOADER_IMPORTER__:
+    | (() => Promise<GeneratedMessagesLoaderModule | MessagesLoader | undefined>)
+    | undefined;
 
 declare global {
     var __FINESOFT_I18N_LOADER__: MessagesLoader | undefined;
@@ -31,21 +33,25 @@ async function getGeneratedMessagesLoader(): Promise<MessagesLoader | undefined>
         return globalThis.__FINESOFT_I18N_LOADER__;
     }
 
-    if (typeof __FINESOFT_I18N_LOADER_MODULE__ !== "string") {
+    if (typeof __FINESOFT_I18N_LOADER_IMPORTER__ !== "function") {
         return undefined;
     }
 
     try {
-        const module = (await import(
-            __FINESOFT_I18N_LOADER_MODULE__
-        )) as GeneratedMessagesLoaderModule;
+        const imported = await __FINESOFT_I18N_LOADER_IMPORTER__();
+        const loader =
+            typeof imported === "function"
+                ? imported
+                : typeof imported?.loadMessages === "function"
+                  ? imported.loadMessages
+                  : undefined;
 
-        if (typeof module.loadMessages !== "function") {
+        if (!loader) {
             return undefined;
         }
 
-        globalThis.__FINESOFT_I18N_LOADER__ = module.loadMessages;
-        return module.loadMessages;
+        globalThis.__FINESOFT_I18N_LOADER__ = loader;
+        return loader;
     } catch {
         return undefined;
     }

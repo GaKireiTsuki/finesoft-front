@@ -40,7 +40,8 @@ describe("finesoftFrontViteConfig", () => {
 
         const config = plugin.config({});
         expect(config.define).toMatchObject({
-            __FINESOFT_I18N_LOADER_MODULE__: JSON.stringify("virtual:finesoft-front/i18n-loader"),
+            __FINESOFT_I18N_LOADER_IMPORTER__:
+                'async () => import("virtual:finesoft-front/i18n-loader")',
         });
 
         plugin.configResolved({
