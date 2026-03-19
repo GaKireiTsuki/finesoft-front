@@ -8,6 +8,7 @@ export {
     History,
     createPrefetchedIntentsFromDom,
     deserializeServerData,
+    extractI18nFromDom,
     registerActionHandlers,
     registerExternalUrlHandler,
     registerFlowActionHandler,

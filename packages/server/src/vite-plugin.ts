@@ -361,6 +361,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                             serverData,
                             renderMode,
                             locale,
+                            i18n,
                         } = await ssrModule.render(url, {
                             fetch: createInternalFetch(app.fetch.bind(app), ssrDepth + 1),
                         });
@@ -370,7 +371,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                             return c.html(injectCSRShell(template, locale));
                         }
 
-                        const serializedData = ssrModule.serializeServerData(serverData);
+                        const serializedData = ssrModule.serializeServerData(serverData, i18n);
 
                         const finalHtml = injectSSRContent({
                             template,

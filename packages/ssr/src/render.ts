@@ -9,6 +9,7 @@
 
 import {
     Framework,
+    SimpleTranslator,
     createServerContext,
     type BasePage,
     type FrameworkConfig,
@@ -63,6 +64,8 @@ export interface SSRRenderResult {
     slots?: Record<string, string>;
     /** 解析出的 locale 属性（用于 <html lang="" dir="">） */
     locale?: { lang: string; dir: string };
+    /** SSR 渲染中使用到的 i18n 翻译（自动传递给客户端，客户端无需再次配置 messages） */
+    i18n?: { locale: string; messages: Record<string, string> };
 }
 
 export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderResult> {
@@ -153,6 +156,13 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
         // locale 属性：已在渲染前通过 resolveLocale 解析（若有），否则从 Framework 容器获取
         const locale = resolvedLocale ?? framework.getLocale();
 
+        // 收集 SSR 中使用到的 i18n 翻译，自动传递给客户端
+        const translator = framework.getTranslator();
+        const i18n =
+            translator instanceof SimpleTranslator
+                ? { locale: translator.locale, messages: translator.getUsedMessages() }
+                : undefined;
+
         return {
             html: result.html,
             head: result.head,
@@ -161,6 +171,7 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
             renderMode: match?.renderMode,
             slots: result.slots,
             locale,
+            i18n,
         };
     } finally {
         framework.dispose();

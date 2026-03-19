@@ -10,9 +10,16 @@
  */
 
 import type { BasePage, Logger } from "@finesoft/core";
-import { DEP_KEYS, Framework, setHtmlLocaleAttributes, type LoggerFactory } from "@finesoft/core";
+import {
+    DEP_KEYS,
+    Framework,
+    SimpleTranslator,
+    setHtmlLocaleAttributes,
+    type LoggerFactory,
+    type Translator,
+} from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
-import { createPrefetchedIntentsFromDom } from "./server-data";
+import { createPrefetchedIntentsFromDom, extractI18nFromDom } from "./server-data";
 
 export interface BrowserAppConfig {
     /** 注册 controllers 和路由的引导函数 */
@@ -83,12 +90,27 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     // 1. 从 DOM 提取 PrefetchedIntents 缓存
     const prefetchedIntents = createPrefetchedIntentsFromDom();
 
+    // 1.5 从 DOM 提取 SSR 传递的 i18n 翻译
+    const ssrI18n = extractI18nFromDom();
+
     // 2. 初始化 Framework + 注册 Controllers
     const framework = Framework.create({
         ...frameworkConfig,
         prefetchedIntents,
     });
     bootstrap(framework);
+
+    // 2.1 自动 hydrate 翻译器：如果 SSR 传递了 i18n 数据且客户端未配置翻译器
+    if (ssrI18n && !framework.getTranslator()) {
+        framework.container.register<Translator>(
+            DEP_KEYS.TRANSLATOR,
+            () =>
+                new SimpleTranslator({
+                    locale: ssrI18n.locale,
+                    messages: ssrI18n.messages,
+                }),
+        );
+    }
 
     const loggerFactory = framework.container.resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
     const log: Logger = loggerFactory.loggerFor("browser");

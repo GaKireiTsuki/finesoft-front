@@ -169,7 +169,7 @@ app.get("*", async (c) => {
     const cached = await platformCacheGet(url);
     if (cached) return c.html(cached);
 
-    const { html: appHtml, head, css, serverData, renderMode, locale } = await render(url, { fetch: _createInternalFetch(_ssrDepth + 1) });
+    const { html: appHtml, head, css, serverData, renderMode, locale, i18n } = await render(url, { fetch: _createInternalFetch(_ssrDepth + 1) });
     const localeAttrs = getLocaleAttrs(locale || DEFAULT_LOCALE);
 
     // 路由级 CSR
@@ -177,7 +177,7 @@ app.get("*", async (c) => {
       return c.html(injectCSRShell(TEMPLATE, localeAttrs));
     }
 
-    const serializedData = serializeServerData(serverData);
+    const serializedData = serializeServerData(serverData, i18n);
     const finalHtml = injectSSR(TEMPLATE, head, css, appHtml, serializedData, localeAttrs);
 
     // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级）
@@ -323,9 +323,16 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
 
     for (const url of prerenderPaths) {
         try {
-            const { html: appHtml, head, css, serverData, locale } = await ssrModule.render(url);
+            const {
+                html: appHtml,
+                head,
+                css,
+                serverData,
+                locale,
+                i18n,
+            } = await ssrModule.render(url);
 
-            const serializedData = ssrModule.serializeServerData(serverData);
+            const serializedData = ssrModule.serializeServerData(serverData, i18n);
 
             let finalHtml = ctx.templateHtml.replace(
                 /<!--ssr-([a-z][a-z0-9-]*)-->/g,

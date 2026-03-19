@@ -18,7 +18,11 @@ export { History } from "./utils/history";
 export { tryScroll } from "./utils/try-scroll";
 
 // ===== Server Data (browser side) =====
-export { createPrefetchedIntentsFromDom, deserializeServerData } from "./server-data";
+export {
+    createPrefetchedIntentsFromDom,
+    deserializeServerData,
+    extractI18nFromDom,
+} from "./server-data";
 
 // ===== Re-exports from @finesoft/core (convenience) =====
 export {

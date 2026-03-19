@@ -46,8 +46,12 @@ export interface SSRModule {
         redirect?: { url: string; status: number };
         slots?: Record<string, string>;
         locale?: { lang: string; dir: string };
+        i18n?: { locale: string; messages: Record<string, string> };
     }>;
-    serializeServerData: (data: unknown) => string;
+    serializeServerData: (
+        data: unknown,
+        i18n?: { locale: string; messages: Record<string, string> },
+    ) => string;
 }
 
 export interface SSRAppOptions {
@@ -207,6 +211,7 @@ export function createSSRApp(options: SSRAppOptions): Hono {
                 redirect: middlewareRedirect,
                 slots,
                 locale,
+                i18n,
             } = await render(url, ssrContext);
 
             // 中间件要求重定向
@@ -219,7 +224,7 @@ export function createSSRApp(options: SSRAppOptions): Hono {
                 return c.html(injectCSRShell(template, locale));
             }
 
-            const serializedData = serializeServerData(serverData);
+            const serializedData = serializeServerData(serverData, i18n);
 
             const finalHtml = injectSSRContent({
                 template,

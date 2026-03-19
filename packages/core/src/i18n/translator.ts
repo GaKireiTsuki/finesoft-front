@@ -28,6 +28,7 @@ export class SimpleTranslator implements Translator {
     private readonly messages: Record<string, string>;
     private readonly pluralRule: PluralRuleProvider;
     private readonly fallback: (key: string) => string;
+    private readonly usedKeys = new Set<string>();
 
     constructor(options: SimpleTranslatorOptions) {
         this.locale = options.locale;
@@ -36,7 +37,19 @@ export class SimpleTranslator implements Translator {
         this.fallback = options.fallback ?? ((key) => key);
     }
 
+    /** 获取渲染过程中实际使用到的翻译（key → 模板），用于 SSR → 客户端传递 */
+    getUsedMessages(): Record<string, string> {
+        const result: Record<string, string> = {};
+        for (const key of this.usedKeys) {
+            if (key in this.messages) {
+                result[key] = this.messages[key];
+            }
+        }
+        return result;
+    }
+
     t(key: string, values?: Record<string, string | number>): string {
+        this.usedKeys.add(key);
         const template = this.messages[key];
         if (template === undefined) {
             return this.fallback(key);

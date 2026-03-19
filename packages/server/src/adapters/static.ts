@@ -65,9 +65,10 @@ export function staticAdapter(opts: StaticAdapterOptions = {}): Adapter {
                             head,
                             css,
                             serverData,
+                            i18n,
                         } = await ssrModule.render(url);
 
-                        const serializedData = ssrModule.serializeServerData(serverData);
+                        const serializedData = ssrModule.serializeServerData(serverData, i18n);
 
                         finalHtml = injectSSRForStatic(
                             ctx.templateHtml,
