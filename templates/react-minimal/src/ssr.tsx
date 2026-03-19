@@ -13,7 +13,7 @@ export const render = createSSRRender({
             description: message,
         };
     },
-    renderApp(page) {
+    renderApp(page, _framework) {
         return {
             html: renderToString(<App page={page} />),
             head: `<title>${page.title}</title>`,

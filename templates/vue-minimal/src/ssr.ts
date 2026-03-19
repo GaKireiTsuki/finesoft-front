@@ -14,7 +14,7 @@ export const render = createSSRRender({
             description: message,
         };
     },
-    async renderApp(page) {
+    async renderApp(page, _framework) {
         const app = createSSRApp(App, { page });
         const html = await renderToString(app);
         return {

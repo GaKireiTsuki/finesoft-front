@@ -10,7 +10,7 @@ export { serializeServerData };
 export const render = createSSRRender({
     bootstrap,
     getErrorPage,
-    renderApp(page) {
+    renderApp(page, _framework) {
         const html = renderToString(<App page={page as AppPage} />);
         return {
             html,

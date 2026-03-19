@@ -8,7 +8,7 @@ import { getErrorPage } from "./lib/controllers/error";
 export const render = createSSRRender({
     bootstrap,
     getErrorPage,
-    async renderApp(page) {
+    async renderApp(page, _framework) {
         const app = createSSRApp(App, { page });
         const html = await renderToString(app);
         return {
