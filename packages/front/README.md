@@ -89,6 +89,259 @@ function authGuard(ctx: NavigationContext) {
 
 Results: `next()`, `redirect(url, status?)`, `rewrite(url)`, `deny(status?, message?)`.
 
+## Lifecycle Hooks
+
+`startBrowserApp` provides hooks for initialization:
+
+```ts
+import { startBrowserApp } from "@finesoft/front/browser";
+
+startBrowserApp({
+    bootstrap,
+    // Pass framework config so locale/reporting/etc. are wired into Framework
+    frameworkConfig: {
+        locale: "zh-Hans",
+    },
+    mount: (target, { framework }) => {
+        /* ... */
+    },
+    callbacks: { onNavigate, onExternalUrl },
+    onBeforeStart(framework) {
+        // Runs after Framework creation, before mount.
+        // Good for: error monitoring, analytics SDK, i18n init.
+    },
+    onAfterStart(framework) {
+        // Runs after initial page trigger.
+        // Good for: service worker registration, performance marks.
+    },
+});
+```
+
+## Locale (i18n)
+
+Pass `locale` in `FrameworkConfig` to enable automatic locale handling:
+
+```ts
+const framework = Framework.create({
+    locale: "zh-Hans", // or "en-US", "ar-SA", etc.
+});
+
+// SSR: automatically injects <html lang="zh-Hans" dir="ltr">
+// Browser: automatically sets document.documentElement.lang/dir on startup
+```
+
+For SSR, locale is resolved in this order:
+
+1. Explicit `resolveLocale` callback (if provided)
+2. `locale` from `FrameworkConfig` (via DI container)
+
+Access at runtime:
+
+```ts
+const locale = framework.getLocale();
+// { lang: "zh-Hans", dir: "ltr" }
+```
+
+### Translator
+
+For full i18n translation, use `SimpleTranslator`:
+
+```ts
+import { SimpleTranslator } from "@finesoft/front";
+
+const t = new SimpleTranslator({
+    locale: "zh-Hans",
+    messages: {
+        hello: "你好",
+        "items.one": "{count} 个项目",
+        "items.other": "{count} 个项目",
+    },
+});
+
+t.t("hello"); // "你好"
+t.t("hello", { name: "World" }); // "你好"
+t.plural("items", 5); // "5 个项目"
+```
+
+### RTL Support
+
+```ts
+import { isRtl, getTextDirection, getLocaleAttributes } from "@finesoft/front";
+
+isRtl("ar"); // true
+getTextDirection("he"); // "rtl"
+getLocaleAttributes("ar-SA"); // { lang: "ar-SA", dir: "rtl" }
+```
+
+## Metrics & Event Recording
+
+### EventRecorder (recommended)
+
+New pipeline for structured event recording. Default: `ConsoleEventRecorder` (logs to console).
+
+```ts
+import { Framework, type EventRecorder } from "@finesoft/front";
+
+// Custom recorder
+const framework = Framework.create({
+    eventRecorder: myAnalyticsRecorder,
+});
+
+// Framework automatically records PageView events via didEnterPage()
+```
+
+Compose multiple recorders:
+
+```ts
+import { CompositeEventRecorder, ConsoleEventRecorder } from "@finesoft/front";
+
+const recorder = new CompositeEventRecorder([new ConsoleEventRecorder(), myProductionRecorder]);
+```
+
+Inject common fields into every event:
+
+```ts
+import { WithFieldsRecorder } from "@finesoft/front";
+
+const recorder = new WithFieldsRecorder(baseRecorder, [
+    { getFields: () => ({ app: "myApp", version: "1.0" }) },
+]);
+```
+
+### Impression Tracking
+
+Track element visibility using `IntersectionObserver`:
+
+```ts
+import { IntersectionImpressionObserver } from "@finesoft/front";
+
+const observer = new IntersectionImpressionObserver((entries) => {
+    for (const entry of entries) {
+        analytics.track("impression", { id: entry.id, ...entry.metadata });
+    }
+});
+
+observer.observe(element, "product-card-123", { category: "featured" });
+// Later:
+observer.unobserve(element);
+observer.destroy();
+```
+
+## Error Reporting
+
+Send `warn`/`error` logs to an external monitoring service (Sentry, Datadog, etc.):
+
+```ts
+import { Framework, type ReportCallback } from "@finesoft/front";
+
+const framework = Framework.create({
+    reportCallback(level, category, args) {
+        sentry.captureMessage(`[${category}] ${args.join(" ")}`, level);
+    },
+});
+
+// Automatically composes with ConsoleLogger — console output is preserved.
+// All framework.getLogger().warn(...) and .error(...) calls are forwarded.
+```
+
+## HTTP Client
+
+Subclass `HttpClient` to create typed API clients:
+
+```ts
+import { HttpClient } from "@finesoft/front";
+
+class MyApi extends HttpClient {
+    async getUser(id: string) {
+        return this.get<User>(`/users/${id}`);
+    }
+    async createUser(data: NewUser) {
+        return this.post<User>("/users", data);
+    }
+}
+```
+
+### Interceptors
+
+Add request/response interceptors for auth, logging, retries, etc.:
+
+```ts
+const api = new MyApi({
+    baseUrl: "/api",
+    requestInterceptors: [
+        (url, init) => {
+            init.headers = {
+                ...init.headers,
+                Authorization: `Bearer ${token}`,
+            };
+            return init;
+        },
+    ],
+    responseInterceptors: [
+        (response, url) => {
+            if (response.status === 401) refreshToken();
+            return response;
+        },
+    ],
+});
+
+// Or add dynamically:
+api.useRequestInterceptor((url, init) => {
+    /* ... */ return init;
+});
+```
+
+## Platform Detection
+
+Automatically detected from User-Agent and available via DI:
+
+```ts
+const platform = framework.getPlatform();
+// { os: "ios", browser: "safari", engine: "webkit", isMobile: true, isTouch: true }
+```
+
+Standalone usage:
+
+```ts
+import { detectPlatform } from "@finesoft/front";
+const info = detectPlatform(); // auto-reads navigator.userAgent
+```
+
+## PWA Detection
+
+```ts
+import { getPWADisplayMode } from "@finesoft/front";
+
+const mode = getPWADisplayMode();
+// "standalone" | "twa" | "browser"
+```
+
+## Feature Flags
+
+```ts
+const framework = Framework.create({
+    featureFlags: { darkMode: true, maxRetries: 3 },
+});
+
+// Add remote providers (last registered wins):
+import { type FeatureFlagsProvider } from "@finesoft/front";
+
+const framework = Framework.create({
+    featureFlags: { darkMode: false },
+    featureFlagsProviders: [remoteConfigProvider],
+});
+```
+
+## DI Container
+
+Scoped containers for request isolation (SSR):
+
+```ts
+const requestScope = framework.container.createScope();
+requestScope.register("user", () => currentUser);
+// Falls back to parent container if key not found
+```
+
 ## SSR
 
 ```ts

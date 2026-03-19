@@ -17,6 +17,16 @@ export class HttpError extends Error {
     }
 }
 
+/** 请求拦截器 — 在发送前修改请求 */
+export interface RequestInterceptor {
+    (url: string, init: RequestInit): RequestInit | Promise<RequestInit>;
+}
+
+/** 响应拦截器 — 在解析前修改响应 */
+export interface ResponseInterceptor {
+    (response: Response, url: string): Response | Promise<Response>;
+}
+
 /** HttpClient 构造配置 */
 export interface HttpClientConfig {
     /** API base URL（如 "/api" 或 "https://example.com/api"） */
@@ -25,6 +35,10 @@ export interface HttpClientConfig {
     defaultHeaders?: Record<string, string>;
     /** 自定义 fetch 实现（便于测试或 SSR） */
     fetch?: typeof globalThis.fetch;
+    /** 请求拦截器（按注册顺序执行） */
+    requestInterceptors?: RequestInterceptor[];
+    /** 响应拦截器（按注册顺序执行） */
+    responseInterceptors?: ResponseInterceptor[];
 }
 
 /**
@@ -45,11 +59,27 @@ export abstract class HttpClient {
     protected readonly baseUrl: string;
     protected readonly defaultHeaders: Record<string, string>;
     protected readonly fetchFn: typeof globalThis.fetch;
+    private readonly requestInterceptors: RequestInterceptor[];
+    private readonly responseInterceptors: ResponseInterceptor[];
 
     constructor(config: HttpClientConfig) {
         this.baseUrl = config.baseUrl;
         this.defaultHeaders = config.defaultHeaders ?? {};
         this.fetchFn = config.fetch ?? globalThis.fetch.bind(globalThis);
+        this.requestInterceptors = [...(config.requestInterceptors ?? [])];
+        this.responseInterceptors = [...(config.responseInterceptors ?? [])];
+    }
+
+    /** 动态添加请求拦截器 */
+    useRequestInterceptor(interceptor: RequestInterceptor): this {
+        this.requestInterceptors.push(interceptor);
+        return this;
+    }
+
+    /** 动态添加响应拦截器 */
+    useResponseInterceptor(interceptor: ResponseInterceptor): this {
+        this.responseInterceptors.push(interceptor);
+        return this;
     }
 
     /** GET 请求，返回解析后的 JSON */
@@ -106,14 +136,24 @@ export abstract class HttpClient {
             ...options?.headers,
         };
 
-        const init: RequestInit = { method, headers };
+        let init: RequestInit = { method, headers };
 
         if (options?.body !== undefined) {
             headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
             init.body = JSON.stringify(options.body);
         }
 
-        const response = await this.fetchFn(url, init);
+        // 请求拦截器链
+        for (const interceptor of this.requestInterceptors) {
+            init = await interceptor(url, init);
+        }
+
+        let response = await this.fetchFn(url, init);
+
+        // 响应拦截器链
+        for (const interceptor of this.responseInterceptors) {
+            response = await interceptor(response, url);
+        }
 
         if (!response.ok) {
             const body = await response.text().catch(() => undefined);

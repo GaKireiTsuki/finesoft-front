@@ -217,6 +217,13 @@ import { bootstrap } from "./bootstrap";
 
 void startBrowserApp({
     bootstrap,
+    // Pass framework config (locale, error reporting, etc.)
+    frameworkConfig: {
+        locale: "zh-Hans",
+        reportCallback(level, category, args) {
+            sentry.captureMessage(`[${category}] ${args.join(" ")}`, level);
+        },
+    },
     mount(target, { framework }) {
         const state = reactive({ page: null, loading: false });
         createApp(App, { state }).mount(target);
@@ -234,7 +241,157 @@ void startBrowserApp({
             }
         };
     },
+    // Lifecycle hooks
+    onBeforeStart(framework) {
+        // After Framework creation, before mount — init monitoring, analytics, etc.
+    },
+    onAfterStart(framework) {
+        // After initial page trigger — register service worker, etc.
+    },
 });
+```
+
+## Configuration
+
+`Framework.create()` accepts a `FrameworkConfig` with the following options:
+
+```ts
+const framework = Framework.create({
+    // Locale — auto-injects <html lang="" dir=""> in SSR & browser
+    locale: "zh-Hans",
+    // Error reporting — auto-composes with console logger
+    reportCallback(level, category, args) {
+        sentry.captureMessage(`[${category}] ${args.join(" ")}`, level);
+    },
+    // Custom event recorder (default: ConsoleEventRecorder)
+    eventRecorder: myAnalyticsRecorder,
+    // Feature flags with optional remote providers
+    featureFlags: { darkMode: true },
+    featureFlagsProviders: [remoteConfigProvider],
+    // Custom platform info (default: auto-detected from UA)
+    platform: customPlatformInfo,
+    // Custom fetch implementation
+    fetch: customFetch,
+});
+```
+
+### Locale & i18n
+
+```ts
+// Runtime access
+framework.getLocale(); // { lang: "zh-Hans", dir: "ltr" }
+
+// RTL detection utilities
+import { isRtl, getTextDirection, getLocaleAttributes } from "@finesoft/front";
+isRtl("ar"); // true
+getTextDirection("he"); // "rtl"
+getLocaleAttributes("ar-SA"); // { lang: "ar-SA", dir: "rtl" }
+
+// Translator for full i18n
+import { SimpleTranslator } from "@finesoft/front";
+const t = new SimpleTranslator({
+    locale: "zh-Hans",
+    messages: {
+        hello: "你好",
+        "items.one": "{count} 个",
+        "items.other": "{count} 个",
+    },
+});
+t.t("hello"); // "你好"
+t.plural("items", 5); // "5 个"
+```
+
+### Error Reporting
+
+Pass `reportCallback` to automatically forward `warn`/`error` logs to an external service while preserving console output:
+
+```ts
+Framework.create({
+    reportCallback(level, category, args) {
+        sentry.captureMessage(`[${category}] ${args.join(" ")}`, level);
+    },
+});
+```
+
+### Metrics & Event Recording
+
+```ts
+import {
+    CompositeEventRecorder,
+    ConsoleEventRecorder,
+    WithFieldsRecorder,
+    IntersectionImpressionObserver,
+} from "@finesoft/front";
+
+// Compose multiple recorders
+const recorder = new CompositeEventRecorder([new ConsoleEventRecorder(), myProductionRecorder]);
+
+// Inject common fields
+const withFields = new WithFieldsRecorder(recorder, [
+    { getFields: () => ({ app: "myApp", version: "1.0" }) },
+]);
+
+// Impression tracking
+const observer = new IntersectionImpressionObserver((entries) => {
+    for (const entry of entries) {
+        analytics.track("impression", { id: entry.id, ...entry.metadata });
+    }
+});
+observer.observe(element, "card-123", { category: "featured" });
+```
+
+### Platform & PWA Detection
+
+```ts
+// Auto-detected from UA, available via DI
+framework.getPlatform();
+// { os: "ios", browser: "safari", engine: "webkit", isMobile: true, isTouch: true }
+
+// Standalone usage
+import { detectPlatform, getPWADisplayMode } from "@finesoft/front";
+detectPlatform(); // auto-reads navigator.userAgent
+getPWADisplayMode(); // "standalone" | "twa" | "browser"
+```
+
+### HTTP Client Interceptors
+
+```ts
+import { HttpClient } from "@finesoft/front";
+
+class MyApi extends HttpClient {
+    async getUser(id: string) {
+        return this.get<User>(`/users/${id}`);
+    }
+}
+
+const api = new MyApi({
+    baseUrl: "/api",
+    requestInterceptors: [
+        (url, init) => {
+            init.headers = {
+                ...init.headers,
+                Authorization: `Bearer ${token}`,
+            };
+            return init;
+        },
+    ],
+    responseInterceptors: [
+        (response) => {
+            if (response.status === 401) refreshToken();
+            return response;
+        },
+    ],
+});
+```
+
+### Scoped DI Container
+
+Create child containers for request-level isolation (useful in SSR):
+
+```ts
+const scope = framework.container.createScope();
+scope.register("user", () => currentUser);
+// Falls back to parent container for unregistered keys
 ```
 
 ## Adapters

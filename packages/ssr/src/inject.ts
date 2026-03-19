@@ -17,13 +17,15 @@ export interface InjectSSROptions {
     serializedData: string;
     /** 自定义 slot 替换：`{ "my-slot": "<div>content</div>" }` 会替换 `<!--ssr-my-slot-->`（含 `<!--ssr-lang-->`） */
     slots?: Record<string, string>;
+    /** Locale 属性，自动注入到 <html> 标签 */
+    locale?: { lang: string; dir: string };
 }
 
 /** 匹配所有 <!--ssr-xxx--> 占位符（含内置与自定义） */
 const PLACEHOLDER_REGEX = /<!--ssr-([a-z][a-z0-9-]*)-->/g;
 
 export function injectSSRContent(options: InjectSSROptions): string {
-    const { template, head, css, html, serializedData, slots } = options;
+    const { template, head, css, html, serializedData, slots, locale } = options;
     const cssTag = css ? `<style>${css}</style>` : "";
 
     const replacements: Record<string, string> = {
@@ -33,7 +35,23 @@ export function injectSSRContent(options: InjectSSROptions): string {
         ...slots,
     };
 
-    return template.replace(PLACEHOLDER_REGEX, (_, name: string) => replacements[name] ?? "");
+    let result = template.replace(PLACEHOLDER_REGEX, (_, name: string) => replacements[name] ?? "");
+
+    // Inject lang/dir into <html> tag
+    if (locale) {
+        result = result.replace(
+            /(<html)([^>]*)(>)/i,
+            (match, open: string, attrs: string, close: string) => {
+                // Remove existing lang/dir attributes to avoid duplicates
+                let cleaned = attrs
+                    .replace(/\s+lang="[^"]*"/gi, "")
+                    .replace(/\s+dir="[^"]*"/gi, "");
+                return `${open}${cleaned} lang="${locale.lang}" dir="${locale.dir}"${close}`;
+            },
+        );
+    }
+
+    return result;
 }
 
 /**

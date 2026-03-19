@@ -20,7 +20,9 @@ export { Container } from "./dependencies/container";
 export { DEP_KEYS, makeDependencies } from "./dependencies/make-dependencies";
 export type {
     FeatureFlags,
+    FeatureFlagsProvider,
     Logger,
+    MakeDependenciesOptions,
     MetricsRecorder,
     Net,
     Storage,
@@ -35,6 +37,12 @@ export { BaseLogger } from "./logger/base";
 export { CompositeLogger, CompositeLoggerFactory } from "./logger/composite";
 export { ConsoleLogger, ConsoleLoggerFactory } from "./logger/console";
 export { resetFilterCache, shouldLog } from "./logger/local-storage-filter";
+export {
+    ReportingLogger,
+    ReportingLoggerFactory,
+    type ReportCallback,
+    type ReportingLoggerOptions,
+} from "./logger/reporting";
 export type { LoggerFactory, Logger as LoggerInterface } from "./logger/types";
 
 // ===== Framework =====
@@ -52,7 +60,7 @@ export { stableStringify } from "./prefetched-intents/stable-stringify";
 
 // ===== HTTP =====
 export { HttpClient, HttpError } from "./http/client";
-export type { HttpClientConfig } from "./http/client";
+export type { HttpClientConfig, RequestInterceptor, ResponseInterceptor } from "./http/client";
 
 // ===== Base Controller =====
 export { BaseController } from "./intents/base-controller";
@@ -68,6 +76,8 @@ export type { RenderMode, RouteDefinition } from "./bootstrap/define-routes";
 // ===== Utils =====
 export { LruMap } from "./utils/lru-map";
 export { isNone, isSome, type None, type Optional } from "./utils/optional";
+export { detectPlatform, type PlatformInfo } from "./utils/platform";
+export { getPWADisplayMode, type PWADisplayMode } from "./utils/pwa";
 export { buildUrl, getBaseUrl, removeHost, removeQueryParams, removeScheme } from "./utils/url";
 export { generateUuid } from "./utils/uuid";
 
@@ -87,3 +97,37 @@ export type {
     RedirectResult,
     RewriteResult,
 } from "./middleware/types";
+
+// ===== Metrics =====
+export { CompositeEventRecorder } from "./metrics/composite-recorder";
+export { ConsoleEventRecorder } from "./metrics/console-recorder";
+export {
+    IntersectionImpressionObserver,
+    type ImpressionObserverOptions,
+} from "./metrics/impression-observer";
+export type {
+    EventRecorder,
+    ImpressionEntry,
+    ImpressionObserver,
+    MetricsFieldsProvider,
+} from "./metrics/types";
+export { VoidEventRecorder } from "./metrics/void-recorder";
+export { WithFieldsRecorder } from "./metrics/with-fields-recorder";
+
+// ===== i18n =====
+export {
+    englishPlural,
+    interpolate,
+    resolvePluralKey,
+    type PluralCategory,
+    type PluralRuleProvider,
+} from "./i18n/interpolate";
+export {
+    getLocaleAttributes,
+    getTextDirection,
+    isRtl,
+    makeLocaleInfo,
+    setHtmlLocaleAttributes,
+} from "./i18n/locale";
+export { SimpleTranslator, type SimpleTranslatorOptions } from "./i18n/translator";
+export type { LocaleAttributes, LocaleInfo, TextDirection, Translator } from "./i18n/types";

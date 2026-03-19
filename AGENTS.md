@@ -20,12 +20,31 @@ front                 (published aggregation bundle of all above)
 
 ### Key Abstractions
 
-- **Framework** — central orchestrator; owns Container, Router, ActionDispatcher, IntentDispatcher
+- **Framework** — central orchestrator; owns Container, Router, ActionDispatcher, IntentDispatcher; provides `getLocale()`, `getPlatform()`, `didEnterPage()`
 - **BaseController\<TParams, TResult\>** — abstract intent handler with try/catch → `fallback()` pattern
 - **Middleware pipeline** — two-phase: `beforeLoad` (navigation guards) → `afterLoad` (post-data guards); first non-`next` result short-circuits
 - **ActionDispatcher** — handles `FlowAction` (SPA nav), `ExternalUrlAction`, `CompoundAction` (recursive)
-- **Container** — simple DI container with `DEP_KEYS` constant for named registrations
+- **Container** — DI container with `DEP_KEYS` constant for named registrations; supports `createScope()` for request-level isolation
 - **PrefetchedIntents** — SSR → CSR hydration cache with stable stringify
+- **EventRecorder** — structured event recording pipeline (ConsoleEventRecorder, CompositeEventRecorder, WithFieldsRecorder)
+- **HttpClient** — abstract HTTP client with request/response interceptors
+- **Translator** — i18n interface; `SimpleTranslator` provides ICU interpolation + plural rules
+- **ReportingLoggerFactory** — forwards warn/error logs to external monitoring via `ReportCallback`
+
+### DEP_KEYS
+
+| Key              | Type               | Description                     |
+| ---------------- | ------------------ | ------------------------------- |
+| `LOGGER`         | `Logger`           | Framework-scoped logger         |
+| `LOGGER_FACTORY` | `LoggerFactory`    | Creates named loggers           |
+| `NET`            | `Net`              | Network request layer           |
+| `STORAGE`        | `Storage`          | Key-value storage               |
+| `FEATURE_FLAGS`  | `FeatureFlags`     | Feature flag lookups            |
+| `METRICS`        | `MetricsRecorder`  | Legacy metrics recorder         |
+| `FETCH`          | `fetch`            | Raw fetch function              |
+| `EVENT_RECORDER` | `EventRecorder`    | Structured event recording      |
+| `LOCALE`         | `LocaleAttributes` | `{ lang, dir }` (if configured) |
+| `PLATFORM`       | `PlatformInfo`     | OS, browser, engine detection   |
 
 ### Request Lifecycle
 

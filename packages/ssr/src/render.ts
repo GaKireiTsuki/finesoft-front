@@ -30,6 +30,8 @@ export interface SSRRenderOptions {
     renderApp: (page: BasePage, framework: Framework) => SSRAppResult | Promise<SSRAppResult>;
     /** 可选的 SSR 请求上下文（如自定义 fetch） */
     ssrContext?: SSRContext;
+    /** 解析请求 locale 的回调（返回 lang + dir 用于 <html> 属性） */
+    resolveLocale?: (url: string, request?: Request) => { lang: string; dir: string } | undefined;
 }
 
 /** SSR 请求级上下文 */
@@ -59,10 +61,13 @@ export interface SSRRenderResult {
     redirect?: { url: string; status: number };
     /** 自定义 slot 替换 */
     slots?: Record<string, string>;
+    /** 解析出的 locale 属性（用于 <html lang="" dir="">） */
+    locale?: { lang: string; dir: string };
 }
 
 export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderResult> {
-    const { url, frameworkConfig, bootstrap, getErrorPage, renderApp, ssrContext } = options;
+    const { url, frameworkConfig, bootstrap, getErrorPage, renderApp, ssrContext, resolveLocale } =
+        options;
 
     // 将 SSR 上下文中的 fetch 合并到 frameworkConfig，注入 DI 容器
     const mergedConfig: FrameworkConfig = ssrContext?.fetch
@@ -139,6 +144,9 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
 
         const result = await renderApp(page, framework);
 
+        // 解析 locale 属性：优先使用用户提供的 resolveLocale，否则从 Framework 容器获取
+        const locale = resolveLocale?.(url, ssrContext?.request) ?? framework.getLocale();
+
         return {
             html: result.html,
             head: result.head,
@@ -146,6 +154,7 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
             serverData,
             renderMode: match?.renderMode,
             slots: result.slots,
+            locale,
         };
     } finally {
         framework.dispose();

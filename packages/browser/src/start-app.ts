@@ -10,7 +10,7 @@
  */
 
 import type { BasePage, Logger } from "@finesoft/core";
-import { DEP_KEYS, Framework, type LoggerFactory } from "@finesoft/core";
+import { DEP_KEYS, Framework, setHtmlLocaleAttributes, type LoggerFactory } from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
 import { createPrefetchedIntentsFromDom } from "./server-data";
 
@@ -23,6 +23,20 @@ export interface BrowserAppConfig {
 
     /** 获取可滚动页面元素，用于滚动位置保存/恢复 */
     getScrollablePageElement?: () => HTMLElement | null;
+
+    /**
+     * 启动前钩子 — 在 Framework 创建后、挂载前执行
+     *
+     * 用于初始化错误监控、埋点 SDK、i18n 等。
+     */
+    onBeforeStart?: (framework: Framework) => void | Promise<void>;
+
+    /**
+     * 启动后钩子 — 在初始页面触发后执行
+     *
+     * 用于启动后操作（如 service worker 注册、性能打点）。
+     */
+    onAfterStart?: (framework: Framework) => void | Promise<void>;
 
     /**
      * 挂载应用到 DOM
@@ -40,6 +54,14 @@ export interface BrowserAppConfig {
 
     /** FlowAction / ExternalUrl 回调 */
     callbacks: FlowActionCallbacks;
+
+    /**
+     * Framework 配置 — locale、reportCallback、eventRecorder 等
+     *
+     * 传入后会在 Framework.create() 时合并。
+     * prefetchedIntents 由框架自动从 DOM 提取，无需传入。
+     */
+    frameworkConfig?: Omit<import("@finesoft/core").FrameworkConfig, "prefetchedIntents">;
 }
 
 /**
@@ -48,17 +70,38 @@ export interface BrowserAppConfig {
  * 自动执行 hydration 全流程。
  */
 export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
-    const { bootstrap, mountId = "app", mount, callbacks } = config;
+    const {
+        bootstrap,
+        mountId = "app",
+        mount,
+        callbacks,
+        onBeforeStart,
+        onAfterStart,
+        frameworkConfig,
+    } = config;
 
     // 1. 从 DOM 提取 PrefetchedIntents 缓存
     const prefetchedIntents = createPrefetchedIntentsFromDom();
 
     // 2. 初始化 Framework + 注册 Controllers
-    const framework = Framework.create({ prefetchedIntents });
+    const framework = Framework.create({
+        ...frameworkConfig,
+        prefetchedIntents,
+    });
     bootstrap(framework);
 
     const loggerFactory = framework.container.resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
     const log: Logger = loggerFactory.loggerFor("browser");
+
+    // 2.5 应用 locale 到 <html> 元素
+    const locale = framework.getLocale();
+    if (locale) {
+        setHtmlLocaleAttributes(locale);
+        log.debug("[startBrowserApp] Applied locale attributes:", locale);
+    }
+
+    // 2.6 启动前钩子
+    await onBeforeStart?.(framework);
 
     // 3. 路由初始 URL
     const initialAction = framework.routeUrl(window.location.pathname + window.location.search);
@@ -91,4 +134,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
             isFirstPage: true,
         });
     }
+
+    // 7. 启动后钩子
+    await onAfterStart?.(framework);
 }

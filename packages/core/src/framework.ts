@@ -14,6 +14,7 @@ import {
     makeDependencies,
     type MakeDependenciesOptions,
 } from "./dependencies/make-dependencies";
+import type { LocaleAttributes } from "./i18n/types";
 import { IntentDispatcher } from "./intents/dispatcher";
 import type { Intent, IntentController } from "./intents/types";
 import type { Logger } from "./logger/types";
@@ -28,6 +29,7 @@ import type {
 import type { BasePage } from "./models/page";
 import { PrefetchedIntents } from "./prefetched-intents/prefetched-intents";
 import { Router, type RouteMatch } from "./router/router";
+import type { PlatformInfo } from "./utils/platform";
 
 /** Framework 初始化配置 */
 export interface FrameworkConfig extends MakeDependenciesOptions {
@@ -106,6 +108,18 @@ export class Framework {
             pageId: page.id,
             title: page.title,
         });
+    }
+
+    /** 获取 locale 信息（如果已配置） */
+    getLocale(): LocaleAttributes | undefined {
+        return this.container.has(DEP_KEYS.LOCALE)
+            ? this.container.resolve<LocaleAttributes>(DEP_KEYS.LOCALE)
+            : undefined;
+    }
+
+    /** 获取平台信息 */
+    getPlatform(): PlatformInfo {
+        return this.container.resolve<PlatformInfo>(DEP_KEYS.PLATFORM);
     }
 
     /** 注册 Action 处理器 */
