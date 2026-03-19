@@ -6,7 +6,7 @@
  * 与 @finesoft/server 的 SSRModule 接口对齐。
  */
 
-import type { BasePage, Framework, FrameworkConfig } from "@finesoft/core";
+import type { BasePage, Framework, FrameworkConfig, MessagesLoader } from "@finesoft/core";
 import { ssrRender, type SSRAppResult, type SSRContext, type SSRRenderResult } from "./render";
 
 export interface SSRRenderConfig {
@@ -30,6 +30,9 @@ export interface SSRRenderConfig {
 
     /** 解析请求 locale 的回调（返回 lang + dir 用于 <html> 属性） */
     resolveLocale?: (url: string, request?: Request) => { lang: string; dir: string } | undefined;
+
+    /** 异步加载当前 locale 的翻译字典 */
+    loadMessages?: MessagesLoader;
 }
 
 /**
@@ -40,7 +43,8 @@ export interface SSRRenderConfig {
 export function createSSRRender(
     config: SSRRenderConfig,
 ): (url: string, ssrContext?: SSRContext) => Promise<SSRRenderResult> {
-    const { bootstrap, getErrorPage, renderApp, frameworkConfig, resolveLocale } = config;
+    const { bootstrap, getErrorPage, renderApp, frameworkConfig, resolveLocale, loadMessages } =
+        config;
 
     return (url: string, ssrContext?: SSRContext) =>
         ssrRender({
@@ -51,5 +55,6 @@ export function createSSRRender(
             renderApp: (page, framework) => renderApp(page, framework),
             ssrContext,
             resolveLocale,
+            loadMessages,
         });
 }

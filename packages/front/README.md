@@ -31,6 +31,7 @@ export default defineConfig({
         vue(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
+            i18n: { messagesDir: "src/locales" },
             proxies: [{ prefix: "/api", target: "https://api.example.com" }],
             adapter: "auto",
         }),
@@ -117,6 +118,50 @@ startBrowserApp({
 });
 ```
 
+If you do not want to repeat `frameworkConfig` in both SSR and browser entry files,
+define it once on `bootstrap`:
+
+```ts
+// src/bootstrap.ts
+import { defineBootstrap, defineRoutes } from "@finesoft/front";
+
+export const bootstrap = defineBootstrap(
+    {
+        frameworkConfig: { locale: "zh-Hans" },
+    },
+    (framework) => {
+        defineRoutes(framework, [
+            { path: "/", intentId: "home", controller: new HomeController() },
+        ]);
+    },
+);
+```
+
+Then both entry files can omit the duplicated config:
+
+```ts
+// src/ssr.ts
+export const render = createSSRRender({
+    bootstrap,
+    getErrorPage: () => ({ title: "Error", kind: "error" }),
+    async renderApp(page) {
+        /* ... */
+    },
+});
+
+// src/main.ts
+void startBrowserApp({
+    bootstrap,
+    mount(target, { framework }) {
+        /* ... */
+    },
+    callbacks: {
+        onNavigate() {},
+        onModal() {},
+    },
+});
+```
+
 ## Locale (i18n)
 
 Pass `locale` in `FrameworkConfig` to enable automatic locale handling:
@@ -144,7 +189,7 @@ const locale = framework.getLocale();
 
 ### Translator
 
-For full i18n translation, use `SimpleTranslator`:
+For synchronous in-memory i18n translation, use `SimpleTranslator`:
 
 ```ts
 import { SimpleTranslator } from "@finesoft/front";
@@ -162,6 +207,40 @@ t.t("hello"); // "你好"
 t.t("hello", { name: "World" }); // "你好"
 t.plural("items", 5); // "5 个项目"
 ```
+
+For locale dictionaries, prefer JSON files plus `finesoftFrontViteConfig()`. The framework
+will automatically load `${locale}.json` before SSR render and before browser hydration,
+without serializing the translations into HTML.
+
+```ts
+// vite.config.ts
+import { finesoftFrontViteConfig } from "@finesoft/front";
+import { defineConfig } from "vite-plus";
+
+export default defineConfig({
+    plugins: [
+        finesoftFrontViteConfig({
+            ssr: { entry: "src/ssr.ts" },
+            i18n: {
+                messagesDir: "src/locales",
+            },
+        }),
+    ],
+});
+
+// src/locales/zh-Hans.json
+{
+    "hello": "你好"
+}
+
+// src/locales/en-US.json
+{
+    "hello": "Hello"
+}
+```
+
+If you need a non-file source such as a CDN or API, `loadMessages` is still supported on
+`createSSRRender()` / `startBrowserApp()` and overrides the Vite-generated loader.
 
 ### RTL Support
 

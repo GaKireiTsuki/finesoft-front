@@ -19,6 +19,9 @@ import { dynamicImport } from "./dynamic-import";
 import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal-fetch";
 import { registerProxyRoutes, type ProxyRouteConfig } from "./proxy";
 
+const GENERATED_I18N_LOADER_ID = "virtual:finesoft-front/i18n-loader";
+const RESOLVED_GENERATED_I18N_LOADER_ID = `\0${GENERATED_I18N_LOADER_ID}`;
+
 export interface FinesoftFrontViteOptions {
     /** SSR 配置 */
     ssr?: {
@@ -76,6 +79,14 @@ export interface FinesoftFrontViteOptions {
      * `defaultLocale` 的路由同时输出无前缀版本。
      */
     locales?: string[];
+    /**
+     * i18n JSON 字典目录。
+     * 文件名必须与 locale 一致，例如 `en-US.json`、`zh-Hans.json`。
+     * 配置后，框架会自动为 SSR / CSR 生成共享的消息加载器。
+     */
+    i18n?: {
+        messagesDir: string;
+    };
 }
 
 /**
@@ -106,6 +117,28 @@ function matchRenderModeConfig(url: string, renderModes?: Record<string, string>
     return null;
 }
 
+function normalizePathForGlob(pathname: string): string {
+    return pathname.replace(/\\/g, "/");
+}
+
+async function resolveMessagesDir(root: string, messagesDir: string): Promise<string> {
+    const { existsSync } = await dynamicImport("node:fs");
+    const { isAbsolute, relative, resolve } = await dynamicImport("node:path");
+    const absoluteDir = isAbsolute(messagesDir) ? messagesDir : resolve(root, messagesDir);
+    if (!existsSync(absoluteDir)) {
+        throw new Error(`[finesoftFrontViteConfig] i18n.messagesDir not found: ${messagesDir}`);
+    }
+
+    const relativeDir = normalizePathForGlob(relative(root, absoluteDir));
+    if (!relativeDir || relativeDir.startsWith("..")) {
+        throw new Error(
+            `[finesoftFrontViteConfig] i18n.messagesDir must stay inside the project root: ${messagesDir}`,
+        );
+    }
+
+    return relativeDir.replace(/^\.\/+/, "");
+}
+
 export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) {
     const ssrEntry = options.ssr?.entry ?? "src/ssr.ts";
     let root = process.cwd();
@@ -121,6 +154,11 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         config(userConfig: Record<string, any>) {
             const overrides: Record<string, any> = {
                 appType: "custom",
+                define: {
+                    __FINESOFT_I18N_LOADER_MODULE__: options.i18n?.messagesDir
+                        ? JSON.stringify(GENERATED_I18N_LOADER_ID)
+                        : "undefined",
+                },
             };
             if (!process.env.__FINESOFT_SUB_BUILD__) {
                 overrides.build = {
@@ -135,6 +173,35 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
             resolvedResolve = config.resolve;
             resolvedCss = config.css;
             root = config.root as string;
+        },
+
+        resolveId(id: string) {
+            if (id === GENERATED_I18N_LOADER_ID && options.i18n?.messagesDir) {
+                return RESOLVED_GENERATED_I18N_LOADER_ID;
+            }
+            return null;
+        },
+
+        async load(id: string) {
+            if (id !== RESOLVED_GENERATED_I18N_LOADER_ID || !options.i18n?.messagesDir) {
+                return null;
+            }
+
+            const messagesDir = await resolveMessagesDir(root, options.i18n.messagesDir);
+            const baseDir = `/${messagesDir}`;
+            const globPattern = `${baseDir}/*.json`;
+            const filePrefix = `${baseDir}/`;
+
+            return `
+const localeModules = import.meta.glob(${JSON.stringify(globPattern)}, { import: "default" });
+
+export async function loadMessages(locale) {
+  const loader = localeModules[${JSON.stringify(filePrefix)} + locale + ".json"];
+  if (!loader) return undefined;
+  const messages = await loader();
+  return messages ?? undefined;
+}
+`;
         },
 
         /**

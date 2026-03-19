@@ -9,10 +9,27 @@
  * 5. 初始页面触发
  */
 
-import type { BasePage, Logger } from "@finesoft/core";
-import { DEP_KEYS, Framework, setHtmlLocaleAttributes, type LoggerFactory } from "@finesoft/core";
+import type {
+    BasePage,
+    FrameworkConfig,
+    Logger,
+    MessagesLoader,
+    TranslationMessages,
+} from "@finesoft/core";
+import {
+    DEP_KEYS,
+    Framework,
+    getBootstrapConfig,
+    resolveConfiguredMessages,
+    setHtmlLocaleAttributes,
+    type LoggerFactory,
+} from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
 import { createPrefetchedIntentsFromDom } from "./server-data";
+
+interface InternalBrowserFrameworkConfig extends FrameworkConfig {
+    _resolvedMessages?: TranslationMessages;
+}
 
 export interface BrowserAppConfig {
     /** 注册 controllers 和路由的引导函数 */
@@ -62,6 +79,13 @@ export interface BrowserAppConfig {
      * prefetchedIntents 由框架自动从 DOM 提取，无需传入。
      */
     frameworkConfig?: Omit<import("@finesoft/core").FrameworkConfig, "prefetchedIntents">;
+
+    /**
+     * 异步加载当前 locale 的翻译字典。
+     *
+     * 显式传入时会覆盖 bootstrap / Vite 自动生成的 loader。
+     */
+    loadMessages?: MessagesLoader;
 }
 
 /**
@@ -78,33 +102,56 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         onBeforeStart,
         onAfterStart,
         frameworkConfig,
+        loadMessages,
     } = config;
+    const bootstrapConfig = getBootstrapConfig(bootstrap);
+    const resolvedFrameworkConfig = {
+        ...bootstrapConfig.frameworkConfig,
+        ...frameworkConfig,
+    };
+    const resolvedLoadMessages = loadMessages ?? bootstrapConfig.loadMessages;
 
     // 1. 从 DOM 提取 PrefetchedIntents 缓存
     const prefetchedIntents = createPrefetchedIntentsFromDom();
 
+    const initialUrl = window.location.pathname + window.location.search;
+    const locale = resolveBrowserLocale(resolvedFrameworkConfig.locale);
+    const resolvedMessages = await resolveConfiguredMessages({
+        locale,
+        loadMessages: resolvedLoadMessages,
+        context: locale
+            ? {
+                  runtime: "browser",
+                  fetch: getBrowserFetch(resolvedFrameworkConfig.fetch),
+                  url: initialUrl,
+              }
+            : undefined,
+    });
+
     // 2. 初始化 Framework + 注册 Controllers
     const framework = Framework.create({
-        ...frameworkConfig,
+        ...resolvedFrameworkConfig,
+        locale,
+        _resolvedMessages: resolvedMessages,
         prefetchedIntents,
-    });
+    } as InternalBrowserFrameworkConfig);
     bootstrap(framework);
 
     const loggerFactory = framework.container.resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
     const log: Logger = loggerFactory.loggerFor("browser");
 
     // 2.5 应用 locale 到 <html> 元素
-    const locale = framework.getLocale();
-    if (locale) {
-        setHtmlLocaleAttributes(locale);
-        log.debug("[startBrowserApp] Applied locale attributes:", locale);
+    const resolvedLocale = framework.getLocale();
+    if (resolvedLocale) {
+        setHtmlLocaleAttributes(resolvedLocale);
+        log.debug("[startBrowserApp] Applied locale attributes:", resolvedLocale);
     }
 
     // 2.6 启动前钩子
     await onBeforeStart?.(framework);
 
     // 3. 路由初始 URL
-    const initialAction = framework.routeUrl(window.location.pathname + window.location.search);
+    const initialAction = framework.routeUrl(initialUrl);
 
     // 4. 挂载应用（框架无关）
     const target = document.getElementById(mountId);
@@ -137,4 +184,24 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
 
     // 7. 启动后钩子
     await onAfterStart?.(framework);
+}
+
+function resolveBrowserLocale(locale?: string): string | undefined {
+    if (locale) {
+        return locale;
+    }
+
+    const documentLocale = document.documentElement.lang.trim();
+    return documentLocale || undefined;
+}
+
+function getBrowserFetch(fetchFn?: typeof globalThis.fetch): typeof globalThis.fetch {
+    const resolvedFetch = fetchFn ?? globalThis.fetch?.bind(globalThis);
+    if (resolvedFetch) {
+        return resolvedFetch;
+    }
+
+    return (() => {
+        throw new Error("[startBrowserApp] loadMessages requires a fetch implementation.");
+    }) as typeof globalThis.fetch;
 }

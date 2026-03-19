@@ -71,6 +71,12 @@ export { mapEach, pipe, pipeAsync } from "./data/mapper";
 export type { AsyncMapper, Mapper } from "./data/mapper";
 
 // ===== Bootstrap =====
+export {
+    defineBootstrap,
+    getBootstrapConfig,
+    type BootstrapRuntimeConfig,
+    type FrameworkBootstrap,
+} from "./bootstrap/define-bootstrap";
 export { defineRoutes } from "./bootstrap/define-routes";
 export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstrap/define-routes";
 
@@ -131,5 +137,7 @@ export {
     resolveLocaleFromUrl,
     setHtmlLocaleAttributes,
 } from "./i18n/locale";
+export { resolveConfiguredMessages, resolveMessages } from "./i18n/messages";
+export type { MessagesLoader, MessagesLoaderContext } from "./i18n/messages";
 export { SimpleTranslator, type SimpleTranslatorOptions } from "./i18n/translator";
 export type { LocaleAttributes, LocaleInfo, TextDirection, Translator } from "./i18n/types";

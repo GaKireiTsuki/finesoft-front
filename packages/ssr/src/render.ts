@@ -10,12 +10,20 @@
 import {
     Framework,
     createServerContext,
+    getBootstrapConfig,
+    resolveConfiguredMessages,
     type BasePage,
     type FrameworkConfig,
+    type MessagesLoader,
     type MiddlewareResult,
     type PostLoadContext,
     type PrefetchedIntent,
+    type TranslationMessages,
 } from "@finesoft/core";
+
+interface InternalSSRFrameworkConfig extends FrameworkConfig {
+    _resolvedMessages?: TranslationMessages;
+}
 
 export interface SSRRenderOptions {
     /** 请求 URL */
@@ -32,6 +40,8 @@ export interface SSRRenderOptions {
     ssrContext?: SSRContext;
     /** 解析请求 locale 的回调（返回 lang + dir 用于 <html> 属性） */
     resolveLocale?: (url: string, request?: Request) => { lang: string; dir: string } | undefined;
+    /** 异步加载当前 locale 的翻译字典 */
+    loadMessages?: MessagesLoader;
 }
 
 /** SSR 请求级上下文 */
@@ -66,26 +76,57 @@ export interface SSRRenderResult {
 }
 
 export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderResult> {
-    const { url, frameworkConfig, bootstrap, getErrorPage, renderApp, ssrContext, resolveLocale } =
-        options;
+    const {
+        url,
+        frameworkConfig,
+        bootstrap,
+        getErrorPage,
+        renderApp,
+        ssrContext,
+        resolveLocale,
+        loadMessages,
+    } = options;
+    const bootstrapConfig = getBootstrapConfig(bootstrap);
+    const resolvedFrameworkConfig: FrameworkConfig = {
+        ...bootstrapConfig.frameworkConfig,
+        ...frameworkConfig,
+    };
+    const resolvedLoadMessages = loadMessages ?? bootstrapConfig.loadMessages;
+
+    const parsed = new URL(url, "http://localhost");
+    const fullPath = parsed.pathname + parsed.search;
 
     // 先解析 locale（如果提供了 resolveLocale 回调），使 DI 容器获得正确的 locale
     const resolvedLocale = resolveLocale?.(url, ssrContext?.request);
     const effectiveConfig: FrameworkConfig = resolvedLocale
-        ? { ...frameworkConfig, locale: resolvedLocale.lang }
-        : frameworkConfig;
+        ? { ...resolvedFrameworkConfig, locale: resolvedLocale.lang }
+        : resolvedFrameworkConfig;
+    const resolvedMessages = await resolveConfiguredMessages({
+        locale: effectiveConfig.locale,
+        loadMessages: resolvedLoadMessages,
+        context: effectiveConfig.locale
+            ? {
+                  runtime: "server",
+                  fetch: getSSRFetch(ssrContext?.fetch ?? effectiveConfig.fetch),
+                  url: fullPath,
+                  request: ssrContext?.request,
+              }
+            : undefined,
+    });
 
     // 将 SSR 上下文中的 fetch 合并到 frameworkConfig，注入 DI 容器
-    const mergedConfig: FrameworkConfig = ssrContext?.fetch
-        ? { ...effectiveConfig, fetch: ssrContext.fetch }
-        : effectiveConfig;
+    const mergedConfig: FrameworkConfig = {
+        ...effectiveConfig,
+        fetch: ssrContext?.fetch ?? effectiveConfig.fetch,
+    };
 
-    const framework = Framework.create(mergedConfig);
+    const framework = Framework.create({
+        ...mergedConfig,
+        _resolvedMessages: resolvedMessages,
+    } as InternalSSRFrameworkConfig);
     bootstrap(framework);
 
     try {
-        const parsed = new URL(url, "http://localhost");
-        const fullPath = parsed.pathname + parsed.search;
         const match = framework.routeUrl(fullPath);
 
         // CSR 模式：跳过服务端渲染，返回空内容由客户端 JS 渲染
@@ -165,6 +206,17 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
     } finally {
         framework.dispose();
     }
+}
+
+function getSSRFetch(fetchFn?: typeof globalThis.fetch): typeof globalThis.fetch {
+    const resolvedFetch = fetchFn ?? globalThis.fetch?.bind(globalThis);
+    if (resolvedFetch) {
+        return resolvedFetch;
+    }
+
+    return (() => {
+        throw new Error("[ssrRender] loadMessages requires a fetch implementation.");
+    }) as typeof globalThis.fetch;
 }
 
 /**

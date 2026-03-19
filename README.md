@@ -61,6 +61,7 @@ export default defineConfig({
         vue(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
+            i18n: { messagesDir: "src/locales" },
             proxies: [{ prefix: "/api", target: "https://api.example.com" }],
             adapter: "auto",
         }),
@@ -70,14 +71,15 @@ export default defineConfig({
 
 ### Options
 
-| Option           | Type                         | Description                                                |
-| ---------------- | ---------------------------- | ---------------------------------------------------------- |
-| `ssr.entry`      | `string`                     | SSR entry file (default `"src/ssr.ts"`)                    |
-| `proxies`        | `ProxyRouteConfig[]`         | Declarative proxy routes with SSRF protection              |
-| `setup`          | `Function \| string`         | Custom Hono routes                                         |
-| `adapter`        | `string \| Adapter`          | Deploy adapter (see [Adapters](#adapters))                 |
-| `renderModes`    | `Record<string, RenderMode>` | Per-route render mode overrides                            |
-| `bootstrapEntry` | `string`                     | Route definitions entry (default `"src/lib/bootstrap.ts"`) |
+| Option           | Type                         | Description                                                  |
+| ---------------- | ---------------------------- | ------------------------------------------------------------ |
+| `ssr.entry`      | `string`                     | SSR entry file (default `"src/ssr.ts"`)                      |
+| `proxies`        | `ProxyRouteConfig[]`         | Declarative proxy routes with SSRF protection                |
+| `setup`          | `Function \| string`         | Custom Hono routes                                           |
+| `adapter`        | `string \| Adapter`          | Deploy adapter (see [Adapters](#adapters))                   |
+| `renderModes`    | `Record<string, RenderMode>` | Per-route render mode overrides                              |
+| `bootstrapEntry` | `string`                     | Route definitions entry (default `"src/lib/bootstrap.ts"`)   |
+| `i18n`           | `{ messagesDir: string }`    | Auto-load locale JSON files such as `src/locales/en-US.json` |
 
 ## Routing & Controllers
 
@@ -253,6 +255,50 @@ void startBrowserApp({
 });
 ```
 
+If you do not want to repeat `frameworkConfig` in both SSR and browser entry files,
+define it once on `bootstrap`:
+
+```ts
+// src/bootstrap.ts
+import { defineBootstrap, defineRoutes } from "@finesoft/front";
+
+export const bootstrap = defineBootstrap(
+    {
+        frameworkConfig: { locale: "zh-Hans" },
+    },
+    (framework) => {
+        defineRoutes(framework, [
+            { path: "/", intentId: "home", controller: new HomeController() },
+        ]);
+    },
+);
+```
+
+Then both of these can omit the duplicated config:
+
+```ts
+// src/ssr.ts
+export const render = createSSRRender({
+    bootstrap,
+    getErrorPage: () => ({ title: "Error", kind: "error" }),
+    async renderApp(page) {
+        /* ... */
+    },
+});
+
+// src/main.ts
+void startBrowserApp({
+    bootstrap,
+    mount(target, { framework }) {
+        /* ... */
+    },
+    callbacks: {
+        onNavigate() {},
+        onModal() {},
+    },
+});
+```
+
 ## Configuration
 
 `Framework.create()` accepts a `FrameworkConfig` with the following options:
@@ -289,7 +335,7 @@ isRtl("ar"); // true
 getTextDirection("he"); // "rtl"
 getLocaleAttributes("ar-SA"); // { lang: "ar-SA", dir: "rtl" }
 
-// Translator for full i18n
+// Translator for synchronous in-memory i18n
 import { SimpleTranslator } from "@finesoft/front";
 const t = new SimpleTranslator({
     locale: "zh-Hans",
@@ -302,6 +348,40 @@ const t = new SimpleTranslator({
 t.t("hello"); // "你好"
 t.plural("items", 5); // "5 个"
 ```
+
+For locale dictionaries, prefer JSON files plus `finesoftFrontViteConfig()`. The framework
+will automatically load `${locale}.json` before SSR render and before browser hydration,
+without inlining the translations into HTML.
+
+```ts
+// vite.config.ts
+import { finesoftFrontViteConfig } from "@finesoft/front";
+import { defineConfig } from "vite-plus";
+
+export default defineConfig({
+    plugins: [
+        finesoftFrontViteConfig({
+            ssr: { entry: "src/ssr.ts" },
+            i18n: {
+                messagesDir: "src/locales",
+            },
+        }),
+    ],
+});
+
+// src/locales/zh-Hans.json
+{
+    "hello": "你好"
+}
+
+// src/locales/en-US.json
+{
+    "hello": "Hello"
+}
+```
+
+If you need a non-file source such as a CDN or API, `loadMessages` is still supported on
+`createSSRRender()` / `startBrowserApp()` and overrides the Vite-generated loader.
 
 ### Error Reporting
 

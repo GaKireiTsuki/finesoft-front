@@ -117,7 +117,7 @@ export class Framework {
             : undefined;
     }
 
-    /** 获取翻译器（如果已通过 messages + locale 配置） */
+    /** 获取翻译器（如果当前 locale 已经初始化了翻译字典） */
     getTranslator(): Translator | undefined {
         return this.container.has(DEP_KEYS.TRANSLATOR)
             ? this.container.resolve<Translator>(DEP_KEYS.TRANSLATOR)
