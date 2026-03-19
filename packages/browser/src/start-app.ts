@@ -14,7 +14,9 @@ import {
     DEP_KEYS,
     Framework,
     SimpleTranslator,
+    getLocaleAttributes,
     setHtmlLocaleAttributes,
+    type LocaleAttributes,
     type LoggerFactory,
     type Translator,
 } from "@finesoft/core";
@@ -110,6 +112,12 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
                     messages: ssrI18n.messages,
                 }),
         );
+        // 同时补注册 locale（如果客户端未配置）
+        if (!framework.getLocale()) {
+            framework.container.register<LocaleAttributes>(DEP_KEYS.LOCALE, () =>
+                getLocaleAttributes(ssrI18n.locale),
+            );
+        }
     }
 
     const loggerFactory = framework.container.resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
