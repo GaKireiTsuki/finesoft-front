@@ -10,7 +10,13 @@
         "skipLibCheck": true,
         "noEmit": true,
         "paths": {
-            "@/*": ["./src/*"]
+            "@/*": ["./src/*"],
+            "@finesoft/front": ["../../packages/front/src/index.ts"],
+            "@finesoft/front/browser": ["../../packages/front/src/browser.ts"],
+            "@finesoft/core": ["../../packages/core/src/index.ts"],
+            "@finesoft/browser": ["../../packages/browser/src/index.ts"],
+            "@finesoft/ssr": ["../../packages/ssr/src/index.ts"],
+            "@finesoft/server": ["../../packages/server/src/index.ts"]
         }
     },
     "include": ["src/**/*", "env.d.ts"]

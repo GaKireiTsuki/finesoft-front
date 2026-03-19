@@ -69,10 +69,16 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
     const { url, frameworkConfig, bootstrap, getErrorPage, renderApp, ssrContext, resolveLocale } =
         options;
 
+    // 先解析 locale（如果提供了 resolveLocale 回调），使 DI 容器获得正确的 locale
+    const resolvedLocale = resolveLocale?.(url, ssrContext?.request);
+    const effectiveConfig: FrameworkConfig = resolvedLocale
+        ? { ...frameworkConfig, locale: resolvedLocale.lang }
+        : frameworkConfig;
+
     // 将 SSR 上下文中的 fetch 合并到 frameworkConfig，注入 DI 容器
     const mergedConfig: FrameworkConfig = ssrContext?.fetch
-        ? { ...frameworkConfig, fetch: ssrContext.fetch }
-        : frameworkConfig;
+        ? { ...effectiveConfig, fetch: ssrContext.fetch }
+        : effectiveConfig;
 
     const framework = Framework.create(mergedConfig);
     bootstrap(framework);
@@ -144,8 +150,8 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
 
         const result = await renderApp(page, framework);
 
-        // 解析 locale 属性：优先使用用户提供的 resolveLocale，否则从 Framework 容器获取
-        const locale = resolveLocale?.(url, ssrContext?.request) ?? framework.getLocale();
+        // locale 属性：已在渲染前通过 resolveLocale 解析（若有），否则从 Framework 容器获取
+        const locale = resolvedLocale ?? framework.getLocale();
 
         return {
             html: result.html,

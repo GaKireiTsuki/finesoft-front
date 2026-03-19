@@ -39,16 +39,7 @@ export function injectSSRContent(options: InjectSSROptions): string {
 
     // Inject lang/dir into <html> tag
     if (locale) {
-        result = result.replace(
-            /(<html)([^>]*)(>)/i,
-            (match, open: string, attrs: string, close: string) => {
-                // Remove existing lang/dir attributes to avoid duplicates
-                let cleaned = attrs
-                    .replace(/\s+lang="[^"]*"/gi, "")
-                    .replace(/\s+dir="[^"]*"/gi, "");
-                return `${open}${cleaned} lang="${locale.lang}" dir="${locale.dir}"${close}`;
-            },
-        );
+        result = applyLocaleToHtml(result, locale);
     }
 
     return result;
@@ -57,7 +48,24 @@ export function injectSSRContent(options: InjectSSROptions): string {
 /**
  * CSR 空壳注入 — 清空所有占位符
  * 用于 renderMode === "csr" 的路由
+ *
+ * @param locale - 可选的 locale 属性，注入到 `<html lang="" dir="">`
  */
-export function injectCSRShell(template: string): string {
-    return template.replace(PLACEHOLDER_REGEX, () => "");
+export function injectCSRShell(template: string, locale?: { lang: string; dir: string }): string {
+    let result = template.replace(PLACEHOLDER_REGEX, () => "");
+    if (locale) {
+        result = applyLocaleToHtml(result, locale);
+    }
+    return result;
+}
+
+/** 将 lang/dir 注入到 <html> 标签 */
+function applyLocaleToHtml(html: string, locale: { lang: string; dir: string }): string {
+    return html.replace(
+        /(<html)([^>]*)(>)/i,
+        (_match, open: string, attrs: string, close: string) => {
+            const cleaned = attrs.replace(/\s+lang="[^"]*"/gi, "").replace(/\s+dir="[^"]*"/gi, "");
+            return `${open}${cleaned} lang="${locale.lang}" dir="${locale.dir}"${close}`;
+        },
+    );
 }

@@ -3,7 +3,8 @@
  */
 
 import { getLocaleAttributes } from "../i18n/locale";
-import type { LocaleAttributes } from "../i18n/types";
+import { SimpleTranslator } from "../i18n/translator";
+import type { LocaleAttributes, Translator } from "../i18n/types";
 import { CompositeLoggerFactory } from "../logger/composite";
 import { ConsoleLoggerFactory } from "../logger/console";
 import { ReportingLoggerFactory, type ReportCallback } from "../logger/reporting";
@@ -71,6 +72,7 @@ export const DEP_KEYS = {
     EVENT_RECORDER: "eventRecorder",
     LOCALE: "locale",
     PLATFORM: "platform",
+    TRANSLATOR: "translator",
 } as const;
 
 // ===== 默认实现 =====
@@ -139,6 +141,62 @@ class ConsoleMetrics implements MetricsRecorder {
     }
 }
 
+// ===== 翻译消息类型 =====
+
+/** 扁平格式消息：key → 翻译字符串 */
+type FlatMessages = Record<string, string>;
+
+/** 嵌套格式消息值：字符串 或 复数表 */
+type NestedMessageValue = string | Record<string, string>;
+
+/** 按 locale 分组的嵌套消息 */
+type LocaleMessages = Record<string, Record<string, NestedMessageValue>>;
+
+/**
+ * 翻译消息映射
+ *
+ * - 扁平格式: `{ "greeting": "Hello", "itemCount.one": "1 item" }`
+ * - 按 locale 分组: `{ "en": { "greeting": "Hello", "itemCount": { "one": "1 item" } } }`
+ */
+export type TranslationMessages = FlatMessages | LocaleMessages;
+
+/**
+ * 从 TranslationMessages 中解析出 SimpleTranslator 所需的扁平 Record<string, string>
+ *
+ * - 扁平格式：直接返回
+ * - 嵌套格式：提取 locale 对应子表并展平复数 key（`{key}.{plural}` 拼接）
+ */
+function resolveMessages(
+    messages: TranslationMessages,
+    locale: string,
+): Record<string, string> | undefined {
+    const entries = Object.entries(messages);
+    if (entries.length === 0) return undefined;
+
+    // 判断是否为扁平格式：第一个值是 string → 扁平
+    if (typeof entries[0][1] === "string") {
+        return messages as FlatMessages;
+    }
+
+    // 嵌套格式：提取当前 locale 的消息
+    const localeMap = messages as LocaleMessages;
+    const localeMsgs = localeMap[locale];
+    if (!localeMsgs) return undefined;
+
+    // 展平复数嵌套 key
+    const flat: Record<string, string> = {};
+    for (const [key, value] of Object.entries(localeMsgs)) {
+        if (typeof value === "string") {
+            flat[key] = value;
+        } else {
+            for (const [suffix, text] of Object.entries(value)) {
+                flat[`${key}.${suffix}`] = text;
+            }
+        }
+    }
+    return flat;
+}
+
 // ===== 依赖工厂 =====
 
 export interface MakeDependenciesOptions {
@@ -154,6 +212,16 @@ export interface MakeDependenciesOptions {
     locale?: string;
     /** 自定义 PlatformInfo（默认通过 UA 自动检测） */
     platform?: PlatformInfo;
+    /**
+     * 翻译消息映射 — 与 locale 同时提供时自动创建 SimpleTranslator 注册到容器。
+     *
+     * 支持两种格式：
+     * 1. 扁平格式（直接用于当前 locale）：
+     *    `{ "greeting": "Hello", "itemCount.one": "1 item" }`
+     * 2. 按 locale 分组 + 复数嵌套（自动提取当前 locale 并展平）：
+     *    `{ "en": { "greeting": "Hello", "itemCount": { "one": "1 item", "other": "{count} items" } } }`
+     */
+    messages?: TranslationMessages;
 }
 
 export function makeDependencies(
@@ -168,6 +236,7 @@ export function makeDependencies(
         eventRecorder,
         locale,
         platform,
+        messages,
     } = options;
 
     // ===== Logger =====
@@ -209,6 +278,17 @@ export function makeDependencies(
     // ===== Locale =====
     if (locale) {
         container.register<LocaleAttributes>(DEP_KEYS.LOCALE, () => getLocaleAttributes(locale));
+    }
+
+    // ===== Translator =====
+    if (locale && messages) {
+        const flat = resolveMessages(messages, locale);
+        if (flat) {
+            container.register<Translator>(
+                DEP_KEYS.TRANSLATOR,
+                () => new SimpleTranslator({ locale, messages: flat }),
+            );
+        }
     }
 
     // ===== Platform =====

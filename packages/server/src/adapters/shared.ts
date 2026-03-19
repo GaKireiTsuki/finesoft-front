@@ -80,22 +80,40 @@ ${setupImport}
 
 const TEMPLATE = ${JSON.stringify(ctx.templateHtml)};
 const RENDER_MODES = ${renderModes};
+const DEFAULT_LOCALE = ${JSON.stringify(ctx.defaultLocale ?? null)};
 ${cacheImpl}
 
-function injectSSR(t, head, css, html, data) {
-  return t
+function injectSSR(t, head, css, html, data, locale) {
+  const injected = t
     .replace(/<!--ssr-([a-z][a-z0-9-]*)-->/g, (_, name) => {
       const replacements = {
-        head: head + "\\n<style>" + css + "</style>",
+        head: head + "\n<style>" + css + "</style>",
         body: html,
         data: '<script id="serialized-server-data" type="application/json">' + data + "</script>",
       };
       return replacements[name] ?? "";
     });
+  return applyLocaleToHtml(injected, locale);
 }
 
-function injectCSRShell(t) {
-  return t.replace(/<!--ssr-([a-z][a-z0-9-]*)-->/g, () => "");
+function applyLocaleToHtml(html, locale) {
+  if (!locale) return html;
+  return html.replace(/<html([^>]*)>/, (_, attrs) => {
+    let a = attrs.replace(/s*lang="[^"]*"/g, "").replace(/s*dir="[^"]*"/g, "");
+    return "<html" + a + ' lang="' + locale.lang + '" dir="' + locale.dir + '">';
+  });
+}
+
+function getLocaleAttrs(lang) {
+  if (!lang) return undefined;
+  const RTL = new Set(["ar","arc","dv","fa","ha","he","khw","ks","ku","ps","ur","yi"]);
+  const base = lang.split(/[-_]/)[0].toLowerCase();
+  return { lang: lang, dir: RTL.has(base) ? "rtl" : "ltr" };
+}
+
+function injectCSRShell(t, locale) {
+  const stripped = t.replace(/<!--ssr-([a-z][a-z0-9-]*)-->/g, () => "");
+  return applyLocaleToHtml(stripped, locale);
 }
 
 function matchRenderMode(url) {
@@ -144,22 +162,23 @@ app.get("*", async (c) => {
     // Vite 配置级别覆盖: CSR 直接返回空壳
     const overrideMode = matchRenderMode(url);
     if (overrideMode === "csr") {
-      return c.html(injectCSRShell(TEMPLATE));
+      return c.html(injectCSRShell(TEMPLATE, getLocaleAttrs(DEFAULT_LOCALE)));
     }
 
     // ISR 缓存命中
     const cached = await platformCacheGet(url);
     if (cached) return c.html(cached);
 
-    const { html: appHtml, head, css, serverData, renderMode } = await render(url, { fetch: _createInternalFetch(_ssrDepth + 1) });
+    const { html: appHtml, head, css, serverData, renderMode, locale } = await render(url, { fetch: _createInternalFetch(_ssrDepth + 1) });
+    const localeAttrs = getLocaleAttrs(locale || DEFAULT_LOCALE);
 
     // 路由级 CSR
     if (renderMode === "csr") {
-      return c.html(injectCSRShell(TEMPLATE));
+      return c.html(injectCSRShell(TEMPLATE, localeAttrs));
     }
 
     const serializedData = serializeServerData(serverData);
-    const finalHtml = injectSSR(TEMPLATE, head, css, appHtml, serializedData);
+    const finalHtml = injectSSR(TEMPLATE, head, css, appHtml, serializedData, localeAttrs);
 
     // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级）
     if (renderMode === "prerender" || overrideMode === "prerender") {
@@ -282,6 +301,17 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
         }
     }
 
+    // locale 矩阵展开
+    if (ctx.locales?.length) {
+        const basePaths = [...prerenderPaths];
+        for (const locale of ctx.locales) {
+            for (const basePath of basePaths) {
+                const localePath = basePath === "/" ? `/${locale}` : `/${locale}${basePath}`;
+                prerenderPaths.add(localePath);
+            }
+        }
+    }
+
     if (prerenderPaths.size === 0) return [];
 
     // ── 3. 加载 SSR 模块 ──
@@ -293,11 +323,11 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
 
     for (const url of prerenderPaths) {
         try {
-            const { html: appHtml, head, css, serverData } = await ssrModule.render(url);
+            const { html: appHtml, head, css, serverData, locale } = await ssrModule.render(url);
 
             const serializedData = ssrModule.serializeServerData(serverData);
 
-            const finalHtml = ctx.templateHtml.replace(
+            let finalHtml = ctx.templateHtml.replace(
                 /<!--ssr-([a-z][a-z0-9-]*)-->/g,
                 (_match, name: string) => {
                     const builtIn: Record<string, string> = {
@@ -311,6 +341,18 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
                     return builtIn[name] ?? "";
                 },
             );
+
+            // 注入 locale 到 <html> 标签
+            if (locale) {
+                const { getLocaleAttributes } = await dynamicImport("@finesoft/core");
+                const attrs = getLocaleAttributes(locale);
+                finalHtml = finalHtml.replace(/<html([^>]*)>/, (_m: string, a: string) => {
+                    const cleaned = a
+                        .replace(/\s*lang="[^"]*"/g, "")
+                        .replace(/\s*dir="[^"]*"/g, "");
+                    return `<html${cleaned} lang="${attrs.lang}" dir="${attrs.dir}">`;
+                });
+            }
 
             results.push({ url, html: finalHtml });
         } catch (e) {

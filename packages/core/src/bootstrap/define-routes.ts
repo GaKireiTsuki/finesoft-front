@@ -42,6 +42,23 @@ export interface RouteDefinition {
     afterLoad?: AfterLoadGuard[];
 }
 
+/** defineRoutes 选项 */
+export interface DefineRoutesOptions {
+    /**
+     * 支持的 locale 列表。
+     * 提供后，每条路由会额外注册 `/:locale/path` 版本，
+     * `:locale` 参数自动出现在 `intent.params.locale` 中。
+     * 原始无前缀路径保留作为备选路由。
+     *
+     * @example
+     * ```ts
+     * defineRoutes(framework, routes, { locales: ["zh", "en", "ja"] });
+     * // "/about" → 注册 /about + /zh/about + /en/about + /ja/about
+     * ```
+     */
+    locales?: string[];
+}
+
 /**
  * 声明式注册路由和 Controller
  *
@@ -59,7 +76,11 @@ export interface RouteDefinition {
  * ]);
  * ```
  */
-export function defineRoutes(framework: Framework, definitions: RouteDefinition[]): void {
+export function defineRoutes(
+    framework: Framework,
+    definitions: RouteDefinition[],
+    options?: DefineRoutesOptions,
+): void {
     const registeredIntents = new Set<string>();
 
     for (const def of definitions) {
@@ -69,11 +90,19 @@ export function defineRoutes(framework: Framework, definitions: RouteDefinition[
             registeredIntents.add(def.intentId);
         }
 
-        // 注册路由（含路由级守卫）
-        framework.router.add(def.path, def.intentId, {
+        const routeOpts = {
             renderMode: def.renderMode,
             beforeGuards: def.beforeLoad,
             afterGuards: def.afterLoad,
-        });
+        };
+
+        // 注册原始路由（含路由级守卫）
+        framework.router.add(def.path, def.intentId, routeOpts);
+
+        // 注册 locale 前缀路由
+        if (options?.locales?.length) {
+            const localePath = def.path === "/" ? "/:locale" : `/:locale${def.path}`;
+            framework.router.add(localePath, def.intentId, routeOpts);
+        }
     }
 }

@@ -72,3 +72,37 @@ export function setHtmlLocaleAttributes(attrs: LocaleAttributes): void {
     document.documentElement.lang = attrs.lang;
     document.documentElement.dir = attrs.dir;
 }
+
+/**
+ * 从 URL 前缀中提取 locale
+ *
+ * @param url - 请求 URL（如 "/zh/about"）
+ * @param supportedLocales - 支持的 locale 列表（如 ["zh", "en", "ja"]）
+ * @returns 匹配时返回 `{ locale, strippedUrl }`，不匹配返回 null
+ *
+ * @example
+ * ```ts
+ * resolveLocaleFromUrl("/zh/about", ["zh", "en"])
+ * // → { locale: "zh", strippedUrl: "/about" }
+ *
+ * resolveLocaleFromUrl("/about", ["zh", "en"])
+ * // → null
+ * ```
+ */
+export function resolveLocaleFromUrl(
+    url: string,
+    supportedLocales: string[],
+): { locale: string; strippedUrl: string } | null {
+    const path = url.split("?")[0];
+    const match = path.match(/^\/([^/]+)(\/.*)?$/);
+    if (!match) return null;
+
+    const candidate = match[1];
+    const found = supportedLocales.find((l) => l.toLowerCase() === candidate.toLowerCase());
+    if (!found) return null;
+
+    return {
+        locale: found,
+        strippedUrl: match[2] || "/",
+    };
+}

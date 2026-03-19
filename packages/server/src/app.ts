@@ -5,6 +5,7 @@
  * 应用层可在此之上追加自定义路由（API 代理等）。
  */
 
+import { getLocaleAttributes } from "@finesoft/core";
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
@@ -44,6 +45,7 @@ export interface SSRModule {
         renderMode?: string;
         redirect?: { url: string; status: number };
         slots?: Record<string, string>;
+        locale?: { lang: string; dir: string };
     }>;
     serializeServerData: (data: unknown) => string;
 }
@@ -70,6 +72,11 @@ export interface SSRAppOptions {
      * 优先级高于路由级 renderMode。
      */
     renderModes?: Record<string, string>;
+    /**
+     * 默认 locale（如 "zh-Hans"、"en-US"）。
+     * 用于 CSR 早退场景（配置级 renderMode=csr，未调用 render）将 lang/dir 注入 `<html>` 属性。
+     */
+    defaultLocale?: string;
 }
 
 export function createSSRApp(options: SSRAppOptions): Hono {
@@ -81,6 +88,7 @@ export function createSSRApp(options: SSRAppOptions): Hono {
         ssrProductionModule,
         parentFetch,
         renderModes,
+        defaultLocale,
     } = options;
 
     const app = new Hono();
@@ -167,7 +175,12 @@ export function createSSRApp(options: SSRAppOptions): Hono {
             // Vite 配置级别覆盖：CSR 直接返回空壳
             const overrideMode = matchRenderModeOverride(url, renderModes);
             if (overrideMode === "csr") {
-                return c.html(injectCSRShell(template));
+                return c.html(
+                    injectCSRShell(
+                        template,
+                        defaultLocale ? getLocaleAttributes(defaultLocale) : undefined,
+                    ),
+                );
             }
 
             // ISR 缓存命中
@@ -193,6 +206,7 @@ export function createSSRApp(options: SSRAppOptions): Hono {
                 renderMode,
                 redirect: middlewareRedirect,
                 slots,
+                locale,
             } = await render(url, ssrContext);
 
             // 中间件要求重定向
@@ -202,7 +216,7 @@ export function createSSRApp(options: SSRAppOptions): Hono {
 
             // CSR 模式：返回空壳 HTML
             if (renderMode === "csr") {
-                return c.html(injectCSRShell(template));
+                return c.html(injectCSRShell(template, locale));
             }
 
             const serializedData = serializeServerData(serverData);
@@ -214,6 +228,7 @@ export function createSSRApp(options: SSRAppOptions): Hono {
                 html: appHtml,
                 serializedData,
                 slots,
+                locale,
             });
 
             // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级）

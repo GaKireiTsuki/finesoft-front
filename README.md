@@ -31,6 +31,8 @@ front                 (published aggregation bundle)
 | **server**  | Hono integration, multi-platform adapters, Vite plugin                                  |
 | **front**   | Published package — bundles all above with two entry points (full-stack + browser-only) |
 
+See [docs/architecture.md](./docs/architecture.md) for detailed package and application diagrams.
+
 `@finesoft/front` is the only dependency you need. It re-exports everything from the internal packages:
 
 ```ts

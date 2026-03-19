@@ -26,6 +26,7 @@ export type {
     MetricsRecorder,
     Net,
     Storage,
+    TranslationMessages,
 } from "./dependencies/make-dependencies";
 
 // ===== Router =====
@@ -71,7 +72,7 @@ export type { AsyncMapper, Mapper } from "./data/mapper";
 
 // ===== Bootstrap =====
 export { defineRoutes } from "./bootstrap/define-routes";
-export type { RenderMode, RouteDefinition } from "./bootstrap/define-routes";
+export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstrap/define-routes";
 
 // ===== Utils =====
 export { LruMap } from "./utils/lru-map";
@@ -127,6 +128,7 @@ export {
     getTextDirection,
     isRtl,
     makeLocaleInfo,
+    resolveLocaleFromUrl,
     setHtmlLocaleAttributes,
 } from "./i18n/locale";
 export { SimpleTranslator, type SimpleTranslatorOptions } from "./i18n/translator";

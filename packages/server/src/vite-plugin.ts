@@ -8,6 +8,7 @@
  * 或自定义 Adapter 对象。
  */
 
+import { getLocaleAttributes } from "@finesoft/core";
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import type { Hono } from "hono";
 import { resolveAdapter } from "./adapters/resolve";
@@ -64,6 +65,17 @@ export interface FinesoftFrontViteOptions {
      * 如果项目不使用声明式路由定义，可以不设置。
      */
     bootstrapEntry?: string;
+    /**
+     * 默认 locale（如 "zh-Hans"、"en-US"）。
+     * 用于 CSR 壳注入 `<html lang="" dir="">`，以及预渲染时的默认语言。
+     */
+    defaultLocale?: string;
+    /**
+     * 预渲染支持的语言列表。
+     * 提供后，每个 prerender 路由会与每个 locale 组合生成 `/:locale/path` 版本。
+     * `defaultLocale` 的路由同时输出无前缀版本。
+     */
+    locales?: string[];
 }
 
 /**
@@ -251,6 +263,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                     ssrEntryPath: "/" + ssrEntry,
                     parentFetch: app.fetch.bind(app),
                     renderModes: options.renderModes,
+                    defaultLocale: options.defaultLocale,
                 });
                 app.route("/", ssrApp);
 
@@ -327,7 +340,14 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                         // Vite 配置级别覆盖
                         const overrideMode = matchRenderModeConfig(url, options.renderModes);
                         if (overrideMode === "csr") {
-                            return c.html(injectCSRShell(template));
+                            return c.html(
+                                injectCSRShell(
+                                    template,
+                                    options.defaultLocale
+                                        ? getLocaleAttributes(options.defaultLocale)
+                                        : undefined,
+                                ),
+                            );
                         }
 
                         // ISR 缓存命中
@@ -340,13 +360,14 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                             css,
                             serverData,
                             renderMode,
+                            locale,
                         } = await ssrModule.render(url, {
                             fetch: createInternalFetch(app.fetch.bind(app), ssrDepth + 1),
                         });
 
                         // 路由级 CSR
                         if (renderMode === "csr") {
-                            return c.html(injectCSRShell(template));
+                            return c.html(injectCSRShell(template, locale));
                         }
 
                         const serializedData = ssrModule.serializeServerData(serverData);
@@ -357,6 +378,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                             css,
                             html: appHtml,
                             serializedData,
+                            locale,
                         });
 
                         // Prerender ISR 缓存
@@ -439,6 +461,8 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
                         templateHtml,
                         renderModes: options.renderModes,
                         proxies: options.proxies,
+                        locales: options.locales,
+                        defaultLocale: options.defaultLocale,
                         resolvedResolve,
                         resolvedCss,
                         vite,

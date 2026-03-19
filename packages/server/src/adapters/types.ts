@@ -30,6 +30,10 @@ export interface AdapterContext {
     renderModes?: Record<string, string>;
     /** 声明式代理路由配置 */
     proxies?: ProxyRouteConfig[];
+    /** 支持的 locale 列表（用于预渲染 locale 矩阵） */
+    locales?: string[];
+    /** 默认 locale（CSR shell 使用） */
+    defaultLocale?: string;
 
     // ─── 工具模块（由 closeBundle 动态 import 后注入） ──────
     vite: any;

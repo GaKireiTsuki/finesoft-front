@@ -11,6 +11,7 @@ export {
     getTextDirection,
     isRtl,
     makeLocaleInfo,
+    resolveLocaleFromUrl,
     setHtmlLocaleAttributes,
 } from "./locale";
 export { SimpleTranslator, type SimpleTranslatorOptions } from "./translator";

@@ -20,12 +20,16 @@ export interface SSRRenderConfig {
      * 应用层渲染函数
      *
      * @param page - 当前页面数据
+     * @param framework - Framework 实例（可用于获取 translator、locale 等）
      * @returns SSR 渲染结果 { html, head, css, slots? }
      */
-    renderApp: (page: BasePage) => SSRAppResult | Promise<SSRAppResult>;
+    renderApp: (page: BasePage, framework: Framework) => SSRAppResult | Promise<SSRAppResult>;
 
     /** Framework 构造配置（可选） */
     frameworkConfig?: FrameworkConfig;
+
+    /** 解析请求 locale 的回调（返回 lang + dir 用于 <html> 属性） */
+    resolveLocale?: (url: string, request?: Request) => { lang: string; dir: string } | undefined;
 }
 
 /**
@@ -36,7 +40,7 @@ export interface SSRRenderConfig {
 export function createSSRRender(
     config: SSRRenderConfig,
 ): (url: string, ssrContext?: SSRContext) => Promise<SSRRenderResult> {
-    const { bootstrap, getErrorPage, renderApp, frameworkConfig } = config;
+    const { bootstrap, getErrorPage, renderApp, frameworkConfig, resolveLocale } = config;
 
     return (url: string, ssrContext?: SSRContext) =>
         ssrRender({
@@ -44,7 +48,8 @@ export function createSSRRender(
             frameworkConfig: frameworkConfig ?? {},
             bootstrap,
             getErrorPage,
-            renderApp: (page) => renderApp(page),
+            renderApp: (page, framework) => renderApp(page, framework),
             ssrContext,
+            resolveLocale,
         });
 }

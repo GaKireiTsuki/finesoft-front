@@ -14,7 +14,7 @@ import {
     makeDependencies,
     type MakeDependenciesOptions,
 } from "./dependencies/make-dependencies";
-import type { LocaleAttributes } from "./i18n/types";
+import type { LocaleAttributes, Translator } from "./i18n/types";
 import { IntentDispatcher } from "./intents/dispatcher";
 import type { Intent, IntentController } from "./intents/types";
 import type { Logger } from "./logger/types";
@@ -114,6 +114,13 @@ export class Framework {
     getLocale(): LocaleAttributes | undefined {
         return this.container.has(DEP_KEYS.LOCALE)
             ? this.container.resolve<LocaleAttributes>(DEP_KEYS.LOCALE)
+            : undefined;
+    }
+
+    /** 获取翻译器（如果已通过 messages + locale 配置） */
+    getTranslator(): Translator | undefined {
+        return this.container.has(DEP_KEYS.TRANSLATOR)
+            ? this.container.resolve<Translator>(DEP_KEYS.TRANSLATOR)
             : undefined;
     }
 

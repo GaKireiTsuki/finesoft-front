@@ -23,10 +23,10 @@ export { createPrefetchedIntentsFromDom, deserializeServerData } from "./server-
 // ===== Re-exports from @finesoft/core (convenience) =====
 export {
     BaseController,
-    defineRoutes,
     Framework,
     HttpClient,
     HttpError,
+    defineRoutes,
     isExternalUrlAction,
     isFlowAction,
     makeExternalUrlAction,
