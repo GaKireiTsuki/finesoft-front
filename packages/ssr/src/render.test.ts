@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import type { BasePage, IntentController } from "../../core/src/index.ts";
-import { defineBootstrap, defineRoutes } from "../../core/src/index.ts";
+import { defineRoutes } from "../../core/src/index.ts";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
@@ -187,95 +187,6 @@ describe("ssrRender", () => {
                 data: page,
             },
         ]);
-    });
-
-    test("inherits frameworkConfig and loadMessages from bootstrap defaults", async () => {
-        const page = makePage();
-
-        const bootstrap = defineBootstrap(
-            {
-                frameworkConfig: {
-                    locale: "ja-JP",
-                },
-                loadMessages: vi.fn(async (locale) => {
-                    expect(locale).toBe("ja-JP");
-                    return { hello: "こんにちは" };
-                }),
-            },
-            (framework) => {
-                defineRoutes(framework, [
-                    {
-                        path: "/",
-                        intentId: "home",
-                        controller: makeController(page),
-                    },
-                ]);
-            },
-        );
-
-        const result = await ssrRender({
-            url: "/",
-            frameworkConfig: {},
-            bootstrap,
-            getErrorPage: makeErrorPage,
-            renderApp(_page, framework) {
-                return {
-                    html: framework.getTranslator()?.t("hello") ?? "missing",
-                    head: "",
-                    css: "",
-                };
-            },
-        });
-
-        expect(result.html).toBe("こんにちは");
-        expect(result.locale).toEqual({ lang: "ja-JP", dir: "ltr" });
-    });
-
-    test("explicit ssr loadMessages overrides bootstrap defaults", async () => {
-        const page = makePage();
-        const explicitLoadMessages = vi.fn(async (locale: string) => {
-            expect(locale).toBe("en-US");
-            return { hello: "Hello override" };
-        });
-
-        const bootstrap = defineBootstrap(
-            {
-                frameworkConfig: {
-                    locale: "ja-JP",
-                },
-                loadMessages: vi.fn(async () => ({ hello: "こんにちは" })),
-            },
-            (framework) => {
-                defineRoutes(framework, [
-                    {
-                        path: "/",
-                        intentId: "home",
-                        controller: makeController(page),
-                    },
-                ]);
-            },
-        );
-
-        const result = await ssrRender({
-            url: "/",
-            frameworkConfig: {
-                locale: "en-US",
-            },
-            bootstrap,
-            loadMessages: explicitLoadMessages,
-            getErrorPage: makeErrorPage,
-            renderApp(_page, framework) {
-                return {
-                    html: framework.getTranslator()?.t("hello") ?? "missing",
-                    head: "",
-                    css: "",
-                };
-            },
-        });
-
-        expect(result.html).toBe("Hello override");
-        expect(result.locale).toEqual({ lang: "en-US", dir: "ltr" });
-        expect(explicitLoadMessages).toHaveBeenCalledTimes(1);
     });
 
     test("propagates loadMessages failures", async () => {

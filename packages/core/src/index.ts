@@ -71,12 +71,6 @@ export { mapEach, pipe, pipeAsync } from "./data/mapper";
 export type { AsyncMapper, Mapper } from "./data/mapper";
 
 // ===== Bootstrap =====
-export {
-    defineBootstrap,
-    getBootstrapConfig,
-    type BootstrapRuntimeConfig,
-    type FrameworkBootstrap,
-} from "./bootstrap/define-bootstrap";
 export { defineRoutes } from "./bootstrap/define-routes";
 export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstrap/define-routes";
 

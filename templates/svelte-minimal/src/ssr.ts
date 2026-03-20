@@ -4,6 +4,9 @@ import { renderApp } from "./lib/render";
 
 export const render = createSSRRender({
     bootstrap,
+    frameworkConfig: {
+        locale: "zh-Hans",
+    },
     getErrorPage(status, message) {
         return {
             id: "error",

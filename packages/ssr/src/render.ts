@@ -10,7 +10,6 @@
 import {
     Framework,
     createServerContext,
-    getBootstrapConfig,
     resolveConfiguredMessages,
     type BasePage,
     type FrameworkConfig,
@@ -86,12 +85,6 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
         resolveLocale,
         loadMessages,
     } = options;
-    const bootstrapConfig = getBootstrapConfig(bootstrap);
-    const resolvedFrameworkConfig: FrameworkConfig = {
-        ...bootstrapConfig.frameworkConfig,
-        ...frameworkConfig,
-    };
-    const resolvedLoadMessages = loadMessages ?? bootstrapConfig.loadMessages;
 
     const parsed = new URL(url, "http://localhost");
     const fullPath = parsed.pathname + parsed.search;
@@ -99,11 +92,11 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
     // 先解析 locale（如果提供了 resolveLocale 回调），使 DI 容器获得正确的 locale
     const resolvedLocale = resolveLocale?.(url, ssrContext?.request);
     const effectiveConfig: FrameworkConfig = resolvedLocale
-        ? { ...resolvedFrameworkConfig, locale: resolvedLocale.lang }
-        : resolvedFrameworkConfig;
+        ? { ...frameworkConfig, locale: resolvedLocale.lang }
+        : frameworkConfig;
     const resolvedMessages = await resolveConfiguredMessages({
         locale: effectiveConfig.locale,
-        loadMessages: resolvedLoadMessages,
+        loadMessages,
         context: effectiveConfig.locale
             ? {
                   runtime: "server",

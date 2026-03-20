@@ -255,50 +255,6 @@ void startBrowserApp({
 });
 ```
 
-If you do not want to repeat `frameworkConfig` in both SSR and browser entry files,
-define it once on `bootstrap`:
-
-```ts
-// src/bootstrap.ts
-import { defineBootstrap, defineRoutes } from "@finesoft/front";
-
-export const bootstrap = defineBootstrap(
-    {
-        frameworkConfig: { locale: "zh-Hans" },
-    },
-    (framework) => {
-        defineRoutes(framework, [
-            { path: "/", intentId: "home", controller: new HomeController() },
-        ]);
-    },
-);
-```
-
-Then both of these can omit the duplicated config:
-
-```ts
-// src/ssr.ts
-export const render = createSSRRender({
-    bootstrap,
-    getErrorPage: () => ({ title: "Error", kind: "error" }),
-    async renderApp(page) {
-        /* ... */
-    },
-});
-
-// src/main.ts
-void startBrowserApp({
-    bootstrap,
-    mount(target, { framework }) {
-        /* ... */
-    },
-    callbacks: {
-        onNavigate() {},
-        onModal() {},
-    },
-});
-```
-
 ## Configuration
 
 `Framework.create()` accepts a `FrameworkConfig` with the following options:

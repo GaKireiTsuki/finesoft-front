@@ -1,5 +1,5 @@
-import { defineBootstrap, type Framework } from "../../core/src/index.ts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import type { Framework } from "../../core/src/index.ts";
 
 const { registerActionHandlers } = vi.hoisted(() => ({
     registerActionHandlers: vi.fn(),
@@ -22,7 +22,10 @@ describe("startBrowserApp", () => {
         vi.stubGlobal(
             "fetch",
             vi.fn(
-                async () => new Response("{}", { headers: { "Content-Type": "application/json" } }),
+                async () =>
+                    new Response("{}", {
+                        headers: { "Content-Type": "application/json" },
+                    }),
             ),
         );
         vi.stubGlobal("window", {
@@ -166,74 +169,6 @@ describe("startBrowserApp", () => {
         });
 
         expect(capturedFramework?.getTranslator()?.t("hello")).toBe("Hello from generated loader");
-    });
-
-    test("inherits frameworkConfig and loadMessages from bootstrap defaults", async () => {
-        let capturedFramework: Framework | undefined;
-
-        const bootstrap = defineBootstrap(
-            {
-                frameworkConfig: {
-                    locale: "ja-JP",
-                },
-                loadMessages: vi.fn(async (locale) => {
-                    expect(locale).toBe("ja-JP");
-                    return { hello: "こんにちは" };
-                }),
-            },
-            (framework) => {
-                framework.router.add("/", "home");
-            },
-        );
-
-        await startBrowserApp({
-            bootstrap,
-            mount(_target, context) {
-                capturedFramework = context.framework;
-                return vi.fn();
-            },
-            callbacks: makeCallbacks(),
-        });
-
-        expect(capturedFramework?.getLocale()?.lang).toBe("ja-JP");
-        expect(capturedFramework?.getTranslator()?.t("hello")).toBe("こんにちは");
-    });
-
-    test("explicit browser loadMessages overrides bootstrap defaults", async () => {
-        let capturedFramework: Framework | undefined;
-        const explicitLoadMessages = vi.fn(async (locale: string) => {
-            expect(locale).toBe("en-US");
-            return { hello: "Hello override" };
-        });
-
-        const bootstrap = defineBootstrap(
-            {
-                frameworkConfig: {
-                    locale: "ja-JP",
-                },
-                loadMessages: vi.fn(async () => ({ hello: "こんにちは" })),
-            },
-            (framework) => {
-                framework.router.add("/", "home");
-            },
-        );
-
-        await startBrowserApp({
-            bootstrap,
-            frameworkConfig: {
-                locale: "en-US",
-            },
-            loadMessages: explicitLoadMessages,
-            mount(_target, context) {
-                capturedFramework = context.framework;
-                return vi.fn();
-            },
-            callbacks: makeCallbacks(),
-        });
-
-        expect(capturedFramework?.getLocale()?.lang).toBe("en-US");
-        expect(capturedFramework?.getTranslator()?.t("hello")).toBe("Hello override");
-        expect(explicitLoadMessages).toHaveBeenCalledTimes(1);
     });
 
     test("rejects startup when loadMessages fails before mount", async () => {

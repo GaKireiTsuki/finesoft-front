@@ -19,7 +19,6 @@ import type {
 import {
     DEP_KEYS,
     Framework,
-    getBootstrapConfig,
     resolveConfiguredMessages,
     setHtmlLocaleAttributes,
     type LoggerFactory,
@@ -101,28 +100,22 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         callbacks,
         onBeforeStart,
         onAfterStart,
-        frameworkConfig,
+        frameworkConfig = {},
         loadMessages,
     } = config;
-    const bootstrapConfig = getBootstrapConfig(bootstrap);
-    const resolvedFrameworkConfig = {
-        ...bootstrapConfig.frameworkConfig,
-        ...frameworkConfig,
-    };
-    const resolvedLoadMessages = loadMessages ?? bootstrapConfig.loadMessages;
 
     // 1. 从 DOM 提取 PrefetchedIntents 缓存
     const prefetchedIntents = createPrefetchedIntentsFromDom();
 
     const initialUrl = window.location.pathname + window.location.search;
-    const locale = resolveBrowserLocale(resolvedFrameworkConfig.locale);
+    const locale = resolveBrowserLocale(frameworkConfig.locale);
     const resolvedMessages = await resolveConfiguredMessages({
         locale,
-        loadMessages: resolvedLoadMessages,
+        loadMessages,
         context: locale
             ? {
                   runtime: "browser",
-                  fetch: getBrowserFetch(resolvedFrameworkConfig.fetch),
+                  fetch: getBrowserFetch(frameworkConfig.fetch),
                   url: initialUrl,
               }
             : undefined,
@@ -130,7 +123,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
 
     // 2. 初始化 Framework + 注册 Controllers
     const framework = Framework.create({
-        ...resolvedFrameworkConfig,
+        ...frameworkConfig,
         locale,
         _resolvedMessages: resolvedMessages,
         prefetchedIntents,
