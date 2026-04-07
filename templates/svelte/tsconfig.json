@@ -18,5 +18,5 @@
             "@finesoft/server": ["../../packages/server/src/index.ts"]
         }
     },
-    "include": ["src/**/*", "env.d.ts"]
+    "include": ["src/**/*", "env.d.ts", "vite.config.ts"]
 }
