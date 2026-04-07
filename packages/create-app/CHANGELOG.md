@@ -1,5 +1,11 @@
 # @finesoft/create-app
 
+## 0.1.11
+
+### Patch Changes
+
+- Auto-generated patch release from CI (d0b4b1d).
+
 ## 0.1.10
 
 ### Patch Changes
