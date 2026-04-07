@@ -18,7 +18,15 @@ export class CompositeEventRecorder implements EventRecorder {
     }
 
     async flush(): Promise<void> {
-        await Promise.all(this.recorders.map((r) => r.flush?.()));
+        const pending: Promise<void>[] = [];
+
+        for (const recorder of this.recorders) {
+            if (recorder.flush) {
+                pending.push(recorder.flush());
+            }
+        }
+
+        await Promise.all(pending);
     }
 
     destroy(): void {

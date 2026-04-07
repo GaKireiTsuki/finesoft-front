@@ -3,11 +3,11 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "ready": "vp fmt && vp lint && vp run build -r",
-        "build:packages": "vp run build -r",
+        "ready": "vp fmt && vp lint && vp run -r build",
+        "build:packages": "vp run -r build",
         "changeset": "changeset",
         "version": "changeset version",
-        "release": "vp run build -r && changeset publish --access public",
+        "release": "vp run -r build && changeset publish --access public",
         "release:auto:changeset": "node ./scripts/auto-changeset.mjs",
         "prepare": "vp config"
     },

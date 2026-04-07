@@ -480,7 +480,7 @@ vp dev                # Start dev server
 vp check              # Format + lint + type-check
 vp test               # Run tests
 vp test --coverage    # Run tests with full source coverage reports
-vp run build -r       # Build all packages
+vp run -r build       # Build all packages
 vp ready              # fmt + lint + build (full validation)
 ```
 
@@ -507,7 +507,7 @@ Test files, templates, docs, scripts, generated output, and the app scaffolding 
 
 ```bash
 changeset             # Create a changeset
-vp run build -r && changeset publish --access public
+vp run -r build && changeset publish --access public
 ```
 
 ## License

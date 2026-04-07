@@ -60,11 +60,11 @@ front                 (published aggregation bundle of all above)
 vp install          # Install dependencies (always run first)
 vp check            # Format + lint + type-check (run before committing)
 vp test             # Run Vitest tests
-vp run build -r     # Build all packages in dependency order
+vp run -r build     # Build all packages in dependency order
 vp ready            # Alias: fmt + lint + build (full validation)
 ```
 
-Release: `changeset` for versioning → `vp run build -r && changeset publish --access public`.
+Release: `changeset` for versioning → `vp run -r build && changeset publish --access public`.
 
 ## Code Style
 
