@@ -57,4 +57,20 @@ describe("Router", () => {
         expect(router.getRoutes()).toEqual(["/ → home", "/account/:tab? → account"]);
         expect(router.resolve("/missing")).toBeNull();
     });
+
+    test("stores URL params in null-prototype records to avoid prototype pollution", () => {
+        const router = new Router();
+        router.add("/products/:id", "product");
+
+        const match = router.resolve("/products/42?__proto__=polluted&toString=string-value");
+        const params = match?.intent.params;
+
+        expect(params).toBeDefined();
+        expect(Object.getPrototypeOf(params)).toBeNull();
+        expect(params?.id).toBe("42");
+        expect(params?.["__proto__"]).toBe("polluted");
+        expect(params?.["toString"]).toBe("string-value");
+        expect(Object.hasOwn(params!, "__proto__")).toBe(true);
+        expect(Object.hasOwn(params!, "toString")).toBe(true);
+    });
 });

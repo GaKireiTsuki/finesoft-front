@@ -85,7 +85,9 @@ export class Router {
         for (const route of this.routes) {
             const match = path.match(route.regex);
             if (match) {
-                const params: Record<string, string> = {};
+                // 使用无原型对象，这样 URL 提供的键就不会通过像 "__proto__" 这样的特殊名称
+                // 去篡改 Object.prototype。
+                const params = Object.create(null) as Record<string, string>;
                 route.paramNames.forEach((name, index) => {
                     const value = match[index + 1];
                     if (value) params[name] = value;
@@ -118,13 +120,18 @@ export class Router {
     } {
         try {
             const parsed = new URL(url, "http://localhost");
-            const params: Record<string, string> = {};
+            // Query parameter names come from the URL, so keep them in a
+            // null-prototype object to avoid prototype pollution sinks.
+            const params = Object.create(null) as Record<string, string>;
             parsed.searchParams.forEach((v, k) => {
                 params[k] = v;
             });
             return { path: parsed.pathname, queryParams: params };
         } catch {
-            return { path: url.split("?")[0].split("#")[0], queryParams: {} };
+            return {
+                path: url.split("?")[0].split("#")[0],
+                queryParams: Object.create(null) as Record<string, string>,
+            };
         }
     }
 }

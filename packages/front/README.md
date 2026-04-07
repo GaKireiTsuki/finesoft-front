@@ -7,7 +7,7 @@ Works with **Vue**, **React**, and **Svelte**. Deploy to Node.js, Vercel, Cloudf
 ## Install
 
 ```bash
-npx create-finesoft-app my-app
+npx @finesoft/create-app my-app
 ```
 
 Or add to an existing project:
