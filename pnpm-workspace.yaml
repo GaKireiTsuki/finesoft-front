@@ -3,12 +3,13 @@ packages:
     - "templates/*"
 
 catalog:
+    "@changesets/cli": ^2.30.0
     "@types/node": ^22
     "@vitest/coverage-v8": ^4.1.2
-    typescript: ^5.9.3
-    vite: npm:@voidzero-dev/vite-plus-core@latest
-    vite-plus: ^0.1.16
-    vitest: npm:@voidzero-dev/vite-plus-test@latest
+    typescript: ^6.0.2
+    vite: npm:@voidzero-dev/vite-plus-core@0.1.16
+    vite-plus: 0.1.16
+    vitest: npm:@voidzero-dev/vite-plus-test@0.1.16
 
 catalogMode: prefer
 onlyBuiltDependencies:
