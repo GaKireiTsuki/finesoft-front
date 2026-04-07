@@ -123,13 +123,15 @@ function normalizePathForGlob(pathname: string): string {
 
 async function resolveMessagesDir(root: string, messagesDir: string): Promise<string> {
     const { existsSync } = await dynamicImport("node:fs");
-    const { isAbsolute, relative, resolve } = await dynamicImport("node:path");
-    const absoluteDir = isAbsolute(messagesDir) ? messagesDir : resolve(root, messagesDir);
+    const path = await dynamicImport("node:path");
+    const absoluteDir = path.isAbsolute(messagesDir)
+        ? messagesDir
+        : path.resolve(root, messagesDir);
     if (!existsSync(absoluteDir)) {
         throw new Error(`[finesoftFrontViteConfig] i18n.messagesDir not found: ${messagesDir}`);
     }
 
-    const relativeDir = normalizePathForGlob(relative(root, absoluteDir));
+    const relativeDir = normalizePathForGlob(path.relative(root, absoluteDir));
     if (!relativeDir || relativeDir.startsWith("..")) {
         throw new Error(
             `[finesoftFrontViteConfig] i18n.messagesDir must stay inside the project root: ${messagesDir}`,
@@ -152,12 +154,13 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         name: "finesoft-front",
 
         config(userConfig: Record<string, any>) {
+            const generatedI18nLoaderSpecifier = options.i18n?.messagesDir
+                ? JSON.stringify(GENERATED_I18N_LOADER_ID)
+                : "undefined";
             const overrides: Record<string, any> = {
                 appType: "custom",
                 define: {
-                    __FINESOFT_I18N_LOADER_IMPORTER__: options.i18n?.messagesDir
-                        ? `async () => import(${JSON.stringify(GENERATED_I18N_LOADER_ID)})`
-                        : "undefined",
+                    __FINESOFT_I18N_LOADER_SPECIFIER__: generatedI18nLoaderSpecifier,
                 },
             };
             if (!process.env.__FINESOFT_SUB_BUILD__) {

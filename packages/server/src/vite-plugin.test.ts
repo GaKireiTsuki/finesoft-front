@@ -18,10 +18,8 @@ describe("finesoftFrontViteConfig", () => {
     });
 
     test("generates a virtual i18n loader from locale JSON files", async () => {
-        const root = join(
-            tmpdir(),
-            `finesoft-front-i18n-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        );
+        const randomId = Math.random().toString(36).slice(2);
+        const root = join(tmpdir(), `finesoft-front-i18n-${Date.now()}-${randomId}`);
         const messagesDir = join(root, "src", "locales");
         mkdirSync(messagesDir, { recursive: true });
         writeFileSync(join(messagesDir, "en-US.json"), '{"hello":"Hello"}');
@@ -40,8 +38,7 @@ describe("finesoftFrontViteConfig", () => {
 
         const config = plugin.config({});
         expect(config.define).toMatchObject({
-            __FINESOFT_I18N_LOADER_IMPORTER__:
-                'async () => import("virtual:finesoft-front/i18n-loader")',
+            __FINESOFT_I18N_LOADER_SPECIFIER__: '"virtual:finesoft-front/i18n-loader"',
         });
 
         plugin.configResolved({

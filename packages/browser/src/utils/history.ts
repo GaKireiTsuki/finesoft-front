@@ -66,7 +66,7 @@ export class History<State> {
     }
 
     onPopState(listener: (url: string, state?: State) => void | Promise<void>): void {
-        window.addEventListener("popstate", async (event: PopStateEvent) => {
+        window.addEventListener("popstate", (event: PopStateEvent) => {
             cancelTryScroll();
             this.currentStateId = event.state?.id;
 
@@ -81,7 +81,11 @@ export class History<State> {
 
             const entry = this.currentStateId ? this.entries.get(this.currentStateId) : undefined;
 
-            listener(window.location.href, entry?.state);
+            void Promise.resolve(listener(window.location.href, entry?.state)).catch(
+                (error: unknown) => {
+                    this.log.error("onPopState listener error:", error);
+                },
+            );
 
             if (!entry) {
                 return;
