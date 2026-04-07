@@ -198,6 +198,86 @@ describe("registerFlowActionHandler", () => {
         expect(log.warn).toHaveBeenCalledWith("FlowAction: no route for /missing");
     });
 
+    test("rewrites beforeLoad URLs before dispatching page data", async () => {
+        const canonicalPage = makePage("canonical");
+        const { framework, getHandler } = makeFramework({
+            routeUrl: vi.fn((url: string) => {
+                if (url === "/legacy") {
+                    return makeMatch("legacy", () => ({
+                        kind: "rewrite",
+                        url: "/canonical",
+                    }));
+                }
+                if (url === "/canonical") {
+                    return makeMatch("canonical");
+                }
+                return undefined;
+            }),
+            dispatch: vi.fn(async () => canonicalPage),
+        });
+        const callbacks = makeCallbacks();
+        const updateApp = vi.fn();
+        const log = makeLogger();
+
+        registerFlowActionHandler({
+            framework: framework as never,
+            log,
+            callbacks,
+            updateApp,
+            getScrollablePageElement: vi.fn(() => null),
+        });
+
+        await getHandler()({ kind: ACTION_KINDS.FLOW, url: "/legacy" });
+        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(canonicalPage);
+
+        const history = HistoryMock.latest<{ page: BasePage }>();
+        expect(log.debug).toHaveBeenCalledWith("beforeLoad → rewrite to /canonical");
+        expect(history.replaceState).toHaveBeenCalledWith({ page: canonicalPage }, "/canonical");
+        expect(callbacks.onNavigate).toHaveBeenCalledWith("/canonical");
+    });
+
+    test("uses the default scrollable element lookup and stops on beforeLoad denial", async () => {
+        const overrideElement = { id: "override" } as HTMLElement;
+        const getElementById = vi.fn((id: string) => {
+            if (id === "scrollable-page-override") {
+                return overrideElement;
+            }
+            return null;
+        });
+        vi.stubGlobal("document", {
+            cookie: "session=abc",
+            documentElement: { scrollTop: 0 },
+            getElementById,
+        });
+
+        const { framework, getHandler } = makeFramework({
+            routeUrl: vi.fn(() =>
+                makeMatch("blocked", () => ({
+                    kind: "deny",
+                    status: 403,
+                    message: "nope",
+                })),
+            ),
+        });
+        const updateApp = vi.fn();
+        const log = makeLogger();
+
+        registerFlowActionHandler({
+            framework: framework as never,
+            log,
+            callbacks: makeCallbacks(),
+            updateApp,
+        });
+
+        const history = HistoryMock.latest<{ page: BasePage }>();
+        expect(history.options.getScrollablePageElement()).toBe(overrideElement);
+
+        await getHandler()({ kind: ACTION_KINDS.FLOW, url: "/blocked" });
+
+        expect(updateApp).not.toHaveBeenCalled();
+        expect(log.warn).toHaveBeenCalledWith("beforeLoad → denied (403): nope");
+    });
+
     test("updates the URL when page loading fails", async () => {
         const failure = new Error("boom");
         const { framework, getHandler } = makeFramework({
@@ -223,6 +303,213 @@ describe("registerFlowActionHandler", () => {
         await expect(updateApp.mock.calls[0][0].page).rejects.toThrow("boom");
         expect(history.replaceUrl).toHaveBeenCalledWith("/broken");
         expect(callbacks.onNavigate).toHaveBeenCalledWith("/broken");
+    });
+
+    test("returns the loaded page when afterLoad denies the navigation", async () => {
+        const deniedPage = makePage("denied");
+        const { framework, getHandler } = makeFramework({
+            routeUrl: vi.fn(() =>
+                makeMatch("denied", undefined, () => ({
+                    kind: "deny",
+                    status: 403,
+                    message: "blocked",
+                })),
+            ),
+            dispatch: vi.fn(async () => deniedPage),
+        });
+        const callbacks = makeCallbacks();
+        const updateApp = vi.fn();
+        const log = makeLogger();
+
+        registerFlowActionHandler({
+            framework: framework as never,
+            log,
+            callbacks,
+            updateApp,
+            getScrollablePageElement: vi.fn(() => null),
+        });
+
+        await getHandler()({ kind: ACTION_KINDS.FLOW, url: "/denied" });
+
+        const history = HistoryMock.latest<{ page: BasePage }>();
+        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(deniedPage);
+        expect(history.beforeTransition).toHaveBeenCalledTimes(1);
+        expect(history.replaceState).not.toHaveBeenCalled();
+        expect(history.pushState).not.toHaveBeenCalled();
+        expect(callbacks.onNavigate).not.toHaveBeenCalled();
+        expect(framework.didEnterPage).not.toHaveBeenCalled();
+        expect(log.warn).toHaveBeenCalledWith("afterLoad → denied (403)");
+    });
+
+    test("pushes the URL when a non-initial navigation fails", async () => {
+        const homePage = makePage("home");
+        const failure = new Error("broken push");
+        const { framework, getHandler } = makeFramework({
+            routeUrl: vi.fn((url: string) => {
+                if (url === "/home") {
+                    return makeMatch("home");
+                }
+                if (url === "/broken") {
+                    return makeMatch("broken");
+                }
+                return undefined;
+            }),
+            dispatch: vi.fn(async (intent: { id: string }) => {
+                if (intent.id === "home") {
+                    return homePage;
+                }
+                throw failure;
+            }),
+        });
+        const callbacks = makeCallbacks();
+        const updateApp = vi.fn();
+
+        registerFlowActionHandler({
+            framework: framework as never,
+            log: makeLogger(),
+            callbacks,
+            updateApp,
+            getScrollablePageElement: vi.fn(() => null),
+        });
+
+        const handler = getHandler();
+        await handler({ kind: ACTION_KINDS.FLOW, url: "/home" });
+        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(homePage);
+
+        await handler({ kind: ACTION_KINDS.FLOW, url: "/broken" });
+
+        const history = HistoryMock.latest<{ page: BasePage }>();
+        await expect(updateApp.mock.calls[1][0].page).rejects.toThrow("broken push");
+        expect(history.pushUrl).toHaveBeenCalledWith("/broken");
+        expect(callbacks.onNavigate).toHaveBeenNthCalledWith(2, "/broken");
+    });
+
+    test("abandons stale navigations before updating the UI", async () => {
+        vi.useFakeTimers();
+        try {
+            const fastPage = makePage("fast");
+            const slowPromise = new Promise<BasePage>(() => undefined);
+            const { framework, getHandler } = makeFramework({
+                routeUrl: vi.fn((url: string) => {
+                    if (url === "/slow") {
+                        return makeMatch("slow");
+                    }
+                    if (url === "/fast") {
+                        return makeMatch("fast");
+                    }
+                    return undefined;
+                }),
+                dispatch: vi.fn(async (intent: { id: string }) =>
+                    intent.id === "slow" ? slowPromise : fastPage,
+                ),
+            });
+            const callbacks = makeCallbacks();
+            const updateApp = vi.fn();
+            const log = makeLogger();
+
+            registerFlowActionHandler({
+                framework: framework as never,
+                log,
+                callbacks,
+                updateApp,
+                getScrollablePageElement: vi.fn(() => null),
+            });
+
+            const handler = getHandler();
+            const slowNavigation = handler({
+                kind: ACTION_KINDS.FLOW,
+                url: "/slow",
+            });
+            await Promise.resolve();
+
+            await handler({ kind: ACTION_KINDS.FLOW, url: "/fast" });
+            await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(fastPage);
+
+            vi.advanceTimersByTime(500);
+            await slowNavigation;
+
+            expect(updateApp).toHaveBeenCalledTimes(1);
+            expect(log.info).toHaveBeenCalledWith(
+                "FlowAction superseded by newer navigation",
+                "/slow",
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    test("skips stale page commits and follows afterLoad redirects", async () => {
+        vi.useFakeTimers();
+        try {
+            const slowPage = makePage("slow");
+            const redirectPage = makePage("redirected");
+            const finalPage = makePage("final");
+            const slowDeferred = createDeferred<BasePage>();
+            const { framework, getHandler } = makeFramework({
+                routeUrl: vi.fn((url: string) => {
+                    if (url === "/slow") {
+                        return makeMatch("slow");
+                    }
+                    if (url === "/redirect") {
+                        return makeMatch("redirect", undefined, () => ({
+                            kind: "redirect",
+                            url: "/final",
+                        }));
+                    }
+                    if (url === "/final") {
+                        return makeMatch("final");
+                    }
+                    return undefined;
+                }),
+                dispatch: vi.fn(async (intent: { id: string }) => {
+                    if (intent.id === "slow") {
+                        return slowDeferred.promise;
+                    }
+                    if (intent.id === "redirect") {
+                        return redirectPage;
+                    }
+                    return finalPage;
+                }),
+            });
+            const callbacks = makeCallbacks();
+            const updateApp = vi.fn();
+            const log = makeLogger();
+
+            registerFlowActionHandler({
+                framework: framework as never,
+                log,
+                callbacks,
+                updateApp,
+                getScrollablePageElement: vi.fn(() => null),
+            });
+
+            const handler = getHandler();
+            const slowNavigation = handler({
+                kind: ACTION_KINDS.FLOW,
+                url: "/slow",
+            });
+            await Promise.resolve();
+            await vi.advanceTimersByTimeAsync(500);
+
+            expect(updateApp).toHaveBeenCalledTimes(1);
+
+            await handler({ kind: ACTION_KINDS.FLOW, url: "/redirect" });
+            await expect(updateApp.mock.calls[1][0].page).resolves.toEqual(redirectPage);
+            await Promise.resolve();
+            await Promise.resolve();
+            await expect(updateApp.mock.calls[2][0].page).resolves.toEqual(finalPage);
+
+            slowDeferred.resolve(slowPage);
+            await slowNavigation;
+            await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(slowPage);
+
+            const history = HistoryMock.latest<{ page: BasePage }>();
+            expect(log.info).toHaveBeenCalledWith("FlowAction commit superseded", "/slow");
+            expect(log.debug).toHaveBeenCalledWith("afterLoad → redirect to /final");
+            expect(history.pushState).toHaveBeenNthCalledWith(1, { page: finalPage }, "/final");
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     test("handles popstate with cached pages and unroutable URLs", async () => {
@@ -479,4 +766,16 @@ function makeLogger(): Logger & {
         warn: vi.fn(() => ""),
         error: vi.fn(() => ""),
     };
+}
+
+function createDeferred<T>(): {
+    promise: Promise<T>;
+    resolve(value: T): void;
+} {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((innerResolve) => {
+        resolve = innerResolve;
+    });
+
+    return { promise, resolve };
 }

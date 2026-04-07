@@ -9,11 +9,13 @@ class IntersectionObserverMock {
     readonly observe = vi.fn();
     readonly unobserve = vi.fn();
     readonly disconnect = vi.fn();
+    readonly options: { threshold?: number };
 
     private readonly callback: ObserverCallback;
 
-    constructor(callback: ObserverCallback) {
+    constructor(callback: ObserverCallback, options: { threshold?: number }) {
         this.callback = callback;
+        this.options = options;
         IntersectionObserverMock.instances.push(this);
     }
 
@@ -58,6 +60,7 @@ describe("IntersectionImpressionObserver", () => {
 
         expect(io.observe).toHaveBeenCalledWith(element);
         expect(io.unobserve).toHaveBeenCalledWith(element);
+        expect(io.options.threshold).toBe(0.5);
     });
 
     test("captures impressions after an element stays visible long enough", () => {
@@ -116,5 +119,33 @@ describe("IntersectionImpressionObserver", () => {
 
         expect(io.disconnect).toHaveBeenCalled();
         expect(observer.consume()).toEqual([]);
+    });
+
+    test("ignores untracked entries, keeps the first visible timestamp, and skips short impressions", () => {
+        const now = vi.spyOn(Date, "now");
+        now.mockReturnValueOnce(1000)
+            .mockReturnValueOnce(1100)
+            .mockReturnValueOnce(1200)
+            .mockReturnValueOnce(1300)
+            .mockReturnValueOnce(1500)
+            .mockReturnValueOnce(1600);
+
+        const observer = new IntersectionImpressionObserver({
+            threshold: 0.75,
+            minVisibleDuration: 1000,
+        });
+        const element = {} as Element;
+        const stranger = {} as Element;
+        const io = IntersectionObserverMock.latest();
+
+        observer.observe(element, "hero", { section: "top" });
+        io.trigger([{ target: stranger, isIntersecting: true }]);
+        io.trigger([{ target: element, isIntersecting: false }]);
+        io.trigger([{ target: element, isIntersecting: true }]);
+        io.trigger([{ target: element, isIntersecting: true }]);
+        io.trigger([{ target: element, isIntersecting: false }]);
+
+        expect(observer.consume()).toEqual([]);
+        expect(io.options.threshold).toBe(0.75);
     });
 });

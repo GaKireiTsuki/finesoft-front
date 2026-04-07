@@ -38,4 +38,34 @@ describe("SSR injection helpers", () => {
             '<html lang="fr-FR" dir="ltr"><head></head><body></body></html>',
         );
     });
+
+    test("injects SSR content without CSS or locale and blanks unknown slots", () => {
+        const template =
+            '<html class="shell"><head><!--ssr-head--><!--ssr-missing--></head><body><!--ssr-body--><!--ssr-data--></body></html>';
+
+        const result = injectSSRContent({
+            template,
+            head: "",
+            css: "",
+            html: "<main>Plain</main>",
+            serializedData: "{}",
+        });
+
+        expect(result).toContain('<html class="shell">');
+        expect(result).not.toContain("<style>");
+        expect(result).toContain("<main>Plain</main>");
+        expect(result).toContain(
+            '<script id="serialized-server-data" type="application/json">{}</script>',
+        );
+        expect(result).not.toContain("<!--ssr-missing-->");
+    });
+
+    test("keeps the html tag untouched when CSR shell rendering has no locale", () => {
+        const template =
+            '<html class="shell"><head><!--ssr-head--></head><body><!--ssr-body--></body></html>';
+
+        expect(injectCSRShell(template)).toBe(
+            '<html class="shell"><head></head><body></body></html>',
+        );
+    });
 });

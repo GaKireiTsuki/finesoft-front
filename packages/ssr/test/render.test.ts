@@ -9,6 +9,7 @@ import { ssrRender } from "../src/render";
 describe("ssrRender", () => {
     afterEach(() => {
         globalThis.__FINESOFT_I18N_LOADER__ = undefined;
+        vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
 
@@ -206,6 +207,28 @@ describe("ssrRender", () => {
                 }),
             }),
         ).rejects.toThrow("failed to load messages");
+    });
+
+    test("throws when loadMessages needs fetch but no fetch implementation exists", async () => {
+        vi.stubGlobal("fetch", undefined);
+
+        await expect(
+            ssrRender({
+                url: "/",
+                frameworkConfig: {
+                    locale: "en-US",
+                },
+                bootstrap() {},
+                getErrorPage: makeErrorPage,
+                renderApp() {
+                    return { html: "", head: "", css: "" };
+                },
+                loadMessages: vi.fn(async (_locale, context) => {
+                    await context.fetch("https://example.com/messages");
+                    return { hello: "never reached" };
+                }),
+            }),
+        ).rejects.toThrow("[ssrRender] loadMessages requires a fetch implementation.");
     });
 
     test("returns an empty shell for CSR routes without rendering on the server", async () => {

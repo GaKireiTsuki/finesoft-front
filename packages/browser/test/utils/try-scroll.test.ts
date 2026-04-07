@@ -185,6 +185,119 @@ describe("tryScroll", () => {
             }),
         );
     });
+
+    test("warns when the scrollable element never appears before timing out", () => {
+        const log = makeLogger();
+
+        tryScroll(log, () => null, 80);
+        flushAnimationFrames();
+
+        vi.advanceTimersByTime(5000);
+        flushAnimationFrames();
+
+        expect(log.warn).toHaveBeenCalledWith(
+            "tryScroll: timed out waiting for the scrollable element",
+            expect.objectContaining({
+                target: 80,
+                elapsedMs: 5000,
+            }),
+        );
+    });
+
+    test("warns when the target cannot be reached before timing out", () => {
+        const log = makeLogger();
+        const element = makeScrollableElement({
+            clientHeight: 100,
+            scrollHeight: 140,
+        });
+
+        tryScroll(log, () => element as HTMLElement, 300);
+        flushAnimationFrames();
+
+        vi.advanceTimersByTime(5000);
+        flushAnimationFrames();
+
+        expect(log.warn).toHaveBeenCalledWith(
+            "tryScroll: timed out before reaching the target",
+            expect.objectContaining({
+                target: 300,
+                actual: 40,
+                scrollHeight: 140,
+                clientHeight: 100,
+            }),
+        );
+    });
+
+    test("cancels pending frames even when document observation cannot be attached", () => {
+        const log = makeLogger();
+        const element = makeScrollableElement({
+            clientHeight: 100,
+            scrollHeight: 500,
+        });
+        const cancelAnimationFrameMock = vi.fn((id: number) => {
+            pendingFrames = pendingFrames.filter((frame) => frame.id !== id);
+        });
+
+        vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrameMock);
+        vi.stubGlobal("MutationObserver", undefined);
+
+        tryScroll(log, () => element as HTMLElement, 120);
+        cancelTryScroll();
+
+        expect(cancelAnimationFrameMock).toHaveBeenCalledWith(1);
+        const documentMock = document as unknown as {
+            removeEventListener: ReturnType<typeof vi.fn>;
+        };
+        const [eventName, listener, capture] = documentMock.removeEventListener.mock.calls[0] ?? [];
+        expect(eventName).toBe("load");
+        expect(listener).toBeTypeOf("function");
+        expect(capture).toBe(true);
+
+        (document as unknown as { body: unknown; documentElement: unknown }).body = null;
+        (document as unknown as { body: unknown; documentElement: unknown }).documentElement = null;
+
+        tryScroll(log, () => element as HTMLElement, 60);
+        cancelTryScroll();
+
+        expect(cancelAnimationFrameMock).toHaveBeenCalledWith(2);
+    });
+
+    test("skips mutation observation when there is no DOM root to watch", () => {
+        const log = makeLogger();
+
+        vi.stubGlobal("document", {
+            body: null,
+            documentElement: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        });
+
+        tryScroll(log, () => null, 40);
+        flushAnimationFrames();
+        cancelTryScroll();
+
+        expect(MutationObserverMock.instances).toHaveLength(0);
+    });
+
+    test("ignores late animation frames and repeated cleanup after disposal", () => {
+        const log = makeLogger();
+        const element = makeScrollableElement({
+            clientHeight: 100,
+            scrollHeight: 500,
+        });
+        const cancelAnimationFrameMock = vi.fn();
+
+        vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrameMock);
+
+        tryScroll(log, () => element as HTMLElement, 120);
+        cancelTryScroll();
+        flushAnimationFrames();
+        cancelTryScroll();
+
+        expect(cancelAnimationFrameMock).toHaveBeenCalledWith(1);
+        expect(log.info).not.toHaveBeenCalled();
+        expect(log.warn).not.toHaveBeenCalled();
+    });
 });
 
 function makeLogger(): Logger & {

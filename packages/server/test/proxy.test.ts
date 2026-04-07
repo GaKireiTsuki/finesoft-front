@@ -81,10 +81,53 @@ describe("proxy helpers", () => {
         });
     });
 
+    test("uses Basic auth headers and defaults content-type when the upstream omits it", async () => {
+        process.env.BASIC_TOKEN = "encoded-secret";
+        const app = makeApp();
+        const fetchMock = vi.fn(async () => ({
+            status: 201,
+            headers: {
+                get: vi.fn(() => null),
+            },
+            text: vi.fn(async () => "proxied-basic"),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        registerProxyRoutes(app as never, [
+            {
+                prefix: "/basic",
+                target: "https://upstream.example",
+                auth: { type: "basic", envKey: "BASIC_TOKEN" },
+            },
+        ]);
+
+        const handler = app.all.mock.calls[0][1] as (
+            ctx: ReturnType<typeof makeContext>,
+        ) => Promise<unknown>;
+
+        await expect(
+            handler(makeContext("/basic/profile", "https://app.example/basic/profile")),
+        ).resolves.toEqual({
+            kind: "response",
+            body: "proxied-basic",
+            status: 201,
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
+        expect(fetchMock).toHaveBeenCalledWith("https://upstream.example/profile", {
+            headers: {
+                Authorization: "Basic encoded-secret",
+            },
+            redirect: "manual",
+        });
+    });
+
     test("rejects invalid paths, oversized responses, and failed proxy requests", async () => {
         const app = makeApp();
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        const oversizedBody = "x".repeat(10 * 1024 * 1024 + 1);
         vi.stubGlobal(
             "fetch",
             vi
@@ -97,6 +140,7 @@ describe("proxy helpers", () => {
                         },
                     }),
                 )
+                .mockResolvedValueOnce(new Response(oversizedBody, { status: 200 }))
                 .mockRejectedValueOnce(new Error("network down")),
         );
 
@@ -121,7 +165,19 @@ describe("proxy helpers", () => {
         ).resolves.toEqual({ kind: "text", body: "Invalid path", status: 400 });
 
         await expect(
+            handler(makeContext("/api/%E0%A4%A", "https://app.example/api/%E0%A4%A")),
+        ).resolves.toEqual({ kind: "text", body: "Invalid path", status: 400 });
+
+        await expect(
             handler(makeContext("/api/large", "https://app.example/api/large")),
+        ).resolves.toEqual({
+            kind: "text",
+            body: "Proxy response too large",
+            status: 502,
+        });
+
+        await expect(
+            handler(makeContext("/api/body-too-large", "https://app.example/api/body-too-large")),
         ).resolves.toEqual({
             kind: "text",
             body: "Proxy response too large",

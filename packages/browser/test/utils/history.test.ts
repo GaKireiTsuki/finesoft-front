@@ -85,6 +85,16 @@ afterEach(() => {
 });
 
 describe("History", () => {
+    test("returns early when beforeTransition has no active browser history state", () => {
+        const log = makeLogger();
+        const history = createHistory(log);
+
+        history.beforeTransition();
+
+        expect(cancelTryScroll).toHaveBeenCalledTimes(1);
+        expect(log.info).not.toHaveBeenCalledWith("saving scroll position", expect.anything());
+    });
+
     test("replaces state, saves scroll position, and restores it on popstate", async () => {
         generateUuid.mockReturnValueOnce("id-1");
 
@@ -110,6 +120,33 @@ describe("History", () => {
         });
         expect(tryScroll).toHaveBeenCalledWith(log, expect.any(Function), 96);
         expect(log.info).toHaveBeenCalledWith("saving scroll position", 96);
+    });
+
+    test("falls back to zero scroll positions when no scrollable element is available", async () => {
+        generateUuid.mockReturnValueOnce("id-1");
+
+        const log = makeLogger();
+        const history = new History<HistoryState>(
+            log,
+            {
+                getScrollablePageElement: () => null,
+            },
+            10,
+        );
+        const listener = vi.fn();
+
+        history.onPopState(listener);
+        history.replaceState({ page: "home" }, "/home");
+        history.beforeTransition();
+
+        triggerPopState({ id: "id-1" }, "https://example.com/home");
+        await flushMicrotasks();
+
+        expect(listener).toHaveBeenCalledWith("https://example.com/home", {
+            page: "home",
+        });
+        expect(tryScroll).toHaveBeenCalledWith(log, expect.any(Function), 0);
+        expect(log.info).toHaveBeenCalledWith("saving scroll position", 0);
     });
 
     test("logs when the previous history state was evicted from the LRU cache", () => {

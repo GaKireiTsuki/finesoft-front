@@ -10,6 +10,7 @@ const context: MessagesLoaderContext = {
 
 afterEach(() => {
     globalThis.__FINESOFT_I18N_LOADER__ = undefined;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
 });
 
@@ -36,4 +37,61 @@ describe("resolveGeneratedMessages", () => {
 
         await expect(resolveGeneratedMessages("en-US", context)).resolves.toBeUndefined();
     });
+
+    test("loads and caches generated message loaders exposed as module exports", async () => {
+        const specifier = makeDataModule(`
+            export async function loadMessages(locale, receivedContext) {
+                return {
+                    locale,
+                    runtime: receivedContext.runtime,
+                };
+            }
+        `);
+
+        vi.stubGlobal("__FINESOFT_I18N_LOADER_SPECIFIER__", specifier);
+
+        await expect(resolveGeneratedMessages("fr-FR", context)).resolves.toEqual({
+            locale: "fr-FR",
+            runtime: "browser",
+        });
+        expect(globalThis.__FINESOFT_I18N_LOADER__).toBeTypeOf("function");
+
+        vi.stubGlobal(
+            "__FINESOFT_I18N_LOADER_SPECIFIER__",
+            makeDataModule(`
+            export async function loadMessages() {
+                throw new Error("cached loader should be reused");
+            }
+        `),
+        );
+
+        await expect(resolveGeneratedMessages("de-DE", context)).resolves.toEqual({
+            locale: "de-DE",
+            runtime: "browser",
+        });
+    });
+
+    test("returns undefined when the generated module does not expose a loader", async () => {
+        vi.stubGlobal(
+            "__FINESOFT_I18N_LOADER_SPECIFIER__",
+            makeDataModule(`export const version = "1.0.0";`),
+        );
+
+        await expect(resolveGeneratedMessages("en-US", context)).resolves.toBeUndefined();
+        expect(globalThis.__FINESOFT_I18N_LOADER__).toBeUndefined();
+    });
+
+    test("returns undefined when importing the generated loader fails", async () => {
+        vi.stubGlobal(
+            "__FINESOFT_I18N_LOADER_SPECIFIER__",
+            makeDataModule(`throw new Error("boom");`),
+        );
+
+        await expect(resolveGeneratedMessages("en-US", context)).resolves.toBeUndefined();
+        expect(globalThis.__FINESOFT_I18N_LOADER__).toBeUndefined();
+    });
 });
+
+function makeDataModule(source: string): string {
+    return `data:text/javascript,${encodeURIComponent(source)}`;
+}

@@ -20,6 +20,15 @@ describe("metrics recorders", () => {
         expect(info).toHaveBeenCalledWith("[Telemetry:Click]", { id: 1 });
     });
 
+    test("ConsoleEventRecorder falls back to the default prefix and empty fields", () => {
+        const info = vi.spyOn(console, "info").mockImplementation(() => {});
+        const recorder = new ConsoleEventRecorder();
+
+        recorder.record("Idle");
+
+        expect(info).toHaveBeenCalledWith("[Metrics:Idle]", "");
+    });
+
     test("CompositeEventRecorder broadcasts records and delegates lifecycle hooks", async () => {
         const first = {
             record: vi.fn(),
@@ -45,6 +54,25 @@ describe("metrics recorders", () => {
         expect(second.destroy).toHaveBeenCalled();
     });
 
+    test("CompositeEventRecorder tolerates recorders without optional hooks", async () => {
+        const first = {
+            record: vi.fn(),
+        };
+        const second = {
+            record: vi.fn(),
+            flush: vi.fn(async () => {}),
+        };
+        const recorder = new CompositeEventRecorder([first, second]);
+
+        recorder.record("Load");
+        await expect(recorder.flush()).resolves.toBeUndefined();
+        expect(() => recorder.destroy()).not.toThrow();
+
+        expect(first.record).toHaveBeenCalledWith("Load", undefined);
+        expect(second.record).toHaveBeenCalledWith("Load", undefined);
+        expect(second.flush).toHaveBeenCalled();
+    });
+
     test("WithFieldsRecorder merges provider output and delegates flush/destroy", async () => {
         const inner = {
             record: vi.fn(),
@@ -67,6 +95,21 @@ describe("metrics recorders", () => {
         });
         expect(inner.flush).toHaveBeenCalled();
         expect(inner.destroy).toHaveBeenCalled();
+    });
+
+    test("WithFieldsRecorder works without per-call fields or optional lifecycle hooks", async () => {
+        const inner = {
+            record: vi.fn(),
+        };
+        const recorder = new WithFieldsRecorder(inner, [{ getFields: () => ({ app: "front" }) }]);
+
+        recorder.record("Heartbeat");
+        await expect(recorder.flush()).resolves.toBeUndefined();
+        expect(() => recorder.destroy()).not.toThrow();
+
+        expect(inner.record).toHaveBeenCalledWith("Heartbeat", {
+            app: "front",
+        });
     });
 
     test("VoidEventRecorder is a harmless no-op", async () => {
