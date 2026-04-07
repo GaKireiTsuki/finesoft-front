@@ -1,6 +1,6 @@
 {
     "name": "@finesoft/front",
-    "version": "0.1.63",
+    "version": "0.1.64",
     "description": "Full-stack framework: router, DI, actions, SSR, and server — all in one package",
     "license": "MIT",
     "files": [
