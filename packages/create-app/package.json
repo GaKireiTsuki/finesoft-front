@@ -4,9 +4,10 @@
     "description": "Scaffold a new Finesoft Front project",
     "license": "MIT",
     "bin": {
-        "create-finesoft-app": "dist/index.mjs"
+        "create-finesoft-app": "bin/create-finesoft-app.js"
     },
     "files": [
+        "bin",
         "dist",
         "templates"
     ],

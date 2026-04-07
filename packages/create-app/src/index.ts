@@ -2,6 +2,7 @@ import * as prompts from "@clack/prompts";
 import { bold, cyan, green, red } from "kolorist";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface FrameworkOption {
     name: string;
@@ -40,21 +41,46 @@ const FRAMEWORKS: FrameworkOption[] = [
     },
 ];
 
-async function main() {
+const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+export function validateProjectName(value: string): string | undefined {
+    if (!value) return "Project name is required";
+    if (/[^\w\-.]/.test(value)) return "Invalid project name";
+}
+
+export function getProjectNameFromArgs(argv: string[]): string | undefined {
+    return argv.find((arg) => !arg.startsWith("-"));
+}
+
+export function resolveTemplateDir(templateName: string): string {
+    return path.resolve(CURRENT_DIR, "..", "templates", templateName);
+}
+
+export async function run(argv = process.argv.slice(2)) {
     prompts.intro(bold("Create Finesoft App"));
+
+    const cliProjectName = getProjectNameFromArgs(argv);
+    const projectNameError = cliProjectName ? validateProjectName(cliProjectName) : undefined;
+
+    if (projectNameError) {
+        prompts.log.error(projectNameError);
+        process.exit(1);
+    }
 
     const project = await prompts.group(
         {
-            name: () =>
-                prompts.text({
+            name: () => {
+                if (cliProjectName) {
+                    return Promise.resolve(cliProjectName);
+                }
+
+                return prompts.text({
                     message: "Project name",
                     placeholder: "my-finesoft-app",
                     defaultValue: "my-finesoft-app",
-                    validate: (value) => {
-                        if (!value) return "Project name is required";
-                        if (/[^\w\-.]/.test(value)) return "Invalid project name";
-                    },
-                }),
+                    validate: validateProjectName,
+                });
+            },
             framework: () =>
                 prompts.select({
                     message: "Framework",
@@ -85,13 +111,7 @@ async function main() {
     const targetDir = path.resolve(process.cwd(), project.name);
     const templateName = project.variant as string;
 
-    // Resolve template directory — check relative to this script (npm package)
-    const templateDir = path.resolve(
-        new URL(".", import.meta.url).pathname,
-        "..",
-        "templates",
-        templateName,
-    );
+    const templateDir = resolveTemplateDir(templateName);
 
     if (!fs.existsSync(templateDir)) {
         prompts.log.error(`Template "${templateName}" not found at ${templateDir}`);
@@ -156,7 +176,14 @@ function copyDir(src: string, dest: string) {
     }
 }
 
-main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-});
+function isDirectExecution() {
+    if (!process.argv[1]) return false;
+    return path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+}
+
+if (isDirectExecution()) {
+    run().catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
+}
