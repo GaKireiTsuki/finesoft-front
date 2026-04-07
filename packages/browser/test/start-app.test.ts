@@ -5,13 +5,13 @@ const { registerActionHandlers } = vi.hoisted(() => ({
     registerActionHandlers: vi.fn(),
 }));
 
-vi.mock("./action-handlers/register", () => ({
+vi.mock("../src/action-handlers/register", () => ({
     registerActionHandlers,
 }));
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
-import { startBrowserApp } from "./start-app";
+import { startBrowserApp } from "../src/start-app";
 
 describe("startBrowserApp", () => {
     const target = {} as HTMLElement;
@@ -191,6 +191,79 @@ describe("startBrowserApp", () => {
         ).rejects.toThrow("failed to load messages");
 
         expect(mount).not.toHaveBeenCalled();
+    });
+
+    test("runs lifecycle hooks and surfaces a 404 page when the initial route is missing", async () => {
+        const events: string[] = [];
+        const updateApp = vi.fn((props: { page: Promise<unknown>; isFirstPage?: boolean }) => {
+            events.push("update");
+            return props;
+        });
+
+        await startBrowserApp({
+            bootstrap() {},
+            mount() {
+                events.push("mount");
+                return updateApp as never;
+            },
+            callbacks: makeCallbacks(),
+            onBeforeStart() {
+                events.push("before");
+            },
+            onAfterStart() {
+                events.push("after");
+            },
+        });
+
+        expect(events).toEqual(["before", "mount", "update", "after"]);
+        expect(updateApp).toHaveBeenCalledWith({
+            page: expect.any(Promise),
+            isFirstPage: true,
+        });
+        await expect(updateApp.mock.calls[0][0].page).rejects.toThrow("404");
+    });
+
+    test("rejects when translated startup work has no fetch implementation available", async () => {
+        vi.stubGlobal("fetch", undefined);
+
+        await expect(
+            startBrowserApp({
+                bootstrap() {},
+                mount() {
+                    return vi.fn();
+                },
+                callbacks: makeCallbacks(),
+                frameworkConfig: {
+                    locale: "en-US",
+                },
+                loadMessages: vi.fn(async (_locale, loaderContext) => {
+                    await loaderContext.fetch("https://example.com/messages.json");
+                    return {};
+                }),
+            }),
+        ).rejects.toThrow("[startBrowserApp] loadMessages requires a fetch implementation.");
+    });
+
+    test("rejects when the configured mount target does not exist", async () => {
+        vi.stubGlobal("document", {
+            documentElement: {
+                lang: "",
+                dir: "",
+            },
+            getElementById: vi.fn(() => null),
+        });
+
+        await expect(
+            startBrowserApp({
+                bootstrap(framework) {
+                    framework.router.add("/", "home");
+                },
+                mount() {
+                    return vi.fn();
+                },
+                callbacks: makeCallbacks(),
+            }),
+        ).rejects.toThrow("[startBrowserApp] Mount target not found: #app.");
     });
 });
 

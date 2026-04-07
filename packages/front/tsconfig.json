@@ -9,5 +9,5 @@
             "@finesoft/server": ["../server/src/index.ts"]
         }
     },
-    "include": ["src"]
+    "include": ["src", "test"]
 }

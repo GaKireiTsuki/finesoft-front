@@ -1,0 +1,16 @@
+name: finesoft-front-codeql
+
+paths:
+    - packages/core
+    - packages/browser
+    - packages/ssr
+    - packages/server
+    - packages/front
+
+paths-ignore:
+    - "**/dist/**"
+    - "**/test/**"
+    - "packages/create-app/**"
+    - "templates/**"
+    - "docs/**"
+    - "scripts/**"

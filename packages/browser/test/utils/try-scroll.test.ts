@@ -1,6 +1,6 @@
 import type { Logger } from "@finesoft/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { cancelTryScroll, tryScroll } from "./try-scroll";
+import { cancelTryScroll, tryScroll } from "../../src/utils/try-scroll";
 
 interface ScrollableElementLike {
     clientHeight: number;
@@ -79,7 +79,10 @@ describe("tryScroll", () => {
 
     test("restores scroll after delayed content growth", () => {
         const log = makeLogger();
-        const element = makeScrollableElement({ clientHeight: 100, scrollHeight: 100 });
+        const element = makeScrollableElement({
+            clientHeight: 100,
+            scrollHeight: 100,
+        });
 
         tryScroll(log, () => element as HTMLElement, 400);
         flushAnimationFrames();
@@ -114,7 +117,10 @@ describe("tryScroll", () => {
 
         expect(log.warn).not.toHaveBeenCalled();
 
-        element = makeScrollableElement({ clientHeight: 100, scrollHeight: 500 });
+        element = makeScrollableElement({
+            clientHeight: 100,
+            scrollHeight: 500,
+        });
         MutationObserverMock.triggerAll();
         flushAnimationFrames();
 
@@ -130,8 +136,14 @@ describe("tryScroll", () => {
 
     test("cancels the previous pending restoration", () => {
         const log = makeLogger();
-        const firstElement = makeScrollableElement({ clientHeight: 100, scrollHeight: 100 });
-        const secondElement = makeScrollableElement({ clientHeight: 100, scrollHeight: 100 });
+        const firstElement = makeScrollableElement({
+            clientHeight: 100,
+            scrollHeight: 100,
+        });
+        const secondElement = makeScrollableElement({
+            clientHeight: 100,
+            scrollHeight: 100,
+        });
 
         tryScroll(log, () => firstElement as HTMLElement, 400);
         flushAnimationFrames();
@@ -151,7 +163,10 @@ describe("tryScroll", () => {
 
     test("stops trying after explicit cancellation", () => {
         const log = makeLogger();
-        const element = makeScrollableElement({ clientHeight: 100, scrollHeight: 100 });
+        const element = makeScrollableElement({
+            clientHeight: 100,
+            scrollHeight: 100,
+        });
 
         tryScroll(log, () => element as HTMLElement, 240);
         flushAnimationFrames();

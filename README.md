@@ -479,9 +479,29 @@ vp install            # Install dependencies
 vp dev                # Start dev server
 vp check              # Format + lint + type-check
 vp test               # Run tests
+vp test --coverage    # Run tests with full source coverage reports
 vp run build -r       # Build all packages
 vp ready              # fmt + lint + build (full validation)
 ```
+
+## Quality & Analysis
+
+The repository ships with both runtime quality checks and security-oriented static analysis:
+
+- `vp check` — formatting, linting, and type-aware static analysis
+- `vp test --coverage` — full source coverage for framework packages, with reports written to `reports/coverage/`
+- GitHub Actions `Quality` workflow — runs checks plus coverage on pushes and pull requests
+- GitHub Actions `CodeQL` workflow — runs scheduled and PR security/quality code scanning for framework source files
+
+Coverage is collected for framework source under:
+
+- `packages/core/src/**`
+- `packages/browser/src/**`
+- `packages/ssr/src/**`
+- `packages/server/src/**`
+- `packages/front/src/**`
+
+Test files, templates, docs, scripts, generated output, and the app scaffolding package are excluded from coverage and CodeQL scope so analysis stays focused on framework source.
 
 ## Release
 

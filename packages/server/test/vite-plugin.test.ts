@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 vi.mock("@finesoft/ssr", async () => import("../../ssr/src/index.ts"));
 
-import { finesoftFrontViteConfig } from "./vite-plugin";
+import { finesoftFrontViteConfig } from "../src/vite-plugin";
 
 const tempDirs: string[] = [];
 

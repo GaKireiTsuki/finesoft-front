@@ -8,5 +8,5 @@
             "@finesoft/ssr": ["../ssr/src/index.ts"]
         }
     },
-    "include": ["src"]
+    "include": ["src", "test"]
 }
