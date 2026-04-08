@@ -31,10 +31,10 @@
         "@finesoft/ssr": "workspace:*"
     },
     "devDependencies": {
-        "@hono/node-server": "^1.14.1",
+        "@hono/node-server": "^1.19.13",
         "@types/node": "catalog:",
         "dotenv": "^17.3.1",
-        "hono": "^4.7.10",
+        "hono": "^4.12.12",
         "vite": "catalog:",
         "vite-plus": "catalog:"
     },
