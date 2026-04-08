@@ -2,7 +2,14 @@
     "extends": "../../tsconfig.json",
     "compilerOptions": {
         "outDir": "dist",
+        "rootDir": "../..",
+        "jsx": "react-jsx",
         "paths": {
+            "@finesoft/front": ["./src/index.ts"],
+            "@finesoft/front/browser": ["./src/browser.ts"],
+            "@finesoft/front/react": ["./src/react/index.tsx"],
+            "@finesoft/front/vue": ["./src/vue/index.ts"],
+            "@finesoft/front/svelte": ["./src/svelte/index.ts"],
             "@finesoft/core": ["../core/src/index.ts"],
             "@finesoft/browser": ["../browser/src/index.ts"],
             "@finesoft/ssr": ["../ssr/src/index.ts"],

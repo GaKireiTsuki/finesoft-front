@@ -9,13 +9,7 @@
  * 5. 初始页面触发
  */
 
-import type {
-    BasePage,
-    FrameworkConfig,
-    Logger,
-    MessagesLoader,
-    TranslationMessages,
-} from "@finesoft/core";
+import type { FrameworkConfig, Logger, MessagesLoader, TranslationMessages } from "@finesoft/core";
 import {
     DEP_KEYS,
     Framework,
@@ -25,7 +19,9 @@ import {
     type LoggerFactory,
 } from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
+import { KeepAliveController, type KeepAliveOptions } from "./keep-alive";
 import { createPrefetchedIntentsFromDom } from "./server-data";
+import type { BrowserMountContext, BrowserUpdateAppProps } from "./types";
 
 interface InternalBrowserFrameworkConfig extends FrameworkConfig {
     _resolvedMessages?: TranslationMessages;
@@ -66,8 +62,8 @@ export interface BrowserAppConfig {
      */
     mount: (
         target: HTMLElement,
-        context: { framework: Framework },
-    ) => (props: { page: Promise<BasePage> | BasePage; isFirstPage?: boolean }) => void;
+        context: BrowserMountContext,
+    ) => (props: BrowserUpdateAppProps) => void;
 
     /** FlowAction / ExternalUrl 回调 */
     callbacks: FlowActionCallbacks;
@@ -79,6 +75,9 @@ export interface BrowserAppConfig {
      * prefetchedIntents 由框架自动从 DOM 提取，无需传入。
      */
     frameworkConfig?: Omit<import("@finesoft/core").FrameworkConfig, "prefetchedIntents">;
+
+    /** 页面 KeepAlive 缓存配置 */
+    keepAlive?: KeepAliveOptions;
 
     /**
      * 异步加载当前 locale 的翻译字典。
@@ -103,6 +102,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         onAfterStart,
         frameworkConfig,
         loadMessages,
+        keepAlive: keepAliveOptions,
     } = config;
     const bootstrapConfig = getBootstrapConfig(bootstrap);
     const resolvedFrameworkConfig = {
@@ -136,6 +136,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         prefetchedIntents,
     } as InternalBrowserFrameworkConfig);
     bootstrap(framework);
+    const keepAlive = new KeepAliveController(keepAliveOptions);
 
     const loggerFactory = framework.container.resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
     const log: Logger = loggerFactory.loggerFor("browser");
@@ -161,7 +162,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
                 `Ensure your HTML has <div id="${mountId}"></div>.`,
         );
     }
-    const updateApp = mount(target, { framework });
+    const updateApp = mount(target, { framework, keepAlive });
 
     // 5. 注册 Action Handlers
     registerActionHandlers({
@@ -169,6 +170,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         log,
         callbacks,
         updateApp,
+        keepAlive,
         getScrollablePageElement: config.getScrollablePageElement,
     });
 
@@ -179,6 +181,9 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         updateApp({
             page: Promise.reject(new Error("404")),
             isFirstPage: true,
+            cacheKey: initialUrl,
+            cacheHit: false,
+            navigationType: "initial",
         });
     }
 

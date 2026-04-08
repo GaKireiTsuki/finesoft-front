@@ -236,6 +236,27 @@ describe("startBrowserApp", () => {
         expect(explicitLoadMessages).toHaveBeenCalledTimes(1);
     });
 
+    test("exposes the keepAlive controller to mount callbacks", async () => {
+        let keepAliveMethods: string[] = [];
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+            },
+            mount(_target, context) {
+                keepAliveMethods = [
+                    typeof context.keepAlive.markCacheable,
+                    typeof context.keepAlive.evict,
+                    typeof context.keepAlive.evictAll,
+                ];
+                return vi.fn();
+            },
+            callbacks: makeCallbacks(),
+        });
+
+        expect(keepAliveMethods).toEqual(["function", "function", "function"]);
+    });
+
     test("rejects startup when loadMessages fails before mount", async () => {
         const mount = vi.fn();
 

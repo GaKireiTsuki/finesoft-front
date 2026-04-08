@@ -23,17 +23,27 @@ export class LruMap<K, V> {
         return value;
     }
 
-    set(key: K, value: V): void {
+    set(key: K, value: V): { key: K; value: V } | undefined {
+        let evicted: { key: K; value: V } | undefined;
+
         if (this.map.has(key)) {
             this.map.delete(key);
         } else if (this.map.size >= this.capacity) {
             // 删除最旧的（第一个）
             const oldest = this.map.keys().next().value;
             if (oldest !== undefined) {
+                const oldestValue = this.map.get(oldest);
                 this.map.delete(oldest);
+                if (oldestValue !== undefined) {
+                    evicted = {
+                        key: oldest,
+                        value: oldestValue,
+                    };
+                }
             }
         }
         this.map.set(key, value);
+        return evicted;
     }
 
     has(key: K): boolean {
@@ -50,5 +60,9 @@ export class LruMap<K, V> {
 
     clear(): void {
         this.map.clear();
+    }
+
+    keys(): IterableIterator<K> {
+        return this.map.keys();
     }
 }

@@ -2,11 +2,21 @@
  * FlowAction Handler — 核心 SPA 导航处理器
  *
  * 通过 FlowActionCallbacks 注入 UI 更新回调，
- * 不直接依赖任何 UI 框架的 store。
+ * 不直接依赖任何 UI 框架状态容器。
  */
 
-import type { BasePage, FlowAction, Framework, Logger, PostLoadContext } from "@finesoft/core";
+import type {
+    BasePage,
+    FlowAction,
+    Framework,
+    Logger,
+    PostLoadContext,
+    RouteMatch,
+} from "@finesoft/core";
 import { ACTION_KINDS, createBrowserContext } from "@finesoft/core";
+import type { KeepAliveController } from "../keep-alive";
+import { toKeepAliveCacheKey } from "../keep-alive";
+import type { BrowserNavigationType, BrowserUpdateAppProps } from "../types";
 import { History } from "../utils/history";
 
 /** FlowAction handler 的 History state */
@@ -14,7 +24,7 @@ interface FlowState {
     page: BasePage;
 }
 
-/** UI 框架回调 — 解耦 Svelte store 等依赖 */
+/** UI 框架回调 — 解耦 React / Vue / Svelte 等依赖 */
 export interface FlowActionCallbacks {
     /** 导航后更新当前路径（替代 currentPath.set()） */
     onNavigate(pathname: string): void;
@@ -28,13 +38,33 @@ export interface FlowActionDependencies {
     log: Logger;
     callbacks: FlowActionCallbacks;
     /** 更新应用 UI 的回调，page 可以是 Promise */
-    updateApp: (props: { page: Promise<BasePage> | BasePage; isFirstPage?: boolean }) => void;
+    updateApp: (props: BrowserUpdateAppProps) => void;
+    keepAlive: KeepAliveController;
     /** 获取可滚动页面元素，用于滚动位置保存/恢复 */
     getScrollablePageElement?: () => HTMLElement | null;
 }
 
+interface NavigationCommitOptions {
+    page: BasePage;
+    url: string;
+    requestedKey: string;
+    navCtx: ReturnType<typeof createBrowserContext>;
+    match: RouteMatch;
+    redirectCount: number;
+    thisNav: number;
+    shouldReplace: boolean;
+    navigationType: BrowserNavigationType;
+}
+
+interface NavigationCommitResult {
+    committed: boolean;
+    page: BasePage;
+    canonicalUrl: string;
+    cacheKey: string;
+}
+
 export function registerFlowActionHandler(deps: FlowActionDependencies): void {
-    const { framework, log, callbacks, updateApp } = deps;
+    const { framework, log, callbacks, updateApp, keepAlive } = deps;
     let isFirstPage = true;
     let navigationId = 0;
 
@@ -54,7 +84,12 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
      * 核心导航逻辑（支持递归重定向）
      * @param redirectCount 当前重定向次数，用于循环保护
      */
-    async function navigateTo(url: string, redirectCount: number, thisNav: number): Promise<void> {
+    async function navigateTo(
+        url: string,
+        redirectCount: number,
+        thisNav: number,
+        navigationType: BrowserNavigationType,
+    ): Promise<void> {
         if (redirectCount >= MAX_REDIRECTS) {
             log.error(
                 `Navigation redirect loop detected (${MAX_REDIRECTS} redirects), stopping at: ${url}`,
@@ -64,6 +99,7 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
 
         const shouldReplace =
             isFirstPage || url === window.location.pathname + window.location.search;
+        const requestedKey = toKeepAliveCacheKey(url);
 
         const match = framework.routeUrl(url);
         if (!match) {
@@ -81,23 +117,54 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
 
         if (beforeResult.kind === "redirect") {
             log.debug(`beforeLoad → redirect to ${beforeResult.url}`);
-            await navigateTo(beforeResult.url, redirectCount + 1, thisNav);
+            await navigateTo(beforeResult.url, redirectCount + 1, thisNav, "redirect");
             return;
         }
         if (beforeResult.kind === "deny") {
             log.warn(`beforeLoad → denied (${beforeResult.status}): ${beforeResult.message}`);
             return;
         }
-        // rewrite in beforeLoad: 无数据可言，当作 redirect 处理
         if (beforeResult.kind === "rewrite") {
             log.debug(`beforeLoad → rewrite to ${beforeResult.url}`);
-            await navigateTo(beforeResult.url, redirectCount + 1, thisNav);
+            await navigateTo(beforeResult.url, redirectCount + 1, thisNav, "redirect");
+            return;
+        }
+
+        const cachedMatch = keepAlive.resolve(requestedKey);
+        if (cachedMatch) {
+            history.beforeTransition();
+
+            updateApp({
+                page: cachedMatch.entry.page,
+                isFirstPage,
+                cacheKey: cachedMatch.key,
+                cacheHit: true,
+                navigationType,
+            });
+
+            const committed = await finalizeNavigation({
+                page: cachedMatch.entry.page,
+                url,
+                requestedKey,
+                navCtx,
+                match,
+                redirectCount,
+                thisNav,
+                shouldReplace,
+                navigationType,
+            });
+
+            if (committed.committed) {
+                isFirstPage = false;
+            }
             return;
         }
 
         const pagePromise = framework.dispatch(match.intent) as Promise<BasePage>;
 
-        await Promise.race([pagePromise, new Promise((r) => setTimeout(r, 500))]).catch(() => {});
+        await Promise.race([pagePromise, new Promise((resolve) => setTimeout(resolve, 500))]).catch(
+            () => {},
+        );
 
         if (thisNav !== navigationId) {
             log.info("FlowAction superseded by newer navigation", url);
@@ -114,42 +181,28 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
                         return page;
                     }
 
-                    // ===== afterLoad 中间件 =====
-                    const postCtx: PostLoadContext = {
-                        ...navCtx,
+                    const committed = await finalizeNavigation({
                         page,
-                    };
-                    const afterResult = await framework.runAfterLoad(postCtx, match.afterGuards);
+                        url,
+                        requestedKey,
+                        navCtx,
+                        match,
+                        redirectCount,
+                        thisNav,
+                        shouldReplace,
+                        navigationType,
+                    });
 
-                    if (afterResult.kind === "redirect") {
-                        log.debug(`afterLoad → redirect to ${afterResult.url}`);
-                        void navigateTo(afterResult.url, redirectCount + 1, thisNav);
-                        return page;
+                    if (committed.committed && committed.cacheKey !== requestedKey) {
+                        updateApp({
+                            page,
+                            cacheKey: committed.cacheKey,
+                            cacheHit: false,
+                            navigationType,
+                        });
                     }
 
-                    let canonicalURL = url;
-
-                    if (afterResult.kind === "rewrite") {
-                        // rewrite: 仅更新地址栏，保留已加载的 page 数据
-                        canonicalURL = afterResult.url;
-                        log.debug(`afterLoad → rewrite URL to ${canonicalURL}`);
-                    }
-
-                    if (afterResult.kind === "deny") {
-                        log.warn(`afterLoad → denied (${afterResult.status})`);
-                        return page;
-                    }
-
-                    if (shouldReplace) {
-                        history.replaceState({ page }, canonicalURL);
-                    } else {
-                        history.pushState({ page }, canonicalURL);
-                    }
-
-                    callbacks.onNavigate(new URL(canonicalURL, window.location.origin).pathname);
-
-                    didEnterPage(page);
-                    return page;
+                    return committed.page;
                 },
                 (error: unknown) => {
                     // 页面加载失败仍需推入历史记录，确保 back/forward 正常
@@ -168,9 +221,73 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
                 },
             ),
             isFirstPage,
+            cacheKey: requestedKey,
+            cacheHit: false,
+            navigationType,
         });
 
         isFirstPage = false;
+    }
+
+    async function finalizeNavigation(
+        options: NavigationCommitOptions,
+    ): Promise<NavigationCommitResult> {
+        const { page, url, requestedKey, navCtx, match, redirectCount, thisNav, shouldReplace } =
+            options;
+
+        const postCtx: PostLoadContext = {
+            ...navCtx,
+            page,
+        };
+        const afterResult = await framework.runAfterLoad(postCtx, match.afterGuards);
+
+        if (afterResult.kind === "redirect") {
+            log.debug(`afterLoad → redirect to ${afterResult.url}`);
+            void navigateTo(afterResult.url, redirectCount + 1, thisNav, "redirect");
+            return {
+                committed: false,
+                page,
+                canonicalUrl: url,
+                cacheKey: requestedKey,
+            };
+        }
+
+        let canonicalUrl = url;
+
+        if (afterResult.kind === "rewrite") {
+            canonicalUrl = afterResult.url;
+            log.debug(`afterLoad → rewrite URL to ${canonicalUrl}`);
+        }
+
+        if (afterResult.kind === "deny") {
+            log.warn(`afterLoad → denied (${afterResult.status})`);
+            return {
+                committed: true,
+                page,
+                canonicalUrl,
+                cacheKey: toKeepAliveCacheKey(canonicalUrl),
+            };
+        }
+
+        const cacheKey = toKeepAliveCacheKey(canonicalUrl);
+        keepAlive.remember(cacheKey, page, [requestedKey]);
+
+        if (shouldReplace) {
+            history.replaceState({ page }, canonicalUrl);
+        } else {
+            history.pushState({ page }, canonicalUrl);
+        }
+
+        callbacks.onNavigate(new URL(canonicalUrl, window.location.origin).pathname);
+
+        didEnterPage(page);
+
+        return {
+            committed: true,
+            page,
+            canonicalUrl,
+            cacheKey,
+        };
     }
 
     // ===== FlowAction handler =====
@@ -179,7 +296,6 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
         const url = flowAction.url;
         log.debug(`FlowAction → ${url}`);
 
-        // 模态展示
         if (flowAction.presentationContext === "modal") {
             const match = framework.routeUrl(url);
             if (match) {
@@ -190,37 +306,35 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
         }
 
         const thisNav = ++navigationId;
-        await navigateTo(url, 0, thisNav);
+        await navigateTo(url, 0, thisNav, "navigate");
     });
 
     // ===== popstate handler =====
     history.onPopState(async (url, cachedState) => {
         log.debug(`popstate → ${url}, cached=${!!cachedState}`);
 
-        callbacks.onNavigate(new URL(url).pathname);
-
-        if (cachedState) {
-            const { page } = cachedState;
-            didEnterPage(page);
-            updateApp({ page, isFirstPage });
-            return;
-        }
-
         const parsed = new URL(url);
-        const routeMatch = framework.routeUrl(parsed.pathname + parsed.search);
+        const currentUrl = parsed.pathname + parsed.search;
+        const currentKey = toKeepAliveCacheKey(currentUrl);
+
+        callbacks.onNavigate(parsed.pathname);
+
+        const routeMatch = framework.routeUrl(currentUrl);
         if (!routeMatch) {
             log.error("received popstate without data, but URL was unroutable:", url);
             didEnterPage(null);
             updateApp({
                 page: Promise.reject(new Error("404")),
                 isFirstPage,
+                cacheKey: currentKey,
+                cacheHit: false,
+                navigationType: "popstate",
             });
             return;
         }
 
-        // ===== beforeLoad 中间件 =====
         const navCtx = createBrowserContext({
-            url: parsed.pathname + parsed.search,
+            url: currentUrl,
             intent: routeMatch.intent,
             container: framework.container,
         });
@@ -229,30 +343,110 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
         if (beforeResult.kind === "redirect") {
             log.debug(`popstate beforeLoad → redirect to ${beforeResult.url}`);
             const thisNav = ++navigationId;
-            await navigateTo(beforeResult.url, 0, thisNav);
+            await navigateTo(beforeResult.url, 0, thisNav, "redirect");
             return;
         }
         if (beforeResult.kind === "deny" || beforeResult.kind === "rewrite") {
-            // popstate 场景下 deny/rewrite 直接触发跳转
             if (beforeResult.kind === "deny") {
-                log.warn(`popstate beforeLoad → denied`);
+                log.warn("popstate beforeLoad → denied");
             } else {
                 const thisNav = ++navigationId;
-                await navigateTo(beforeResult.url, 0, thisNav);
+                await navigateTo(beforeResult.url, 0, thisNav, "redirect");
             }
             return;
         }
 
-        const pagePromise = framework.dispatch(routeMatch.intent) as Promise<BasePage>;
+        const cachedMatch = keepAlive.resolve(currentKey);
+        if (cachedMatch) {
+            updateApp({
+                page: cachedMatch.entry.page,
+                isFirstPage,
+                cacheKey: cachedMatch.key,
+                cacheHit: true,
+                navigationType: "popstate",
+            });
 
-        await Promise.race([pagePromise, new Promise((r) => setTimeout(r, 500))]).catch(() => {});
+            const committed = await finalizeNavigation({
+                page: cachedMatch.entry.page,
+                url: currentUrl,
+                requestedKey: currentKey,
+                navCtx,
+                match: routeMatch,
+                redirectCount: 0,
+                thisNav: navigationId,
+                shouldReplace: true,
+                navigationType: "popstate",
+            });
+
+            if (committed.committed && committed.cacheKey !== currentKey) {
+                updateApp({
+                    page: cachedMatch.entry.page,
+                    cacheKey: committed.cacheKey,
+                    cacheHit: true,
+                    navigationType: "popstate",
+                });
+            }
+            return;
+        }
+
+        if (cachedState) {
+            const { page } = cachedState;
+            const committed = await finalizeNavigation({
+                page,
+                url: currentUrl,
+                requestedKey: currentKey,
+                navCtx,
+                match: routeMatch,
+                redirectCount: 0,
+                thisNav: navigationId,
+                shouldReplace: true,
+                navigationType: "popstate",
+            });
+
+            updateApp({
+                page,
+                isFirstPage,
+                cacheKey: committed.cacheKey,
+                cacheHit: false,
+                navigationType: "popstate",
+            });
+            return;
+        }
+
+        const pagePromise = framework.dispatch(routeMatch.intent) as Promise<BasePage>;
+        await Promise.race([pagePromise, new Promise((resolve) => setTimeout(resolve, 500))]).catch(
+            () => {},
+        );
 
         updateApp({
-            page: pagePromise.then((page: BasePage): BasePage => {
-                didEnterPage(page);
-                return page;
+            page: pagePromise.then(async (page: BasePage): Promise<BasePage> => {
+                const committed = await finalizeNavigation({
+                    page,
+                    url: currentUrl,
+                    requestedKey: currentKey,
+                    navCtx,
+                    match: routeMatch,
+                    redirectCount: 0,
+                    thisNav: navigationId,
+                    shouldReplace: true,
+                    navigationType: "popstate",
+                });
+
+                if (committed.cacheKey !== currentKey) {
+                    updateApp({
+                        page,
+                        cacheKey: committed.cacheKey,
+                        cacheHit: false,
+                        navigationType: "popstate",
+                    });
+                }
+
+                return committed.page;
             }),
             isFirstPage,
+            cacheKey: currentKey,
+            cacheHit: false,
+            navigationType: "popstate",
         });
     });
 
@@ -262,8 +456,8 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
                 if (page) {
                     framework.didEnterPage(page);
                 }
-            } catch (e) {
-                log.error("didEnterPage error:", e);
+            } catch (error) {
+                log.error("didEnterPage error:", error);
             }
         })();
     }

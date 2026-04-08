@@ -1,4 +1,5 @@
 import type { Action } from "@finesoft/front";
+import { KeepAlivePageView, type KeepAliveViewEntry } from "@finesoft/front/react";
 import type { AppPage } from "../lib/models/product";
 import About from "../pages/About";
 import Home from "../pages/Home";
@@ -7,12 +8,31 @@ import ProductDetail from "../pages/ProductDetail";
 import Search from "../pages/Search";
 
 interface PageRendererProps {
-    page: AppPage;
+    pages: readonly KeepAliveViewEntry<AppPage>[];
     onAction?: (action: Action) => void;
+    onCacheable?: (cacheKey: string, page: AppPage) => void;
 }
 
 /** 根据 pageType 分发渲染对应组件 */
-export function PageRenderer({ page, onAction }: PageRendererProps) {
+export function PageRenderer({ pages, onAction, onCacheable }: PageRendererProps) {
+    return (
+        <>
+            {pages.map((entry) => (
+                <KeepAlivePageView
+                    key={entry.key}
+                    cacheKey={entry.key}
+                    page={entry.page}
+                    active={entry.active}
+                    onCacheable={onCacheable}
+                >
+                    {renderPage(entry.page, onAction)}
+                </KeepAlivePageView>
+            ))}
+        </>
+    );
+}
+
+function renderPage(page: AppPage, onAction?: (action: Action) => void) {
     switch (page.pageType) {
         case "home":
             return <Home page={page} onAction={onAction} />;

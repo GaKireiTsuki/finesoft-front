@@ -12,6 +12,15 @@ export { registerActionHandlers, type ActionHandlerDependencies } from "./action
 
 // ===== Browser App =====
 export { startBrowserApp, type BrowserAppConfig } from "./start-app";
+export {
+    KeepAliveController,
+    type KeepAliveEntry,
+    type KeepAliveEvent,
+    type KeepAliveMatch,
+    type KeepAliveOptions,
+    toKeepAliveCacheKey,
+} from "./keep-alive";
+export type { BrowserMountContext, BrowserNavigationType, BrowserUpdateAppProps } from "./types";
 
 // ===== Browser Utils =====
 export { History } from "./utils/history";

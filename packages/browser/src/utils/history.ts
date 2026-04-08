@@ -81,7 +81,7 @@ export class History<State> {
 
             const entry = this.currentStateId ? this.entries.get(this.currentStateId) : undefined;
 
-            listener(window.location.href, entry?.state);
+            void listener(window.location.href, entry?.state);
 
             if (!entry) {
                 return;
