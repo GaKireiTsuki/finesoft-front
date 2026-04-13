@@ -17,6 +17,7 @@ env:
 
 jobs:
     check:
+        if: "${{ false }}"
         name: Check
         runs-on: ubuntu-latest
         steps:

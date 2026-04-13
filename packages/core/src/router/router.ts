@@ -34,6 +34,11 @@ interface InternalRouteDefinition {
     afterGuards?: AfterLoadGuard[];
 }
 
+function createNullPrototypeRecord(source?: Record<string, string>): Record<string, string> {
+    // 通过一个无原型的目标对象进行复制，这样 URL 控制的键就保持为惰性数据。
+    return Object.assign(Object.create(null), source) as Record<string, string>;
+}
+
 export class Router {
     private routes: InternalRouteDefinition[] = [];
 
@@ -87,14 +92,11 @@ export class Router {
             if (match) {
                 // 使用无原型对象，这样 URL 提供的键就不会通过像 "__proto__" 这样的特殊名称
                 // 去篡改 Object.prototype。
-                const params = Object.create(null) as Record<string, string>;
+                const params = createNullPrototypeRecord(queryParams);
                 route.paramNames.forEach((name, index) => {
                     const value = match[index + 1];
                     if (value) params[name] = value;
                 });
-                for (const [k, v] of Object.entries(queryParams)) {
-                    if (!(k in params)) params[k] = v;
-                }
 
                 return {
                     intent: { id: route.intentId, params },
@@ -120,17 +122,15 @@ export class Router {
     } {
         try {
             const parsed = new URL(url, "http://localhost");
-            // Query parameter names come from the URL, so keep them in a
-            // null-prototype object to avoid prototype pollution sinks.
-            const params = Object.create(null) as Record<string, string>;
-            parsed.searchParams.forEach((v, k) => {
-                params[k] = v;
-            });
+            // 查询参数名称来自 URL，因此将它们保存在无原型对象中，以避免潜在的原型污染问题。
+            const params = createNullPrototypeRecord(
+                Object.fromEntries(parsed.searchParams) as Record<string, string>,
+            );
             return { path: parsed.pathname, queryParams: params };
         } catch {
             return {
                 path: url.split("?")[0].split("#")[0],
-                queryParams: Object.create(null) as Record<string, string>,
+                queryParams: createNullPrototypeRecord(),
             };
         }
     }
