@@ -15,6 +15,7 @@
         "@changesets/cli": "catalog:",
         "@vitest/coverage-v8": "catalog:",
         "typescript": "catalog:",
+        "vite": "catalog:",
         "vite-plus": "catalog:"
     },
     "engines": {
