@@ -17,6 +17,7 @@ jobs:
         name: Release
         runs-on: ubuntu-latest
         permissions:
+            actions: write
             contents: write
             pull-requests: write
         steps:
@@ -52,6 +53,28 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+            - name: Request required checks for release pull request
+              if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != '' }}"
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+              run: |
+                  HEAD_REF=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefName --jq '.headRefName')
+
+                  echo "Dispatching Coverage and CodeQL for release PR #$PR_NUMBER on $HEAD_REF"
+
+                  gh api \
+                      --method POST \
+                      -H "Accept: application/vnd.github+json" \
+                      "/repos/$GITHUB_REPOSITORY/actions/workflows/quality.yml/dispatches" \
+                      -f ref="$HEAD_REF"
+
+                  gh api \
+                      --method POST \
+                      -H "Accept: application/vnd.github+json" \
+                      "/repos/$GITHUB_REPOSITORY/actions/workflows/codeql.yml/dispatches" \
+                      -f ref="$HEAD_REF"
+
             - name: Enable auto-merge for release pull request
               if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != '' }}"
               env:
@@ -80,6 +103,8 @@ jobs:
                           node -e 'const packages = JSON.parse(process.env.PUBLISHED_PACKAGES ?? "[]"); for (const pkg of packages) console.log(`- \`${pkg.name}@${pkg.version}\``);'
                       elif [[ "$HAS_CHANGESETS" == "true" ]]; then
                           echo "Release PR: #$PULL_REQUEST_NUMBER"
+                          echo
+                          echo "Coverage and CodeQL workflows were dispatched for the release PR branch."
                           echo
                           echo "Auto-merge has been requested for the release PR when repository settings allow it."
                       else
