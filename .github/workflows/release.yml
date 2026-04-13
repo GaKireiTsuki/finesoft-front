@@ -13,63 +13,76 @@ env:
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-    prepare-release:
-        name: Prepare Release
-        if: "${{ !startsWith(github.event.head_commit.message, 'chore: release @finesoft/front ') }}"
+    release:
+        name: Release
         runs-on: ubuntu-latest
         permissions:
             contents: write
+            pull-requests: write
         steps:
             - name: Checkout
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
-            - name: Setup pnpm
-              uses: pnpm/action-setup@v4
-
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
+            - name: Setup Vite+
+              uses: voidzero-dev/setup-vp@v1
               with:
                   node-version: 24
-                  cache: pnpm
-                  registry-url: https://registry.npmjs.org
+                  cache: true
 
             - name: Install dependencies
-              run: pnpm install --frozen-lockfile
-
-            - name: Build packages
-              run: pnpm build:packages
+              run: vp install --frozen-lockfile
 
             - name: Generate auto changeset
-              run: pnpm release:auto:changeset
+              if: "${{ !startsWith(github.event.head_commit.message, 'chore(release): version packages') }}"
+              run: vp run release:auto:changeset
 
-            - name: Version packages
-              run: pnpm changeset version
+            - name: Create release pull request or publish
+              id: changesets
+              uses: changesets/action@v1
+              with:
+                  version: vp run version
+                  publish: vp run release
+                  commit: "chore(release): version packages"
+                  title: "chore(release): version packages"
+                  createGithubReleases: false
+                  commitMode: github-api
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-            - name: Commit and push release version
-              id: commit_release
-              shell: bash
+            - name: Enable auto-merge for release pull request
+              if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != '' }}"
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  if git diff --quiet; then
-                    echo "version_changed=false" >> "$GITHUB_OUTPUT"
-                    echo "No version changes to commit."
-                    exit 0
+                  if gh pr merge --repo "$GITHUB_REPOSITORY" --auto --squash "${{ steps.changesets.outputs.pullRequestNumber }}"; then
+                      echo "Enabled auto-merge for release PR #${{ steps.changesets.outputs.pullRequestNumber }}."
+                  else
+                      echo "::warning::Could not enable auto-merge for release PR #${{ steps.changesets.outputs.pullRequestNumber }}. Check whether auto-merge is enabled for this repository."
                   fi
 
-                  VERSION=$(node -p "require('./packages/front/package.json').version")
-                  echo "version_changed=true" >> "$GITHUB_OUTPUT"
-                  echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-                  git config user.name "github-actions[bot]"
-                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-                  git add -A .changeset packages/front/package.json packages/front/CHANGELOG.md packages/create-app/package.json packages/create-app/CHANGELOG.md
-                  git commit -m "chore: release @finesoft/front ${VERSION}"
-                  git push
-
-            - name: Publish packages
-              if: steps.commit_release.outputs.version_changed == 'true'
-              run: pnpm release
+            - name: Summarize release result
+              if: "${{ always() }}"
               env:
-                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  HAS_CHANGESETS: ${{ steps.changesets.outputs.hasChangesets }}
+                  PUBLISHED: ${{ steps.changesets.outputs.published }}
+                  PULL_REQUEST_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+                  PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+              run: |
+                  {
+                      echo "## Release workflow"
+                      echo
+
+                      if [[ "$PUBLISHED" == "true" ]]; then
+                          echo "Published packages:"
+                          node -e 'const packages = JSON.parse(process.env.PUBLISHED_PACKAGES ?? "[]"); for (const pkg of packages) console.log(`- \`${pkg.name}@${pkg.version}\``);'
+                      elif [[ "$HAS_CHANGESETS" == "true" ]]; then
+                          echo "Release PR: #$PULL_REQUEST_NUMBER"
+                          echo
+                          echo "Auto-merge has been requested for the release PR when repository settings allow it."
+                      else
+                          echo "No pending changesets were found."
+                      fi
+                  } >> "$GITHUB_STEP_SUMMARY"
