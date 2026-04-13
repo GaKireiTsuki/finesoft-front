@@ -1,5 +1,11 @@
 # @finesoft/front
 
+## 0.1.71
+
+### Patch Changes
+
+- Auto-generated patch release from CI (69da0a7).
+
 ## 0.1.70
 
 ### Patch Changes
