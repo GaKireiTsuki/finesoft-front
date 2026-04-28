@@ -1,6 +1,6 @@
 {
     "name": "@finesoft/create-app",
-    "version": "0.1.23",
+    "version": "0.1.24",
     "description": "Scaffold a new Finesoft Front project",
     "license": "MIT",
     "bin": {
