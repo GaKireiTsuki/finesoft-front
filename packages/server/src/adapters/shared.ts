@@ -98,8 +98,10 @@ function injectSSR(t, head, css, html, data, locale) {
 
 function applyLocaleToHtml(html, locale) {
   if (!locale) return html;
-  return html.replace(/<html([^>]*)>/, (_, attrs) => {
-    let a = attrs.replace(/s*lang="[^"]*"/g, "").replace(/s*dir="[^"]*"/g, "");
+  return html.replace(/<html([^>]*)>/i, (_, attrs) => {
+    const a = attrs
+      .replace(/\\s+lang=("[^"]*"|'[^']*'|[^\\s>]+)/gi, "")
+      .replace(/\\s+dir=("[^"]*"|'[^']*'|[^\\s>]+)/gi, "");
     return "<html" + a + ' lang="' + locale.lang + '" dir="' + locale.dir + '">';
   });
 }
@@ -346,10 +348,10 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
             if (locale) {
                 const { getLocaleAttributes } = await dynamicImport("@finesoft/core");
                 const attrs = getLocaleAttributes(locale);
-                finalHtml = finalHtml.replace(/<html([^>]*)>/, (_m: string, a: string) => {
+                finalHtml = finalHtml.replace(/<html([^>]*)>/i, (_m: string, a: string) => {
                     const cleaned = a
-                        .replace(/\s*lang="[^"]*"/g, "")
-                        .replace(/\s*dir="[^"]*"/g, "");
+                        .replace(/\s+lang=("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+                        .replace(/\s+dir=("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
                     return `<html${cleaned} lang="${attrs.lang}" dir="${attrs.dir}">`;
                 });
             }

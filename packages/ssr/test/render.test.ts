@@ -334,11 +334,17 @@ describe("ssrRender", () => {
             css: ".error {}",
             serverData: [],
             slots: { banner: "blocked" },
+            status: 403,
         });
     });
 
-    test("returns a redirect when afterLoad rewrites the URL", async () => {
-        const renderApp = vi.fn();
+    test("afterLoad rewrite renders the current page and exposes rewriteUrl (no HTTP redirect)", async () => {
+        const page: BasePage = { id: "product-1", pageType: "product", title: "product-1" };
+        const renderApp = vi.fn((p: BasePage) => ({
+            html: p.title,
+            head: "",
+            css: "",
+        }));
 
         const result = await ssrRender({
             url: "/products?id=1",
@@ -348,7 +354,7 @@ describe("ssrRender", () => {
                     {
                         path: "/products",
                         intentId: "product",
-                        controller: makeController(makePage(), "product"),
+                        controller: makeController(page, "product"),
                         afterLoad: [() => ({ kind: "rewrite", url: "/products/1" })],
                     },
                 ]);
@@ -357,14 +363,89 @@ describe("ssrRender", () => {
             renderApp,
         });
 
-        expect(result).toEqual({
-            html: "",
+        // 已加载的 page 正常渲染，rewriteUrl 仅作元信息暴露
+        expect(result.html).toBe("product-1");
+        expect(result.rewriteUrl).toBe("/products/1");
+        expect(result.redirect).toBeUndefined();
+        expect(renderApp).toHaveBeenCalledTimes(1);
+    });
+
+    test("beforeLoad rewrite internally re-routes to the new URL (regression: previously emitted 301)", async () => {
+        const legacyController = vi.fn();
+        const canonicalPage: BasePage = {
+            id: "canonical-page",
+            pageType: "canonical",
+            title: "canonical-page",
+        };
+        const canonicalController = vi.fn(async () => canonicalPage);
+        const renderApp = vi.fn((p: BasePage) => ({
+            html: p.title,
             head: "",
             css: "",
-            serverData: [],
-            redirect: { url: "/products/1", status: 301 },
+        }));
+
+        const result = await ssrRender({
+            url: "/legacy",
+            frameworkConfig: {},
+            bootstrap(framework) {
+                defineRoutes(framework, [
+                    {
+                        path: "/legacy",
+                        intentId: "legacy",
+                        controller: {
+                            intentId: "legacy",
+                            perform: legacyController,
+                        },
+                        beforeLoad: [() => ({ kind: "rewrite", url: "/canonical" })],
+                    },
+                    {
+                        path: "/canonical",
+                        intentId: "canonical",
+                        controller: {
+                            intentId: "canonical",
+                            perform: canonicalController,
+                        },
+                    },
+                ]);
+            },
+            getErrorPage: makeErrorPage,
+            renderApp,
         });
-        expect(renderApp).not.toHaveBeenCalled();
+
+        // /legacy 的 controller 被跳过，/canonical 的 controller 被调用并渲染
+        expect(legacyController).not.toHaveBeenCalled();
+        expect(canonicalController).toHaveBeenCalledTimes(1);
+        expect(result.html).toBe("canonical-page");
+        expect(result.redirect).toBeUndefined();
+        // beforeLoad rewrite 是完整重路由（不是 afterLoad rewrite），不设置 rewriteUrl
+        expect(result.rewriteUrl).toBeUndefined();
+    });
+
+    test("aborts on rewrite recursion to prevent infinite loops", async () => {
+        await expect(
+            ssrRender({
+                url: "/a",
+                frameworkConfig: {},
+                bootstrap(framework) {
+                    defineRoutes(framework, [
+                        {
+                            path: "/a",
+                            intentId: "a",
+                            controller: makeController(makePage(), "a"),
+                            beforeLoad: [() => ({ kind: "rewrite", url: "/b" })],
+                        },
+                        {
+                            path: "/b",
+                            intentId: "b",
+                            controller: makeController(makePage(), "b"),
+                            beforeLoad: [() => ({ kind: "rewrite", url: "/a" })],
+                        },
+                    ]);
+                },
+                getErrorPage: makeErrorPage,
+                renderApp: () => ({ html: "", head: "", css: "" }),
+            }),
+        ).rejects.toThrow(/Rewrite recursion depth exceeded/);
     });
 
     test("renders a 404 page when no route matches", async () => {
@@ -432,7 +513,9 @@ describe("ssrRender", () => {
             slots: undefined,
             locale: undefined,
         });
+        // 日志现在通过 framework logger 走 console.error，会带 [framework] 前缀
         expect(errorSpy).toHaveBeenCalledWith(
+            "[framework]",
             '[SSR] dispatch failed for intent "broken":',
             expect.any(Error),
         );

@@ -14,12 +14,12 @@ export class LruMap<K, V> {
     }
 
     get(key: K): V | undefined {
-        const value = this.map.get(key);
-        if (value !== undefined) {
-            // 移到末尾（最近使用）
-            this.map.delete(key);
-            this.map.set(key, value);
-        }
+        // 用 has() 判断命中而非比较 undefined，允许把 undefined 作为合法值存储
+        if (!this.map.has(key)) return undefined;
+        const value = this.map.get(key) as V;
+        // 移到末尾（最近使用）
+        this.map.delete(key);
+        this.map.set(key, value);
         return value;
     }
 

@@ -650,6 +650,96 @@ describe("registerFlowActionHandler", () => {
         expect(log.warn).toHaveBeenCalledWith("popstate beforeLoad → denied");
     });
 
+    test("runs afterLoad guards on popstate (regression: previously skipped)", async () => {
+        const page = makePage("article");
+        const { framework } = makeFramework({
+            routeUrl: vi.fn(() =>
+                makeMatch("article", undefined, () => ({ kind: "deny", status: 403 })),
+            ),
+            dispatch: vi.fn(async () => page),
+        });
+        const callbacks = makeCallbacks();
+        const updateApp = vi.fn();
+        const log = makeLogger();
+
+        registerFlowActionHandler({
+            framework: framework as never,
+            log,
+            callbacks,
+            updateApp,
+            getScrollablePageElement: vi.fn(() => null),
+        });
+
+        await HistoryMock.latest<{ page: BasePage }>().popListener?.(
+            "https://app.example/article",
+            undefined,
+        );
+        // updateApp 仍被调用，但 afterLoad deny 阻止 didEnterPage
+        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(page);
+        expect(log.warn).toHaveBeenCalledWith("popstate afterLoad → denied (403)");
+        expect(framework.didEnterPage).not.toHaveBeenCalled();
+    });
+
+    test("popstate afterLoad rewrite canonicalizes URL without starting a new navigation", async () => {
+        const page = makePage("article");
+        const dispatch = vi.fn(async () => page);
+        const { framework } = makeFramework({
+            routeUrl: vi.fn(() =>
+                makeMatch("article", undefined, () => ({
+                    kind: "rewrite",
+                    url: "/articles/canonical",
+                })),
+            ),
+            dispatch,
+        });
+        const callbacks = makeCallbacks();
+        const updateApp = vi.fn();
+        const log = makeLogger();
+
+        // 扩展 window stub 以包含 history.state + replaceState
+        const replaceStateSpy = vi.fn();
+        vi.stubGlobal("window", {
+            location: {
+                pathname: "/article",
+                search: "",
+                origin: "https://app.example",
+                href: "https://app.example/article",
+            },
+            addEventListener: vi.fn(),
+            history: {
+                state: { id: "prev-state-id" },
+                replaceState: replaceStateSpy,
+            },
+        });
+
+        registerFlowActionHandler({
+            framework: framework as never,
+            log,
+            callbacks,
+            updateApp,
+            getScrollablePageElement: vi.fn(() => null),
+        });
+
+        await HistoryMock.latest<{ page: BasePage }>().popListener?.(
+            "https://app.example/article",
+            undefined,
+        );
+        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(page);
+
+        // 关键回归：rewrite 不触发二次 dispatch
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        // 用 replaceState 保留 state.id（不 push 新 entry）
+        expect(replaceStateSpy).toHaveBeenCalledWith(
+            { id: "prev-state-id" },
+            "",
+            "/articles/canonical",
+        );
+        // onNavigate 收到 canonical URL（顶部已用原 URL 调过一次，rewrite 再覆盖）
+        expect(callbacks.onNavigate).toHaveBeenLastCalledWith("/articles/canonical");
+        // didEnterPage 仍执行（page 数据有效）
+        expect(framework.didEnterPage).toHaveBeenCalledWith(page);
+    });
+
     test("loads uncached popstate routes and reports didEnterPage failures", async () => {
         const page = makePage("fresh");
         const enterError = new Error("enter failed");

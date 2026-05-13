@@ -59,12 +59,15 @@ export function injectCSRShell(template: string, locale?: { lang: string; dir: s
     return result;
 }
 
-/** 将 lang/dir 注入到 <html> 标签 */
+/** 将 lang/dir 注入到 <html> 标签（支持双引号 / 单引号 / 无引号属性值） */
+const HTML_LANG_PATTERN = /\s+lang=("[^"]*"|'[^']*'|[^\s>]+)/gi;
+const HTML_DIR_PATTERN = /\s+dir=("[^"]*"|'[^']*'|[^\s>]+)/gi;
+
 function applyLocaleToHtml(html: string, locale: { lang: string; dir: string }): string {
     return html.replace(
         /(<html)([^>]*)(>)/i,
         (_match, open: string, attrs: string, close: string) => {
-            const cleaned = attrs.replace(/\s+lang="[^"]*"/gi, "").replace(/\s+dir="[^"]*"/gi, "");
+            const cleaned = attrs.replace(HTML_LANG_PATTERN, "").replace(HTML_DIR_PATTERN, "");
             return `${open}${cleaned} lang="${locale.lang}" dir="${locale.dir}"${close}`;
         },
     );

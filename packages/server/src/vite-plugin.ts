@@ -8,7 +8,7 @@
  * 或自定义 Adapter 对象。
  */
 
-import { getLocaleAttributes } from "@finesoft/core";
+import { LruMap, getLocaleAttributes } from "@finesoft/core";
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import type { Hono } from "hono";
 import { resolveAdapter } from "./adapters/resolve";
@@ -358,14 +358,7 @@ export async function loadMessages(locale) {
 
                 // ISR 内存缓存（有容量上限）
                 const ISR_CACHE_MAX = 1000;
-                const isrCache = new Map<string, string>();
-                function isrSet(key: string, val: string) {
-                    if (isrCache.size >= ISR_CACHE_MAX) {
-                        const first = isrCache.keys().next().value;
-                        if (first !== undefined) isrCache.delete(first);
-                    }
-                    isrCache.set(key, val);
-                }
+                const isrCache = new LruMap<string, string>(ISR_CACHE_MAX);
 
                 // 声明式代理路由（框架层，优先注册）
                 if (options.proxies?.length) {
@@ -430,10 +423,22 @@ export async function loadMessages(locale) {
                             css,
                             serverData,
                             renderMode,
+                            redirect: middlewareRedirect,
+                            slots,
                             locale,
+                            status,
+                            rewriteUrl,
                         } = await ssrModule.render(url, {
                             fetch: createInternalFetch(app.fetch.bind(app), ssrDepth + 1),
                         });
+
+                        // 中间件要求重定向
+                        if (middlewareRedirect) {
+                            return c.redirect(
+                                middlewareRedirect.url,
+                                middlewareRedirect.status as 301 | 302,
+                            );
+                        }
 
                         // 路由级 CSR
                         if (renderMode === "csr") {
@@ -448,12 +453,27 @@ export async function loadMessages(locale) {
                             css,
                             html: appHtml,
                             serializedData,
+                            slots,
                             locale,
                         });
 
-                        // Prerender ISR 缓存
-                        if (renderMode === "prerender" || overrideMode === "prerender") {
-                            isrSet(url, finalHtml);
+                        // Prerender ISR 缓存（与 createSSRApp 一致：deny / rewrite 状态不缓存）
+                        if (
+                            (renderMode === "prerender" || overrideMode === "prerender") &&
+                            !status &&
+                            !rewriteUrl
+                        ) {
+                            isrCache.set(url, finalHtml);
+                        }
+
+                        // afterLoad rewrite: 暴露 Content-Location 头
+                        if (rewriteUrl) {
+                            c.header("Content-Location", rewriteUrl);
+                        }
+
+                        // 中间件 deny → 返回错误状态码
+                        if (status && status >= 400) {
+                            return c.html(finalHtml, status as 400 | 401 | 403 | 404 | 500);
                         }
 
                         return c.html(finalHtml);

@@ -30,6 +30,17 @@ describe("LruMap", () => {
         expect(cache.get("a")).toBe(2);
     });
 
+    test("distinguishes 'missing' from 'value is undefined'", () => {
+        const cache = new LruMap<string, number | undefined>(2);
+
+        cache.set("a", undefined);
+
+        expect(cache.has("a")).toBe(true);
+        expect(cache.get("a")).toBeUndefined();
+        expect(cache.has("missing")).toBe(false);
+        expect(cache.get("missing")).toBeUndefined();
+    });
+
     test("supports delete and clear", () => {
         const cache = new LruMap<string, number>(2);
 
