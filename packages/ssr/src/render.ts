@@ -8,11 +8,13 @@
  */
 
 import {
+    DEP_KEYS,
     Framework,
     createServerContext,
     resolveConfiguredMessages,
     type BasePage,
     type FrameworkConfig,
+    type Logger,
     type MessagesLoader,
     type MiddlewareResult,
     type PostLoadContext,
@@ -72,9 +74,33 @@ export interface SSRRenderResult {
     slots?: Record<string, string>;
     /** 解析出的 locale 属性（用于 <html lang="" dir="">） */
     locale?: { lang: string; dir: string };
+    /** 中间件 deny 时的 HTTP 状态码（服务端应据此设置 response status） */
+    status?: number;
+    /**
+     * afterLoad rewrite 产生的内部 URL。
+     * 此时数据按原 URL 已加载，页面正常渲染——rewriteUrl 仅供 server 层
+     * 用于 canonical link / response header 等场景，**不会触发 HTTP 跳转**。
+     */
+    rewriteUrl?: string;
 }
 
+/** SSR 内部 rewrite 最大递归深度，防止 guard 配置错导致无限重路由 */
+const MAX_SSR_REWRITE_DEPTH = 5;
+
 export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderResult> {
+    return ssrRenderInternal(options, 0);
+}
+
+async function ssrRenderInternal(
+    options: SSRRenderOptions,
+    rewriteDepth: number,
+): Promise<SSRRenderResult> {
+    if (rewriteDepth >= MAX_SSR_REWRITE_DEPTH) {
+        throw new Error(
+            `[SSR] Rewrite recursion depth exceeded (max ${MAX_SSR_REWRITE_DEPTH}) at "${options.url}"`,
+        );
+    }
+
     const {
         url,
         frameworkConfig,
@@ -135,6 +161,7 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
 
         let page: BasePage;
         let serverData: PrefetchedIntent[] = [];
+        let rewriteUrl: string | undefined;
 
         if (match) {
             // ===== beforeLoad 中间件 =====
@@ -145,6 +172,12 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
                 request: ssrContext?.request,
             });
             const beforeResult = await framework.runBeforeLoad(navCtx, match.beforeGuards);
+
+            // beforeLoad rewrite: 内部用新 URL 重新走完整 SSR 流程（route + dispatch）
+            // 当前 framework 在 finally 中销毁，递归 call 自带新 framework
+            if (beforeResult.kind === "rewrite") {
+                return ssrRenderInternal({ ...options, url: beforeResult.url }, rewriteDepth + 1);
+            }
             if (beforeResult.kind !== "next") {
                 const earlyReturn = await handleMiddlewareResult(
                     beforeResult,
@@ -159,7 +192,8 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
                 page = (await framework.dispatch(match.intent)) as BasePage;
                 serverData = [{ intent: match.intent, data: page }];
             } catch (e) {
-                console.error(`[SSR] dispatch failed for intent "${match.intent.id}":`, e);
+                const logger = framework.container.resolve<Logger>(DEP_KEYS.LOGGER);
+                logger.error(`[SSR] dispatch failed for intent "${match.intent.id}":`, e);
                 page = getErrorPage(500, "Internal error");
             }
 
@@ -169,7 +203,11 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
                 page,
             };
             const afterResult = await framework.runAfterLoad(postCtx, match.afterGuards);
-            if (afterResult.kind !== "next") {
+
+            // afterLoad rewrite: 数据已加载，按当前 page 渲染但记录 rewriteUrl
+            if (afterResult.kind === "rewrite") {
+                rewriteUrl = afterResult.url;
+            } else if (afterResult.kind !== "next") {
                 const lateReturn = await handleMiddlewareResult(
                     afterResult,
                     getErrorPage,
@@ -195,6 +233,7 @@ export async function ssrRender(options: SSRRenderOptions): Promise<SSRRenderRes
             renderMode: match?.renderMode,
             slots: result.slots,
             locale,
+            rewriteUrl,
         };
     } finally {
         framework.dispose();
@@ -215,6 +254,8 @@ function getSSRFetch(fetchFn?: typeof globalThis.fetch): typeof globalThis.fetch
 /**
  * 将中间件结果转换为 SSRRenderResult（如果需要短路返回）。
  * 返回 null 表示继续正常流程。
+ *
+ * 注意：`rewrite` 不在此处理 — 它由 ssrRenderInternal 直接处理（内部重路由或标记 rewriteUrl）。
  */
 async function handleMiddlewareResult(
     result: MiddlewareResult,
@@ -224,6 +265,7 @@ async function handleMiddlewareResult(
 ): Promise<SSRRenderResult | null> {
     switch (result.kind) {
         case "next":
+        case "rewrite":
             return null;
         case "redirect":
             return {
@@ -232,14 +274,6 @@ async function handleMiddlewareResult(
                 css: "",
                 serverData: [],
                 redirect: { url: result.url, status: result.status },
-            };
-        case "rewrite":
-            return {
-                html: "",
-                head: "",
-                css: "",
-                serverData: [],
-                redirect: { url: result.url, status: 301 },
             };
         case "deny": {
             const errorPage = getErrorPage(result.status, result.message);
@@ -250,6 +284,7 @@ async function handleMiddlewareResult(
                 css: rendered.css,
                 serverData: [],
                 slots: rendered.slots,
+                status: result.status,
             };
         }
     }

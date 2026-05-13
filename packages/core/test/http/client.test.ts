@@ -111,6 +111,42 @@ describe("HttpClient", () => {
         });
     });
 
+    test("respects user-provided Content-Type regardless of case", async () => {
+        const fetchFn = vi.fn(async () => new Response(JSON.stringify({})));
+        const client = new TestHttpClient({ baseUrl: "/api", fetch: fetchFn });
+
+        await client.requestPost(
+            "/upload",
+            { v: 1 },
+            // params 不重要，关键是 headers 通过 options 传入
+        );
+
+        // 默认未指定时填充 application/json
+        expect(fetchFn).toHaveBeenLastCalledWith(
+            "/api/upload",
+            expect.objectContaining({
+                headers: expect.objectContaining({ "Content-Type": "application/json" }),
+            }),
+        );
+
+        // 用户用小写 content-type 不应被默认值覆盖
+        class CaseClient extends HttpClient {
+            send(): Promise<unknown> {
+                return this.request("POST", "/x", {
+                    body: { v: 1 },
+                    headers: { "content-type": "text/plain" },
+                });
+            }
+        }
+        const caseClient = new CaseClient({ baseUrl: "/api", fetch: fetchFn });
+        await caseClient.send();
+
+        const lastCall = fetchFn.mock.calls.at(-1) as unknown as [string, RequestInit];
+        const headers = lastCall[1].headers as Record<string, string>;
+        expect(headers["content-type"]).toBe("text/plain");
+        expect(headers["Content-Type"]).toBeUndefined();
+    });
+
     test("throws HttpError for non-success responses", async () => {
         const client = new TestHttpClient({
             baseUrl: "/api",

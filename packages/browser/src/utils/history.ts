@@ -126,8 +126,10 @@ export class History<State> {
         const currentState = this.entries.get(this.currentStateId);
         const newState = update(currentState?.state);
         this.log.info("updateState", newState, this.currentStateId);
+        // currentState 可能为 undefined（条目被 LRU 驱逐或由 pushUrl/replaceUrl 创建）
+        // 必须保证 scrollY 字段存在
         this.entries.set(this.currentStateId, {
-            ...(currentState as HistoryEntry<State>),
+            scrollY: currentState?.scrollY ?? 0,
             state: newState,
         });
     }

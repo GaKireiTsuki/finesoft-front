@@ -89,7 +89,7 @@ describe("proxy helpers", () => {
             headers: {
                 get: vi.fn(() => null),
             },
-            text: vi.fn(async () => "proxied-basic"),
+            arrayBuffer: vi.fn(async () => new TextEncoder().encode("proxied-basic").buffer),
         }));
         vi.stubGlobal("fetch", fetchMock);
 
@@ -196,6 +196,39 @@ describe("proxy helpers", () => {
         expect(error).toHaveBeenCalledWith("[Proxy /api]", expect.any(Error));
     });
 
+    test("preserves binary payloads byte-for-byte (regression: text() would corrupt)", async () => {
+        const app = makeApp();
+        // PNG signature + 一些非 UTF-8 字节
+        const binary = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe]);
+        const fetchMock = vi.fn(
+            async () =>
+                new Response(binary, {
+                    status: 200,
+                    headers: { "Content-Type": "image/png" },
+                }),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+
+        registerProxyRoutes(app as never, [{ prefix: "/img", target: "https://upstream.example" }]);
+
+        const handler = app.all.mock.calls[0][1] as (
+            ctx: ReturnType<typeof makeContext>,
+        ) => Promise<unknown>;
+        const ctx = makeContext("/img/logo.png", "https://app.example/img/logo.png");
+
+        // 自定义 newResponse 捕获原始 ArrayBuffer 用于精确字节比对
+        let capturedBuffer: ArrayBuffer | undefined;
+        ctx.newResponse = vi.fn((body: ArrayBuffer | string, status: number, headers) => {
+            if (body instanceof ArrayBuffer) capturedBuffer = body;
+            return { kind: "response", body, status, headers };
+        }) as never;
+
+        await handler(ctx);
+
+        expect(capturedBuffer).toBeInstanceOf(ArrayBuffer);
+        expect(new Uint8Array(capturedBuffer!)).toEqual(binary);
+    });
+
     test("generates inline proxy code and validates configs", () => {
         expect(generateProxyCode([])).toBe("");
         expect(() => generateProxyCode([{ prefix: "/api", target: "file:///tmp/unsafe" }])).toThrow(
@@ -243,12 +276,16 @@ function makeContext(path: string, url: string) {
             body,
             status,
         })),
-        newResponse: vi.fn((body: string, status: number, headers: Record<string, string>) => ({
-            kind: "response",
-            body,
-            status,
-            headers,
-        })),
+        // proxy 现在用 arrayBuffer 转发以保留二进制完整性；
+        // 测试把 ArrayBuffer 解码回字符串便于断言。
+        newResponse: vi.fn(
+            (body: string | ArrayBuffer, status: number, headers: Record<string, string>) => ({
+                kind: "response",
+                body: body instanceof ArrayBuffer ? new TextDecoder().decode(body) : body,
+                status,
+                headers,
+            }),
+        ),
         json: vi.fn((body: unknown, status: number) => ({
             kind: "json",
             body,

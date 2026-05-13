@@ -26,6 +26,8 @@ export function parseAcceptLanguage(
                 q: Number.isFinite(qVal) && qVal >= 0 && qVal <= 1 ? qVal : 0,
             };
         })
+        // RFC 9110: q=0 表示显式拒绝该语言，不应作为匹配候选
+        .filter((entry) => entry.q > 0)
         .sort((a, b) => b.q - a.q);
 
     for (const { lang } of langs) {

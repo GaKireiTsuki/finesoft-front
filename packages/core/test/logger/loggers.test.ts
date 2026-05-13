@@ -103,6 +103,21 @@ describe("logger utilities", () => {
         expect(report).toHaveBeenNthCalledWith(2, "error", "api", ["error"]);
         expect(report).toHaveBeenNthCalledWith(3, "warn", "framework", ["warn"]);
     });
+
+    test("reporting logger swallows callback errors instead of crashing callers", () => {
+        const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const report = vi.fn(() => {
+            throw new Error("sentry down");
+        });
+        const logger = new ReportingLogger("api", { report });
+
+        expect(() => logger.warn("boom")).not.toThrow();
+        expect(report).toHaveBeenCalledTimes(1);
+        expect(errSpy).toHaveBeenCalledWith(
+            "[ReportingLogger] report callback threw:",
+            expect.any(Error),
+        );
+    });
 });
 
 function makeMockLogger() {

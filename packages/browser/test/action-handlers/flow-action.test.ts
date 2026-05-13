@@ -650,6 +650,36 @@ describe("registerFlowActionHandler", () => {
         expect(log.warn).toHaveBeenCalledWith("popstate beforeLoad → denied");
     });
 
+    test("runs afterLoad guards on popstate (regression: previously skipped)", async () => {
+        const page = makePage("article");
+        const { framework } = makeFramework({
+            routeUrl: vi.fn(() =>
+                makeMatch("article", undefined, () => ({ kind: "deny", status: 403 })),
+            ),
+            dispatch: vi.fn(async () => page),
+        });
+        const callbacks = makeCallbacks();
+        const updateApp = vi.fn();
+        const log = makeLogger();
+
+        registerFlowActionHandler({
+            framework: framework as never,
+            log,
+            callbacks,
+            updateApp,
+            getScrollablePageElement: vi.fn(() => null),
+        });
+
+        await HistoryMock.latest<{ page: BasePage }>().popListener?.(
+            "https://app.example/article",
+            undefined,
+        );
+        // updateApp 仍被调用，但 afterLoad deny 阻止 didEnterPage
+        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(page);
+        expect(log.warn).toHaveBeenCalledWith("popstate afterLoad → denied (403)");
+        expect(framework.didEnterPage).not.toHaveBeenCalled();
+    });
+
     test("loads uncached popstate routes and reports didEnterPage failures", async () => {
         const page = makePage("fresh");
         const enterError = new Error("enter failed");

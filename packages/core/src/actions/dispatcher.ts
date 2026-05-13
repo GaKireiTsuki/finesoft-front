@@ -17,13 +17,24 @@ const MAX_COMPOUND_DEPTH = 32;
 export class ActionDispatcher {
     private handlers = new Map<string, ActionHandler>();
 
-    /** 注册指定 kind 的 handler（防止重复注册） */
+    /**
+     * 注册指定 kind 的 handler。
+     *
+     * 重复 kind 时保留第一个注册者并发出警告——这是有意设计：
+     * framework 内部 handler 先注册，应用层意外覆盖会被记录而非静默生效。
+     * 如需显式替换，先调用 removeAction(kind)。
+     */
     onAction<A extends Action>(kind: string, handler: ActionHandler<A>): void {
         if (this.handlers.has(kind)) {
             console.warn(`[ActionDispatcher] kind="${kind}" already registered, skipping`);
             return;
         }
         this.handlers.set(kind, handler as ActionHandler);
+    }
+
+    /** 移除指定 kind 的 handler（用于显式覆盖场景） */
+    removeAction(kind: string): boolean {
+        return this.handlers.delete(kind);
     }
 
     /** 执行一个 Action（CompoundAction 递归展开，有深度限制） */

@@ -35,4 +35,14 @@ describe("stableStringify", () => {
 
         expect(stableStringify(root)).toContain('"[Max Depth]"');
     });
+
+    test("serializes DAG with shared subtree without false circular markers", () => {
+        // 同一对象在两个属性中出现（DAG，非 cycle）—— 不应被标记为 [Circular]
+        const shared = { value: 42 };
+        const root = { a: shared, b: shared };
+
+        const result = stableStringify(root);
+        expect(result).toBe('{"a":{"value":42},"b":{"value":42}}');
+        expect(result).not.toContain("[Circular]");
+    });
 });

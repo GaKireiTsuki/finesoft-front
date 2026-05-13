@@ -5,7 +5,7 @@
  * 应用层可在此之上追加自定义路由（API 代理等）。
  */
 
-import { getLocaleAttributes } from "@finesoft/core";
+import { LruMap, getLocaleAttributes } from "@finesoft/core";
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
@@ -46,6 +46,9 @@ export interface SSRModule {
         redirect?: { url: string; status: number };
         slots?: Record<string, string>;
         locale?: { lang: string; dir: string };
+        status?: number;
+        /** afterLoad rewrite 产生的内部 URL，仅供 server 用作 canonical link */
+        rewriteUrl?: string;
     }>;
     serializeServerData: (data: unknown) => string;
 }
@@ -95,14 +98,7 @@ export function createSSRApp(options: SSRAppOptions): Hono {
 
     /** ISR 内存缓存（prerender 路由首次请求后缓存，LRU 驱逐） */
     const ISR_CACHE_MAX = 1000;
-    const isrCache = new Map<string, string>();
-    function isrSet(key: string, val: string) {
-        if (isrCache.size >= ISR_CACHE_MAX) {
-            const first = isrCache.keys().next().value;
-            if (first !== undefined) isrCache.delete(first);
-        }
-        isrCache.set(key, val);
-    }
+    const isrCache = new LruMap<string, string>(ISR_CACHE_MAX);
 
     /** 生产环境模板缓存（模板不变，避免每请求重复读盘） */
     let templateCache: string | undefined;
@@ -207,6 +203,8 @@ export function createSSRApp(options: SSRAppOptions): Hono {
                 redirect: middlewareRedirect,
                 slots,
                 locale,
+                status,
+                rewriteUrl,
             } = await render(url, ssrContext);
 
             // 中间件要求重定向
@@ -231,9 +229,23 @@ export function createSSRApp(options: SSRAppOptions): Hono {
                 locale,
             });
 
-            // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级）
-            if (renderMode === "prerender" || overrideMode === "prerender") {
-                isrSet(url, finalHtml);
+            // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级，但 deny / rewrite 状态不缓存）
+            if (
+                (renderMode === "prerender" || overrideMode === "prerender") &&
+                !status &&
+                !rewriteUrl
+            ) {
+                isrCache.set(url, finalHtml);
+            }
+
+            // afterLoad rewrite: 暴露 Content-Location 头供客户端/CDN 识别内部重写
+            if (rewriteUrl) {
+                c.header("Content-Location", rewriteUrl);
+            }
+
+            // 中间件 deny → 返回错误状态码
+            if (status && status >= 400) {
+                return c.html(finalHtml, status as 400 | 401 | 403 | 404 | 500);
             }
 
             return c.html(finalHtml);

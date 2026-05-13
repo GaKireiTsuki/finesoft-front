@@ -59,8 +59,13 @@ export class ReportingLogger extends BaseLogger {
     }
 
     private maybeReport(level: Level, args: unknown[]): void {
-        if (LEVEL_PRIORITY[level] >= this.minPriority) {
+        if (LEVEL_PRIORITY[level] < this.minPriority) return;
+        // 日志是横切关注点：上报失败不应让业务流崩溃。
+        // 用 console.error 直接打到控制台，避免回调到 logger 造成无限递归。
+        try {
             this.report(level, this.category, args);
+        } catch (e) {
+            console.error("[ReportingLogger] report callback threw:", e);
         }
     }
 }

@@ -139,7 +139,13 @@ export abstract class HttpClient {
         let init: RequestInit = { method, headers };
 
         if (options?.body !== undefined) {
-            headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+            // 大小写不敏感地检测用户是否已设置 Content-Type
+            const hasContentType = Object.keys(headers).some(
+                (k) => k.toLowerCase() === "content-type",
+            );
+            if (!hasContentType) {
+                headers["Content-Type"] = "application/json";
+            }
             init.body = JSON.stringify(options.body);
         }
 

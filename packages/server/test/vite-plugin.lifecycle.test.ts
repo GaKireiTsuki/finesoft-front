@@ -59,9 +59,14 @@ const {
     };
 });
 
-vi.mock("@finesoft/core", () => ({
-    getLocaleAttributes,
-}));
+vi.mock("@finesoft/core", async () => {
+    // Tests run before core is built; import LruMap directly from its source path.
+    const { LruMap } = await import("../../core/src/utils/lru-map");
+    return {
+        getLocaleAttributes,
+        LruMap,
+    };
+});
 
 vi.mock("@finesoft/ssr", () => ({
     injectCSRShell,

@@ -41,6 +41,10 @@ const MAX_RESPONSE_SIZE = 10 * 1024 * 1024;
 /**
  * 校验代理路径，防止 SSRF（协议相对 URL 绕过、编码绕过）。
  * 返回规范化的路径，或 null 表示非法。
+ *
+ * 策略保守：拒绝任何含编码字符的路径，避免上游对 %2F 等解码差异导致绕过。
+ * 副作用：合法的 %20、%E4%B8%AD（Unicode）也会被拒。
+ * 如需放宽，应在上层路由前自行 decode，或为该代理单独提供 sanitizer 选项。
  */
 function sanitizeProxyPath(raw: string): string | null {
     if (raw.length > MAX_PROXY_PATH_LENGTH) return null;
@@ -126,14 +130,16 @@ export function registerProxyRoutes(app: Hono, configs: ProxyRouteConfig[]): voi
                     redirect: config.followRedirects ? "follow" : "manual",
                 });
 
-                // 响应大小限制
+                // 响应大小限制（先检查 Content-Length 头快速拒绝）
                 const contentLength = resp.headers.get("Content-Length");
                 if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
                     return c.text("Proxy response too large", 502);
                 }
 
-                const body = await resp.text();
-                if (body.length > MAX_RESPONSE_SIZE) {
+                // 用 arrayBuffer 保留二进制完整性（图片/PDF/protobuf 等）。
+                // text() 会按 UTF-8 强制解码，破坏非文本载荷。
+                const body = await resp.arrayBuffer();
+                if (body.byteLength > MAX_RESPONSE_SIZE) {
                     return c.text("Proxy response too large", 502);
                 }
 
@@ -208,7 +214,8 @@ function _sanitizeProxyPath(raw) {
   const _headers = ${headersJson};${authCode}
   try {
     const _resp = await fetch(_target.toString(), { headers: _headers, redirect: ${redirect} });
-    const _body = await _resp.text();
+    // arrayBuffer 保留二进制完整性
+    const _body = await _resp.arrayBuffer();
     const _rh = { "Content-Type": _resp.headers.get("Content-Type") || "application/json" };
     if (${cacheStr}) _rh["Cache-Control"] = ${cacheStr};
     return c.newResponse(_body, _resp.status, _rh);

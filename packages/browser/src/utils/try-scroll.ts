@@ -101,15 +101,14 @@ export function tryScroll(
             return;
         }
 
-        // Watch for async DOM/layout work instead of relying on a fixed frame budget.
+        // 监听 DOM 结构变化以重试滚动；不订阅 attributes/characterData
+        // 因为它们在富交互页面上会持续触发，对滚动恢复无帮助。
         mutationObserver = new MutationObserver(() => {
             scheduleAttempt();
         });
         mutationObserver.observe(root, {
             childList: true,
             subtree: true,
-            characterData: true,
-            attributes: true,
         });
     }
 

@@ -66,4 +66,45 @@ describe("Container", () => {
         expect(container.has("token")).toBe(false);
         expect(() => container.resolve("token")).toThrow(/No registration/);
     });
+
+    test("dispose recursively clears child scopes", () => {
+        const parent = new Container();
+        const child = parent.createScope();
+        const grandchild = child.createScope();
+
+        parent.register("p", () => "parent-value");
+        child.register("c", () => "child-value");
+        grandchild.register("g", () => "grand-value");
+
+        // 先 resolve 把 instance 缓存
+        expect(grandchild.resolve("g")).toBe("grand-value");
+        expect(child.resolve("c")).toBe("child-value");
+
+        parent.dispose();
+
+        // 父容器和所有后代都已清空
+        expect(parent.has("p")).toBe(false);
+        expect(child.has("c")).toBe(false);
+        expect(grandchild.has("g")).toBe(false);
+    });
+
+    test("disposing a child scope detaches it from the parent", () => {
+        const parent = new Container();
+        const child = parent.createScope();
+
+        child.dispose();
+
+        // 父容器后续 dispose 不应再触及已清理的 child（验证幂等 + 引用解除）
+        expect(() => parent.dispose()).not.toThrow();
+        expect(() => child.dispose()).not.toThrow();
+    });
+
+    test("dispose is idempotent", () => {
+        const container = new Container();
+        container.register("token", () => "value");
+
+        container.dispose();
+        expect(() => container.dispose()).not.toThrow();
+        expect(container.has("token")).toBe(false);
+    });
 });

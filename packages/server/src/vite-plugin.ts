@@ -8,7 +8,7 @@
  * 或自定义 Adapter 对象。
  */
 
-import { getLocaleAttributes } from "@finesoft/core";
+import { LruMap, getLocaleAttributes } from "@finesoft/core";
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import type { Hono } from "hono";
 import { resolveAdapter } from "./adapters/resolve";
@@ -358,14 +358,7 @@ export async function loadMessages(locale) {
 
                 // ISR 内存缓存（有容量上限）
                 const ISR_CACHE_MAX = 1000;
-                const isrCache = new Map<string, string>();
-                function isrSet(key: string, val: string) {
-                    if (isrCache.size >= ISR_CACHE_MAX) {
-                        const first = isrCache.keys().next().value;
-                        if (first !== undefined) isrCache.delete(first);
-                    }
-                    isrCache.set(key, val);
-                }
+                const isrCache = new LruMap<string, string>(ISR_CACHE_MAX);
 
                 // 声明式代理路由（框架层，优先注册）
                 if (options.proxies?.length) {
@@ -453,7 +446,7 @@ export async function loadMessages(locale) {
 
                         // Prerender ISR 缓存
                         if (renderMode === "prerender" || overrideMode === "prerender") {
-                            isrSet(url, finalHtml);
+                            isrCache.set(url, finalHtml);
                         }
 
                         return c.html(finalHtml);

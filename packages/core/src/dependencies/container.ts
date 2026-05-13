@@ -14,6 +14,7 @@ export class Container {
     private registrations = new Map<string, Registration<unknown>>();
     private resolutionStack = new Set<string>();
     private parent?: Container;
+    private children = new Set<Container>();
 
     /** 注册依赖（默认单例） */
     register<T>(key: string, factory: Factory<T>, singleton = true): this {
@@ -62,19 +63,42 @@ export class Container {
      * 创建子容器（请求级 scope）
      *
      * 子容器可覆写父容器的依赖（如每请求的 locale、user），
-     * 未覆写的 key 自动回退到父容器解析。
+     * 未覆写的 key 自动回退到父容器解析。子容器会被父容器跟踪，
+     * 父容器 dispose 时一并销毁所有未独立 dispose 的子容器。
      */
     createScope(): Container {
         const child = new Container();
         child.parent = this;
+        this.children.add(child);
         return child;
     }
 
-    /** 销毁容器，清除所有缓存 */
+    /**
+     * 销毁容器，清除所有缓存。
+     *
+     * - 递归 dispose 所有 createScope() 创建的未 dispose 子容器
+     * - 自身被 dispose 后从父容器移除引用，允许 GC
+     * - 重复 dispose 安全（幂等）
+     */
     dispose(): void {
+        // 先递归销毁子容器。child.dispose 会从 this.children 移除自身，
+        // 所以必须先快照拷贝再迭代，否则会破坏 Set 迭代器。
+        const childSnapshot = Array.from(this.children);
+        for (const child of childSnapshot) {
+            child.dispose();
+        }
+        this.children.clear();
+
+        // 清空自身注册
         for (const reg of this.registrations.values()) {
             reg.instance = undefined;
         }
         this.registrations.clear();
+
+        // 从父容器移除自己的引用，让 GC 能回收
+        if (this.parent) {
+            this.parent.children.delete(this);
+            this.parent = undefined;
+        }
     }
 }

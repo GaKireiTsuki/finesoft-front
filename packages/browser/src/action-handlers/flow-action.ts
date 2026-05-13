@@ -248,7 +248,22 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
         await Promise.race([pagePromise, new Promise((r) => setTimeout(r, 500))]).catch(() => {});
 
         updateApp({
-            page: pagePromise.then((page: BasePage): BasePage => {
+            page: pagePromise.then(async (page: BasePage): Promise<BasePage> => {
+                // popstate 也需要执行 afterLoad guards，与正向导航保持一致
+                const postCtx: PostLoadContext = { ...navCtx, page };
+                const afterResult = await framework.runAfterLoad(postCtx, routeMatch.afterGuards);
+
+                if (afterResult.kind === "redirect" || afterResult.kind === "rewrite") {
+                    log.debug(`popstate afterLoad → ${afterResult.kind} to ${afterResult.url}`);
+                    const newNav = ++navigationId;
+                    void navigateTo(afterResult.url, 0, newNav);
+                    return page;
+                }
+                if (afterResult.kind === "deny") {
+                    log.warn(`popstate afterLoad → denied (${afterResult.status})`);
+                    return page;
+                }
+
                 didEnterPage(page);
                 return page;
             }),
