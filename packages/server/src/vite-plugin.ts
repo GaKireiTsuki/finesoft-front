@@ -423,10 +423,22 @@ export async function loadMessages(locale) {
                             css,
                             serverData,
                             renderMode,
+                            redirect: middlewareRedirect,
+                            slots,
                             locale,
+                            status,
+                            rewriteUrl,
                         } = await ssrModule.render(url, {
                             fetch: createInternalFetch(app.fetch.bind(app), ssrDepth + 1),
                         });
+
+                        // 中间件要求重定向
+                        if (middlewareRedirect) {
+                            return c.redirect(
+                                middlewareRedirect.url,
+                                middlewareRedirect.status as 301 | 302,
+                            );
+                        }
 
                         // 路由级 CSR
                         if (renderMode === "csr") {
@@ -441,12 +453,27 @@ export async function loadMessages(locale) {
                             css,
                             html: appHtml,
                             serializedData,
+                            slots,
                             locale,
                         });
 
-                        // Prerender ISR 缓存
-                        if (renderMode === "prerender" || overrideMode === "prerender") {
+                        // Prerender ISR 缓存（与 createSSRApp 一致：deny / rewrite 状态不缓存）
+                        if (
+                            (renderMode === "prerender" || overrideMode === "prerender") &&
+                            !status &&
+                            !rewriteUrl
+                        ) {
                             isrCache.set(url, finalHtml);
+                        }
+
+                        // afterLoad rewrite: 暴露 Content-Location 头
+                        if (rewriteUrl) {
+                            c.header("Content-Location", rewriteUrl);
+                        }
+
+                        // 中间件 deny → 返回错误状态码
+                        if (status && status >= 400) {
+                            return c.html(finalHtml, status as 400 | 401 | 403 | 404 | 500);
                         }
 
                         return c.html(finalHtml);

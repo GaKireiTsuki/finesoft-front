@@ -252,6 +252,24 @@ describe("proxy helpers", () => {
         expect(code).toContain('"Cache-Control"');
         expect(code).toContain('"manual"');
     });
+
+    test("generated proxy code embeds the same response size limit as runtime (parity)", () => {
+        const code = generateProxyCode([{ prefix: "/api", target: "https://upstream.example" }]);
+
+        // 与 registerProxyRoutes 一致的 10MB 上限
+        const MAX = String(10 * 1024 * 1024);
+
+        // Content-Length fast-reject 路径
+        expect(code).toMatch(/Content-Length/);
+        expect(code).toContain(`parseInt(_cl, 10) > ${MAX}`);
+
+        // 实际 body byteLength 拒绝路径
+        expect(code).toContain(`_body.byteLength > ${MAX}`);
+
+        // 两条路径都返回相同的 502 错误
+        const matches = code.match(/"Proxy response too large"/g);
+        expect(matches?.length).toBeGreaterThanOrEqual(2);
+    });
 });
 
 function makeApp() {

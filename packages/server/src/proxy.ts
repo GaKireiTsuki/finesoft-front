@@ -214,8 +214,16 @@ function _sanitizeProxyPath(raw) {
   const _headers = ${headersJson};${authCode}
   try {
     const _resp = await fetch(_target.toString(), { headers: _headers, redirect: ${redirect} });
+    // Content-Length 快速拒绝，防止 serverless/edge 加载超大响应到内存
+    const _cl = _resp.headers.get("Content-Length");
+    if (_cl && parseInt(_cl, 10) > ${MAX_RESPONSE_SIZE}) {
+      return c.text("Proxy response too large", 502);
+    }
     // arrayBuffer 保留二进制完整性
     const _body = await _resp.arrayBuffer();
+    if (_body.byteLength > ${MAX_RESPONSE_SIZE}) {
+      return c.text("Proxy response too large", 502);
+    }
     const _rh = { "Content-Type": _resp.headers.get("Content-Type") || "application/json" };
     if (${cacheStr}) _rh["Cache-Control"] = ${cacheStr};
     return c.newResponse(_body, _resp.status, _rh);

@@ -253,10 +253,20 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
                 const postCtx: PostLoadContext = { ...navCtx, page };
                 const afterResult = await framework.runAfterLoad(postCtx, routeMatch.afterGuards);
 
-                if (afterResult.kind === "redirect" || afterResult.kind === "rewrite") {
-                    log.debug(`popstate afterLoad → ${afterResult.kind} to ${afterResult.url}`);
+                if (afterResult.kind === "redirect") {
+                    log.debug(`popstate afterLoad → redirect to ${afterResult.url}`);
                     const newNav = ++navigationId;
                     void navigateTo(afterResult.url, 0, newNav);
+                    return page;
+                }
+                if (afterResult.kind === "rewrite") {
+                    // page 已加载；仅 canonicalize URL 而不启动新 navigation，
+                    // 否则 back/forward 时会 push 新 history entry 造成循环 + 重复 dispatch。
+                    log.debug(`popstate afterLoad → rewrite URL to ${afterResult.url}`);
+                    const stateId = (window.history.state as { id?: string } | null)?.id;
+                    window.history.replaceState({ id: stateId }, "", afterResult.url);
+                    callbacks.onNavigate(new URL(afterResult.url, window.location.origin).pathname);
+                    didEnterPage(page);
                     return page;
                 }
                 if (afterResult.kind === "deny") {
