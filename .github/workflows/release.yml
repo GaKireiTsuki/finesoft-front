@@ -31,9 +31,13 @@ jobs:
         permissions:
             contents: write
         steps:
-            - name: Checkout
+            # 显式 checkout `main` 引用而非 trigger 时的 SHA：
+            # 配合下面的 concurrency queue，若并发 push 排队，第二个 run 启动时
+            # main 已是前一个 run 推送后的状态，避免 push 时 non-fast-forward。
+            - name: Checkout main
               uses: actions/checkout@v5
               with:
+                  ref: main
                   fetch-depth: 0
                   persist-credentials: true
 
@@ -56,9 +60,18 @@ jobs:
                   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
               run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
 
+            # 双保险刷新：checkout 后到此 step 之间 main 仍可能被推新 commit
+            # （concurrency queue 也只是序列化本 workflow，不阻挡外部 push）。
+            # reset --hard origin/main 保证从最新 main 开始 bump，缩小 push race 窗口。
+            - name: Refresh to latest main
+              run: |
+                  git fetch origin main
+                  git reset --hard origin/main
+
             # 自愈：若 main 上的 @finesoft/front 版本领先于 npm（前次 publish 失败留下的空洞），
             # 先用当前 main 状态做一次 catch-up publish 把 npm 对齐。
-            # changeset publish 会逐个比对 npm 上是否已有该版本，已存在则跳过——所以幂等安全。
+            # 用 semver-aware 比较：仅当 main > npm 时 catch-up；npm 领先则报错（异常状态）。
+            # changeset publish 会跳过 npm 上已存在的版本，因此幂等安全。
             - name: Reconcile npm registry with main
               id: reconcile
               run: |
@@ -66,11 +79,20 @@ jobs:
                   REMOTE=$(npm view @finesoft/front version 2>/dev/null || echo "0.0.0")
                   echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
                   echo "remote=$REMOTE" >> "$GITHUB_OUTPUT"
-                  if [[ "$LOCAL" != "$REMOTE" ]]; then
-                      echo "::notice::Catch-up publish: main=$LOCAL, npm=$REMOTE"
-                      echo "catch_up=true" >> "$GITHUB_OUTPUT"
-                  else
+
+                  if [[ "$LOCAL" == "$REMOTE" ]]; then
                       echo "catch_up=false" >> "$GITHUB_OUTPUT"
+                      echo "main and npm in sync at $LOCAL"
+                  else
+                      # sort -V 是 GNU 版本排序（semver-aware）；较大者在末尾
+                      HIGHER=$(printf '%s\n%s\n' "$LOCAL" "$REMOTE" | sort -V | tail -n1)
+                      if [[ "$HIGHER" == "$LOCAL" ]]; then
+                          echo "::notice::Catch-up publish: main=$LOCAL is ahead of npm=$REMOTE"
+                          echo "catch_up=true" >> "$GITHUB_OUTPUT"
+                      else
+                          echo "::error::npm ($REMOTE) is ahead of main ($LOCAL); manual investigation required"
+                          exit 1
+                      fi
                   fi
 
             - name: Catch-up publish (sync npm with main)
@@ -106,9 +128,66 @@ jobs:
               if: steps.bump.outputs.should_publish == 'true'
               run: vp run release
 
-            - name: Push commit and tags to main
+            # Push 策略：
+            # - checkout(ref:main) + refresh(reset --hard origin/main) 已最大程度缩小 race window；
+            # - concurrency: release-${{ github.ref }} 序列化本 workflow 的并发 run；
+            # - changeset publish 对 npm 上已存在的版本自动 skip（idempotent），
+            #   所以即使 push 失败、下次 run 重做也无副作用；
+            # - 极端 race（外部并行 push 或 GitHub API 延迟）下首次 push 失败时
+            #   做有限次 retry：fetch + reset 后重新 cherry-pick 文件变更并重 publish。
+            #   重 publish 仍然 idempotent。
+            - name: Push commit and tags to main (with rebase retry)
               if: steps.bump.outputs.should_publish == 'true'
-              run: git push --follow-tags origin HEAD:main
+              env:
+                  NEW_VERSION: ${{ steps.bump.outputs.version }}
+              run: |
+                  set -e
+
+                  push_once() {
+                      git push --follow-tags origin HEAD:main
+                  }
+
+                  if push_once; then
+                      echo "Pushed $NEW_VERSION on first attempt"
+                      exit 0
+                  fi
+
+                  for attempt in 2 3 4; do
+                      echo "::warning::Push attempt $((attempt - 1)) failed; rebasing onto latest origin/main"
+
+                      # 保存版本变更对应的文件清单
+                      CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+
+                      # 拉最新 main 并 stash 我们的 commit
+                      git fetch origin main
+                      git reset --soft origin/main
+
+                      # 检查 main 是否已经包含该版本（可能并发 run 抢先 push 了相同版本）
+                      REMOTE_VERSION=$(git show HEAD:packages/front/package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+                      if [[ "$REMOTE_VERSION" == "$NEW_VERSION" ]]; then
+                          echo "::notice::origin/main already at $NEW_VERSION (parallel run pushed); accepting upstream"
+                          # 丢弃我们的本地变更
+                          git checkout -- .
+                          exit 0
+                      fi
+
+                      # main 跑前了但不是我们这个版本——重新 stage 我们的文件并提交在新 main 之上
+                      git add -A
+                      if git diff --cached --quiet; then
+                          echo "::warning::No file changes after rebase; nothing to commit"
+                          exit 0
+                      fi
+                      git commit -m "chore(release): version packages"
+
+                      if push_once; then
+                          echo "Pushed $NEW_VERSION on attempt $attempt"
+                          exit 0
+                      fi
+                  done
+
+                  echo "::error::Push failed after retries. npm has @finesoft/front@$NEW_VERSION published but main HEAD was not updated."
+                  echo "::error::Next push to main will trigger reconcile and self-heal."
+                  exit 1
 
             - name: Summarize release result
               if: always()
