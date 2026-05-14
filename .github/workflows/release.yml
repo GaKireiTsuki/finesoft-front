@@ -34,12 +34,18 @@ jobs:
             # 显式 checkout `main` 引用而非 trigger 时的 SHA：
             # 配合下面的 concurrency queue，若并发 push 排队，第二个 run 启动时
             # main 已是前一个 run 推送后的状态，避免 push 时 non-fast-forward。
+            #
+            # 用 fine-grained PAT (RELEASE_PUSH_TOKEN) 而非默认 GITHUB_TOKEN：
+            # repo ruleset 不允许 github-actions[bot] 作为 bypass actor（UI 搜不到该 system bot），
+            # 改用 admin user PAT 推送即可命中已有的 RepositoryRole=5 (admin) bypass。
+            # PAT 仅授予 Contents: Read & Write，权限范围最小化。
             - name: Checkout main
               uses: actions/checkout@v5
               with:
                   ref: main
                   fetch-depth: 0
                   persist-credentials: true
+                  token: ${{ secrets.RELEASE_PUSH_TOKEN }}
 
             - name: Setup Vite+
               uses: voidzero-dev/setup-vp@v1
