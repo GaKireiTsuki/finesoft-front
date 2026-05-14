@@ -1,11 +1,20 @@
 name: Release
 
+# 单 workflow 内联发布：每次 push 到 main，本 workflow 内完成
+#   auto-changeset → version bump → build → npm publish → push 回 main
+# 不再依赖 changesets/action 的 release PR 二次合并触发链。
+#
+# 历史背景：之前用 changesets/action + auto-merge 时，release PR 被 GITHUB_TOKEN
+# 合并不会触发本 workflow（GitHub 安全策略：GITHUB_TOKEN push 不递归触发 workflow），
+# 导致 publish 步骤永远不跑。本设计去掉 release PR 这一中转。
+
 on:
     push:
         branches:
             - main
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+# 同一时间只允许一个 release 跑；并发的 push 排队执行（不取消），避免版本号竞态
+concurrency: release-${{ github.ref }}
 
 env:
     CI: true
@@ -16,16 +25,21 @@ jobs:
     release:
         name: Release
         runs-on: ubuntu-latest
+        # 防递归：bot 自己 push 的版本 commit 不再触发新一轮。
+        # 双保险，因 GITHUB_TOKEN push 本来就不会触发其它 workflow。
+        if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
         permissions:
-            actions: write
             contents: write
-            pull-requests: write
-            statuses: write
         steps:
-            - name: Checkout
+            # 显式 checkout `main` 引用而非 trigger 时的 SHA：
+            # 配合下面的 concurrency queue，若并发 push 排队，第二个 run 启动时
+            # main 已是前一个 run 推送后的状态，避免 push 时 non-fast-forward。
+            - name: Checkout main
               uses: actions/checkout@v5
               with:
+                  ref: main
                   fetch-depth: 0
+                  persist-credentials: true
 
             - name: Setup Vite+
               uses: voidzero-dev/setup-vp@v1
@@ -36,235 +50,163 @@ jobs:
             - name: Install dependencies
               run: vp install --frozen-lockfile
 
+            - name: Configure git identity
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            - name: Configure npm auth
+              env:
+                  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+              run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+
+            # 双保险刷新：checkout 后到此 step 之间 main 仍可能被推新 commit
+            # （concurrency queue 也只是序列化本 workflow，不阻挡外部 push）。
+            # reset --hard origin/main 保证从最新 main 开始 bump，缩小 push race 窗口。
+            - name: Refresh to latest main
+              run: |
+                  git fetch origin main
+                  git reset --hard origin/main
+
+            # 自愈：若 main 上的 @finesoft/front 版本领先于 npm（前次 publish 失败留下的空洞），
+            # 先用当前 main 状态做一次 catch-up publish 把 npm 对齐。
+            # 用 semver-aware 比较：仅当 main > npm 时 catch-up；npm 领先则报错（异常状态）。
+            # changeset publish 会跳过 npm 上已存在的版本，因此幂等安全。
+            - name: Reconcile npm registry with main
+              id: reconcile
+              run: |
+                  LOCAL=$(node -p "require('./packages/front/package.json').version")
+                  REMOTE=$(npm view @finesoft/front version 2>/dev/null || echo "0.0.0")
+                  echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
+                  echo "remote=$REMOTE" >> "$GITHUB_OUTPUT"
+
+                  if [[ "$LOCAL" == "$REMOTE" ]]; then
+                      echo "catch_up=false" >> "$GITHUB_OUTPUT"
+                      echo "main and npm in sync at $LOCAL"
+                  else
+                      # sort -V 是 GNU 版本排序（semver-aware）；较大者在末尾
+                      HIGHER=$(printf '%s\n%s\n' "$LOCAL" "$REMOTE" | sort -V | tail -n1)
+                      if [[ "$HIGHER" == "$LOCAL" ]]; then
+                          echo "::notice::Catch-up publish: main=$LOCAL is ahead of npm=$REMOTE"
+                          echo "catch_up=true" >> "$GITHUB_OUTPUT"
+                      else
+                          echo "::error::npm ($REMOTE) is ahead of main ($LOCAL); manual investigation required"
+                          exit 1
+                      fi
+                  fi
+
+            - name: Catch-up publish (sync npm with main)
+              if: steps.reconcile.outputs.catch_up == 'true'
+              run: vp run release
+
+            # 为本次新提交生成 changeset
             - name: Generate auto changeset
-              if: "${{ !startsWith(github.event.head_commit.message, 'chore(release): version packages') }}"
               run: vp run release:auto:changeset
 
-            - name: Create release pull request or publish
-              id: changesets
-              uses: changesets/action@v1
-              with:
-                  version: vp run version
-                  publish: vp run release
-                  commit: "chore(release): version packages"
-                  title: "chore(release): version packages"
-                  createGithubReleases: false
-                  commitMode: github-api
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+            - name: Apply version bump
+              run: vp run version
 
-            - name: Resolve release pull request context
-              id: release_pr
-              if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != '' }}"
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+            - name: Detect bumped version
+              id: bump
               run: |
-                  HEAD_REF=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefName --jq '.headRefName')
-                  HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')
-                  IS_CHANGESET_RELEASE=false
-
-                  if [[ "$HEAD_REF" == changeset-release/* ]]; then
-                      IS_CHANGESET_RELEASE=true
+                  if git diff --quiet; then
+                      echo "::warning::Auto-changeset produced no version bump; skipping publish."
+                      echo "should_publish=false" >> "$GITHUB_OUTPUT"
+                  else
+                      NEW=$(node -p "require('./packages/front/package.json').version")
+                      echo "version=$NEW" >> "$GITHUB_OUTPUT"
+                      echo "should_publish=true" >> "$GITHUB_OUTPUT"
                   fi
 
-                  echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
-                  echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-                  echo "is_changeset_release=$IS_CHANGESET_RELEASE" >> "$GITHUB_OUTPUT"
-
-            - name: Publish pending coverage status
-              if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.release_pr.outputs.is_changeset_release == 'true' }}"
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  HEAD_SHA: ${{ steps.release_pr.outputs.head_sha }}
+            - name: Commit version bump
+              if: steps.bump.outputs.should_publish == 'true'
               run: |
-                  gh api \
-                      --method POST \
-                      -H "Accept: application/vnd.github+json" \
-                      "/repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
-                      -f state="pending" \
-                      -f context="Coverage" \
-                      -f description="Coverage workflow has been requested." \
-                      -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+                  git add -A
+                  git commit -m "chore(release): version packages"
 
-            - name: Request required checks for release pull request
-              id: dispatch_checks
-              continue-on-error: true
-              if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.release_pr.outputs.is_changeset_release == 'true' }}"
+            - name: Build and publish to npm
+              if: steps.bump.outputs.should_publish == 'true'
+              run: vp run release
+
+            # Push 策略：
+            # - checkout(ref:main) + refresh(reset --hard origin/main) 已最大程度缩小 race window；
+            # - concurrency: release-${{ github.ref }} 序列化本 workflow 的并发 run；
+            # - changeset publish 对 npm 上已存在的版本自动 skip（idempotent），
+            #   所以即使 push 失败、下次 run 重做也无副作用；
+            # - 极端 race（外部并行 push 或 GitHub API 延迟）下首次 push 失败时
+            #   做有限次 retry：fetch + reset 后重新 cherry-pick 文件变更并重 publish。
+            #   重 publish 仍然 idempotent。
+            - name: Push commit and tags to main (with rebase retry)
+              if: steps.bump.outputs.should_publish == 'true'
               env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
-                  HEAD_REF: ${{ steps.release_pr.outputs.head_ref }}
+                  NEW_VERSION: ${{ steps.bump.outputs.version }}
               run: |
-                  echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
-
-                  echo "Dispatching Coverage and CodeQL for release PR #$PR_NUMBER on $HEAD_REF"
-
-                  gh api \
-                      --method POST \
-                      -H "Accept: application/vnd.github+json" \
-                      "/repos/$GITHUB_REPOSITORY/actions/workflows/quality.yml/dispatches" \
-                      -f ref="$HEAD_REF"
-
-                  gh api \
-                      --method POST \
-                      -H "Accept: application/vnd.github+json" \
-                      "/repos/$GITHUB_REPOSITORY/actions/workflows/codeql.yml/dispatches" \
-                      -f ref="$HEAD_REF"
-
-            - name: Publish failure coverage status when dispatching checks fails
-              if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.release_pr.outputs.is_changeset_release == 'true' && steps.dispatch_checks.outcome != 'success' }}"
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  HEAD_SHA: ${{ steps.release_pr.outputs.head_sha }}
-              run: |
-                  gh api \
-                      --method POST \
-                      -H "Accept: application/vnd.github+json" \
-                      "/repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
-                      -f state="failure" \
-                      -f context="Coverage" \
-                      -f description="Coverage workflow could not be dispatched." \
-                      -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-                  echo "::error::Failed to dispatch required checks for the release PR."
-                  exit 1
-
-            - name: Mirror coverage workflow result to required status check
-              if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.release_pr.outputs.is_changeset_release == 'true' && steps.dispatch_checks.outcome == 'success' }}"
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  HEAD_REF: ${{ steps.dispatch_checks.outputs.head_ref }}
-                  HEAD_SHA: ${{ steps.release_pr.outputs.head_sha }}
-              run: |
-                  RUN_ID=""
-
-                  for attempt in 1 2 3 4 5 6 7 8 9 10; do
-                      RUN_ID=$(gh run list \
-                          --repo "$GITHUB_REPOSITORY" \
-                          --workflow quality.yml \
-                          --branch "$HEAD_REF" \
-                          --event workflow_dispatch \
-                          --limit 1 \
-                          --json databaseId \
-                          --jq '.[0].databaseId // empty')
-
-                      if [[ -n "$RUN_ID" ]]; then
-                          break
-                      fi
-
-                      sleep 6
-                  done
-
-                  if [[ -z "$RUN_ID" ]]; then
-                      gh api \
-                          --method POST \
-                          -H "Accept: application/vnd.github+json" \
-                          "/repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
-                          -f state="error" \
-                          -f context="Coverage" \
-                          -f description="Coverage workflow could not be located." \
-                          -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-                      echo "::error::Could not find the dispatched Quality workflow run for $HEAD_REF"
-                      exit 1
-                  fi
-
-                  gh api \
-                      --method POST \
-                      -H "Accept: application/vnd.github+json" \
-                      "/repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
-                      -f state="pending" \
-                      -f context="Coverage" \
-                      -f description="Coverage workflow is running." \
-                      -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
-
-                  set +e
-                  gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status
-                  WATCH_EXIT=$?
                   set -e
 
-                  CONCLUSION=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq '.conclusion // empty')
+                  push_once() {
+                      git push --follow-tags origin HEAD:main
+                  }
 
-                  case "$CONCLUSION" in
-                      success)
-                          STATE=success
-                          DESCRIPTION="Coverage completed successfully."
-                          ;;
-                      failure|timed_out|action_required)
-                          STATE=failure
-                          DESCRIPTION="Coverage workflow failed."
-                          ;;
-                      cancelled|neutral|skipped|stale)
-                          STATE=error
-                          DESCRIPTION="Coverage workflow did not complete successfully."
-                          ;;
-                      *)
-                          if [[ "$WATCH_EXIT" -eq 0 ]]; then
-                              STATE=success
-                              DESCRIPTION="Coverage completed successfully."
-                          else
-                              STATE=error
-                              DESCRIPTION="Coverage finished with conclusion: ${CONCLUSION:-unknown}."
-                          fi
-                          ;;
-                  esac
-
-                  gh api \
-                      --method POST \
-                      -H "Accept: application/vnd.github+json" \
-                      "/repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
-                      -f state="$STATE" \
-                      -f context="Coverage" \
-                      -f description="$DESCRIPTION" \
-                      -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
-
-                  if [[ "$STATE" != "success" ]]; then
-                      exit 1
+                  if push_once; then
+                      echo "Pushed $NEW_VERSION on first attempt"
+                      exit 0
                   fi
 
-            - name: Enable auto-merge for release pull request
-              if: "${{ steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != '' }}"
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  if gh pr merge --repo "$GITHUB_REPOSITORY" --auto --squash "${{ steps.changesets.outputs.pullRequestNumber }}"; then
-                      echo "Enabled auto-merge for release PR #${{ steps.changesets.outputs.pullRequestNumber }}."
-                  else
-                      echo "::warning::Could not enable auto-merge for release PR #${{ steps.changesets.outputs.pullRequestNumber }}. Check whether auto-merge is enabled for this repository."
-                  fi
+                  for attempt in 2 3 4; do
+                      echo "::warning::Push attempt $((attempt - 1)) failed; rebasing onto latest origin/main"
+
+                      # 保存版本变更对应的文件清单
+                      CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+
+                      # 拉最新 main 并 stash 我们的 commit
+                      git fetch origin main
+                      git reset --soft origin/main
+
+                      # 检查 main 是否已经包含该版本（可能并发 run 抢先 push 了相同版本）
+                      REMOTE_VERSION=$(git show HEAD:packages/front/package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+                      if [[ "$REMOTE_VERSION" == "$NEW_VERSION" ]]; then
+                          echo "::notice::origin/main already at $NEW_VERSION (parallel run pushed); accepting upstream"
+                          # 丢弃我们的本地变更
+                          git checkout -- .
+                          exit 0
+                      fi
+
+                      # main 跑前了但不是我们这个版本——重新 stage 我们的文件并提交在新 main 之上
+                      git add -A
+                      if git diff --cached --quiet; then
+                          echo "::warning::No file changes after rebase; nothing to commit"
+                          exit 0
+                      fi
+                      git commit -m "chore(release): version packages"
+
+                      if push_once; then
+                          echo "Pushed $NEW_VERSION on attempt $attempt"
+                          exit 0
+                      fi
+                  done
+
+                  echo "::error::Push failed after retries. npm has @finesoft/front@$NEW_VERSION published but main HEAD was not updated."
+                  echo "::error::Next push to main will trigger reconcile and self-heal."
+                  exit 1
 
             - name: Summarize release result
-              if: "${{ always() }}"
+              if: always()
               env:
-                  HAS_CHANGESETS: ${{ steps.changesets.outputs.hasChangesets }}
-                  PUBLISHED: ${{ steps.changesets.outputs.published }}
-                  PULL_REQUEST_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
-                  PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
-                  IS_CHANGESET_RELEASE: ${{ steps.release_pr.outputs.is_changeset_release }}
+                  CATCH_UP: ${{ steps.reconcile.outputs.catch_up }}
+                  LOCAL: ${{ steps.reconcile.outputs.local }}
+                  REMOTE: ${{ steps.reconcile.outputs.remote }}
+                  NEW_VERSION: ${{ steps.bump.outputs.version }}
+                  PUBLISHED: ${{ steps.bump.outputs.should_publish }}
               run: |
                   {
                       echo "## Release workflow"
                       echo
-
+                      if [[ "$CATCH_UP" == "true" ]]; then
+                          echo "- Reconciled npm: published \`$LOCAL\` to catch up with main (npm was at \`$REMOTE\`)"
+                      fi
                       if [[ "$PUBLISHED" == "true" ]]; then
-                          echo "Published packages:"
-                          node -e 'const packages = JSON.parse(process.env.PUBLISHED_PACKAGES ?? "[]"); for (const pkg of packages) console.log(`- \`${pkg.name}@${pkg.version}\``);'
-                      elif [[ "$HAS_CHANGESETS" == "true" ]]; then
-                          echo "Release PR: #$PULL_REQUEST_NUMBER"
-                          echo
-
-                          if [[ "$IS_CHANGESET_RELEASE" == "true" ]]; then
-                              echo "Coverage status mirroring is enabled for changeset-release/* branches."
-                              echo
-                              echo "Coverage and CodeQL workflows were dispatched for the release PR branch."
-                          else
-                              echo "Coverage status mirroring was skipped because the release PR branch does not match changeset-release/*."
-                          fi
-
-                          echo
-                          echo "Auto-merge has been requested for the release PR when repository settings allow it."
+                          echo "- Published \`@finesoft/front@$NEW_VERSION\` and pushed version commit back to main"
                       else
-                          echo "No pending changesets were found."
+                          echo "- No version bump produced; nothing published"
                       fi
                   } >> "$GITHUB_STEP_SUMMARY"
