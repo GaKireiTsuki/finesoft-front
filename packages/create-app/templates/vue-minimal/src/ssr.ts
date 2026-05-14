@@ -1,0 +1,28 @@
+import { createSSRRender, serializeServerData } from "@finesoft/front";
+import { createSSRApp } from "vue";
+import { renderToString } from "vue/server-renderer";
+import App from "./App.vue";
+import { bootstrap } from "./bootstrap";
+
+export const render = createSSRRender({
+  bootstrap,
+  getErrorPage(status, message) {
+    return {
+      id: "error",
+      pageType: "error",
+      title: `Error ${status}`,
+      description: message,
+    };
+  },
+  async renderApp(page, _framework) {
+    const app = createSSRApp(App, { page });
+    const html = await renderToString(app);
+    return {
+      html,
+      head: `<title>${page.title}</title>`,
+      css: "",
+    };
+  },
+});
+
+export { serializeServerData };

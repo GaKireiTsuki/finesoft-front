@@ -1,0 +1,37 @@
+<script lang="ts">
+	import { getPerform } from "../lib/framework-svelte";
+	import type { ProductItem } from "../lib/models/product";
+
+	let { item }: { item: ProductItem } = $props();
+
+	const perform = getPerform();
+</script>
+
+<div class="product-card">
+	<h3>{item.name}</h3>
+	<p class="price">${item.price.toFixed(2)}</p>
+	{#if item.clickAction && "url" in item.clickAction}
+		<a
+			href={item.clickAction.url}
+			onclick={(e) => {
+				if (perform && item.clickAction) {
+					e.preventDefault();
+					void perform(item.clickAction);
+				}
+			}}>View Details &rarr;</a
+		>
+	{/if}
+</div>
+
+<style>
+	.product-card {
+		border: 1px solid #eee;
+		border-radius: 8px;
+		padding: 1rem;
+		min-width: 200px;
+	}
+	.price {
+		color: #007bff;
+		font-weight: bold;
+	}
+</style>
