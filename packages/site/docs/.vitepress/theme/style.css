@@ -1,0 +1,191 @@
+/* Demo container — used to box <ClientOnly> demos in chapters */
+.fs-demo {
+    margin: 1.5rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 12px;
+    background: var(--vp-c-bg-soft);
+}
+
+.fs-demo-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--vp-c-brand-1);
+    margin-bottom: 0.75rem;
+}
+
+.fs-demo-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+    .fs-demo-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.fs-demo-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.fs-demo-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+}
+
+.fs-demo-controls input[type="text"],
+.fs-demo-controls select {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 6px;
+    background: var(--vp-c-bg);
+    color: var(--vp-c-text-1);
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.85rem;
+}
+
+.fs-demo-controls button {
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--vp-c-brand-1);
+    border-radius: 6px;
+    background: var(--vp-c-brand-1);
+    color: var(--vp-c-bg);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.fs-demo-controls button:hover {
+    background: var(--vp-c-brand-2);
+}
+
+.fs-demo-controls button.secondary {
+    background: transparent;
+    color: var(--vp-c-brand-1);
+}
+
+.fs-demo-output {
+    background: var(--vp-c-bg);
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 6px;
+    padding: 0.75rem;
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.8rem;
+    overflow-x: auto;
+}
+
+.fs-demo-empty {
+    color: var(--vp-c-text-3);
+    font-style: italic;
+}
+
+/* JSON Inspector */
+.fs-json {
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.fs-json-key {
+    color: var(--vp-c-brand-1);
+}
+
+.fs-json-string {
+    color: #98c379;
+}
+
+.fs-json-number,
+.fs-json-bool {
+    color: #d19a66;
+}
+
+.fs-json-null {
+    color: var(--vp-c-text-3);
+}
+
+.fs-json-toggle {
+    cursor: pointer;
+    user-select: none;
+    color: var(--vp-c-text-2);
+}
+
+/* Pipeline */
+.fs-pipeline {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+}
+
+.fs-pipeline-stage {
+    flex: 1 1 0;
+    min-width: 90px;
+    padding: 0.6rem 0.5rem;
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 8px;
+    background: var(--vp-c-bg);
+    text-align: center;
+    font-size: 0.75rem;
+    transition: all 0.25s ease;
+    position: relative;
+}
+
+.fs-pipeline-stage.is-active {
+    border-color: var(--vp-c-brand-1);
+    box-shadow: 0 0 0 2px var(--vp-c-brand-soft);
+    transform: translateY(-2px);
+}
+
+.fs-pipeline-stage.is-terminated {
+    border-color: var(--vp-c-danger-1, #e74c3c);
+    background: color-mix(in oklab, var(--vp-c-danger-1, #e74c3c) 8%, transparent);
+}
+
+.fs-pipeline-arrow {
+    align-self: center;
+    color: var(--vp-c-text-3);
+    font-size: 1.2rem;
+}
+
+/* Timeline */
+.fs-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.fs-timeline-step {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 0.6rem;
+    align-items: start;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+}
+
+.fs-timeline-step.is-active {
+    background: var(--vp-c-brand-soft);
+}
+
+.fs-timeline-step .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--vp-c-divider);
+    margin-top: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.fs-timeline-step.is-active .dot {
+    background: var(--vp-c-brand-1);
+}

@@ -484,6 +484,18 @@ vp run -r build       # Build all packages
 vp ready              # fmt + lint + build (full validation)
 ```
 
+### Documentation site
+
+The bilingual documentation in [packages/front/docs/](./packages/front/docs/) is also published as a vitepress site under [packages/site/](./packages/site/). Each chapter that has a runnable concept embeds a live demo wired to the actual framework (Router, middleware pipeline, …).
+
+```bash
+pnpm --filter @finesoft/site dev      # http://localhost:5173/
+pnpm --filter @finesoft/site build    # → packages/site/dist
+pnpm --filter @finesoft/site preview  # http://localhost:4173/
+```
+
+The site reads markdown directly from `packages/front/docs/` via vitepress `srcDir`, so editing a chapter updates both the npm-published docs and the site.
+
 ## Quality & Analysis
 
 The repository ships with both runtime quality checks and security-oriented static analysis:

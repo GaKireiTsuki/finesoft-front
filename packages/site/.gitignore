@@ -1,0 +1,6 @@
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+.vitepress-cache/
+dist/
+node_modules/
+*.log

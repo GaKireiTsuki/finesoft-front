@@ -1,0 +1,24 @@
+{
+    "name": "@finesoft/site",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Documentation site for @finesoft/front (vitepress + finesoft live demos)",
+    "type": "module",
+    "scripts": {
+        "dev": "vitepress dev docs",
+        "build": "vitepress build docs",
+        "preview": "vitepress preview docs"
+    },
+    "dependencies": {
+        "motion-v": "^2.2.1",
+        "vue": "^3.5.34"
+    },
+    "devDependencies": {
+        "@finesoft/browser": "workspace:*",
+        "@finesoft/core": "workspace:*",
+        "@finesoft/front": "workspace:*",
+        "@types/node": "catalog:",
+        "oxc-minify": "^0.131.0",
+        "vitepress": "2.0.0-alpha.17"
+    }
+}

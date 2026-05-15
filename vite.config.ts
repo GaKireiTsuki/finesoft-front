@@ -16,6 +16,7 @@ const coverage: CoverageV8Options = {
         "**/dist/**",
         "**/test/**",
         "packages/create-app/**",
+        "packages/site/**",
         "templates/**",
         "docs/**",
         "scripts/**",
@@ -33,7 +34,15 @@ export default defineConfig({
         // 的 `vp config` 自动重写，但它写入的缩进（yaml block 4 空格 + END 标签 0 缩进）
         // 与 oxfmt 的期望（6 空格 + 2 缩进）冲突。让 oxfmt 跳过这个文件，否则每次
         // `vp install` 后 `vp check` 必然失败。
-        ignorePatterns: ["AGENTS.md"],
+        // packages/site/.vitepress/cache 是 vitepress 自动生成的依赖缓存，跟 .vitepress-cache
+        // 配置无关，每次 dev/build 重新生成；.playwright-mcp 是 playwright 验证 demo 时
+        // 的临时截图。两者都不入库，也不参与格式化。
+        ignorePatterns: [
+            "AGENTS.md",
+            "**/.vitepress/cache/**",
+            "**/.vitepress/dist/**",
+            ".playwright-mcp/**",
+        ],
     },
     // oxlint 配置：同理，vp 调用时优先读这个，不读 .oxlintrc.json。
     lint: {

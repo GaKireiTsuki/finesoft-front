@@ -208,6 +208,12 @@ async function rateLimitGuard(ctx: NavigationContext) {
 - **`afterLoad` 里的 `deny()` 会丢弃已产出的页面。** Controller 已经跑过了；deny 只阻断响应。如果 `execute()` 有副作用（写操作），副作用已经发生。
 - **浏览器端守卫拿不到请求头。** `getHeader()` 在客户端返回 `null`。cookie 仍然可用。
 
+## 实时演示
+
+构造一条三守卫的 `beforeLoad` 链，逐个选定每个 guard 的返回值，然后交给 `@finesoft/core` 里**真实**的 `runBeforeLoadGuards()` 跑一次。下方流水线会显示链路在哪一步短路、最终的 `MiddlewareResult` 是什么。
+
+<Ch03MiddlewarePlayground />
+
 ## 下一步
 
 - [渲染与 Hydration](./04-rendering-and-hydration.md) —— `afterLoad` 到 HTML 输出之间发生什么

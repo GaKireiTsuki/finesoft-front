@@ -191,6 +191,12 @@ const match = framework.router.resolve("/products/42");
 
 `router.resolve()` returns `null` for unmatched URLs — handle this in your server-side 404 logic.
 
+## Try it
+
+A live `Router` instance is registered with the sample routes below. Type a URL on the left and watch `Router.resolve()` produce a `RouteMatch` on the right — the same code path the framework uses at runtime.
+
+<Ch02RouteResolver />
+
 ## Next
 
 - [Middleware](./03-middleware.md) — gating navigation, redirects, denies
