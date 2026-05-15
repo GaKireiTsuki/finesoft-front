@@ -9,7 +9,7 @@
     },
     "dependencies": {
         "@finesoft/front": "workspace:*",
-        "svelte": "^5.0.0"
+        "svelte": "^5.55.7"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^5.0.0",
