@@ -191,6 +191,12 @@ const match = framework.router.resolve("/products/42");
 
 未命中返回 `null` —— 在服务端 404 逻辑里处理它。
 
+## 实时演示
+
+下方注册了一个真实的 `Router` 实例（包含示例路由）。在左侧输入 URL，右侧实时显示 `Router.resolve()` 的 `RouteMatch` —— 与框架运行时走的是同一段代码。
+
+<Ch02RouteResolver />
+
 ## 下一步
 
 - [中间件](./03-middleware.md) —— 守卫导航、重定向、拒绝

@@ -208,6 +208,12 @@ async function rateLimitGuard(ctx: NavigationContext) {
 - **`deny()` in `afterLoad` discards the produced page.** The controller already ran; deny only blocks the response. If `execute()` had side effects (writes), they already happened.
 - **Browser-side guards do not have access to request headers.** `getHeader()` returns `null` on the client. Cookies still work.
 
+## Try it
+
+Build a `beforeLoad` chain of three guards, pick the result each one returns, then run it through the **real** `runBeforeLoadGuards()` from `@finesoft/core`. The pipeline below shows where the chain short-circuits and what the final `MiddlewareResult` looks like.
+
+<Ch03MiddlewarePlayground />
+
 ## Next
 
 - [Rendering & hydration](./04-rendering-and-hydration.md) — what happens between `afterLoad` and HTML output
