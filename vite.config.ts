@@ -29,6 +29,11 @@ export default defineConfig({
     // .oxfmtrc.json 仍保留给不经过 vp 的 IDE LSP 用，两边内容保持同步。
     fmt: {
         tabWidth: 4,
+        // AGENTS.md 的 <!--VITE PLUS START-->...<!--VITE PLUS END--> 段由 prepare 钩子
+        // 的 `vp config` 自动重写，但它写入的缩进（yaml block 4 空格 + END 标签 0 缩进）
+        // 与 oxfmt 的期望（6 空格 + 2 缩进）冲突。让 oxfmt 跳过这个文件，否则每次
+        // `vp install` 后 `vp check` 必然失败。
+        ignorePatterns: ["AGENTS.md"],
     },
     // oxlint 配置：同理，vp 调用时优先读这个，不读 .oxlintrc.json。
     lint: {
