@@ -28,6 +28,7 @@ export type {
     Storage,
     TranslationMessages,
 } from "./dependencies/make-dependencies";
+export { defineRequestScopedKey, type RequestScopedKey } from "./dependencies/request-scoped-key";
 
 // ===== Router =====
 export { Router } from "./router/router";
@@ -52,6 +53,14 @@ export type { FrameworkConfig } from "./framework";
 
 // ===== Models =====
 export type { BasePage } from "./models/page";
+export {
+    BASE_PAGE_FIELDS,
+    FINESOFT_PUBLIC,
+    getPublicFields,
+    isPublicMarked,
+    markPublic,
+} from "./models/page";
+export { safeErrorPage, type SafeErrorPageOptions } from "./models/safe-error-page";
 export type { BaseItem, BaseShelf } from "./models/shelf";
 
 // ===== Prefetched Intents =====
@@ -60,8 +69,10 @@ export type { PrefetchedIntent } from "./prefetched-intents/prefetched-intents";
 export { stableStringify } from "./prefetched-intents/stable-stringify";
 
 // ===== HTTP =====
-export { HttpClient, HttpError } from "./http/client";
+export { HostGuardError, HttpClient, HttpError } from "./http/client";
 export type { HttpClientConfig, RequestInterceptor, ResponseInterceptor } from "./http/client";
+export { classifyHost, classifyUrl, type HostCheckResult } from "./http/host-guard";
+export { secureFetch, type SecureFetchOptions } from "./http/secure-fetch";
 
 // ===== Base Controller =====
 export { BaseController } from "./intents/base-controller";

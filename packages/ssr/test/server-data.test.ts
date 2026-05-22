@@ -1,4 +1,7 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
+
+vi.mock("@finesoft/core", async () => import("../../core/src/index"));
+
 import { serializeServerData } from "../src/server-data";
 
 describe("serializeServerData", () => {

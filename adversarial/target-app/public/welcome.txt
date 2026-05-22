@@ -1,0 +1,3 @@
+Welcome to the Finesoft adversarial target app.
+
+This file is served by the /static endpoint.

@@ -33,6 +33,7 @@ export {
 } from "@finesoft/ssr";
 export type {
     InjectSSROptions,
+    SerializeServerDataOptions,
     SSRContext,
     SSRRenderConfig,
     SSRRenderOptions,

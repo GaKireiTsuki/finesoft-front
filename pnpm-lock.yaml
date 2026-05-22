@@ -46,6 +46,34 @@ importers:
         specifier: 'catalog:'
         version: 0.1.17(@types/node@22.19.15)(@vitest/coverage-v8@4.1.2(vitest@4.1.2(@types/node@22.19.15)(@voidzero-dev/vite-plus-core@0.1.16(@types/node@22.19.15)(typescript@6.0.2))))(@voidzero-dev/vite-plus-core@0.1.16(@types/node@22.19.15)(typescript@6.0.2))(typescript@6.0.2)
 
+  adversarial/target-app:
+    dependencies:
+      '@finesoft/front':
+        specifier: workspace:*
+        version: link:../../packages/front
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.14)
+      '@vitejs/plugin-react':
+        specifier: ^4.0.0
+        version: 4.7.0(@voidzero-dev/vite-plus-core@0.1.16(@types/node@22.19.15)(typescript@6.0.2))
+      vite:
+        specifier: npm:@voidzero-dev/vite-plus-core@0.1.16
+        version: '@voidzero-dev/vite-plus-core@0.1.16(@types/node@22.19.15)(typescript@6.0.2)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.17(@types/node@22.19.15)(@vitest/coverage-v8@4.1.2(vitest@4.1.2(@types/node@22.19.15)(@voidzero-dev/vite-plus-core@0.1.16(@types/node@22.19.15)(typescript@6.0.2))))(@voidzero-dev/vite-plus-core@0.1.16(@types/node@22.19.15)(typescript@6.0.2))(typescript@6.0.2)
+
   packages/browser:
     dependencies:
       '@finesoft/core':
@@ -2084,10 +2112,6 @@ packages:
     resolution: {integrity: sha512-OW/rX8O/jXnm82Ey1k44pObPtdblfiuWnrd8X7GJ7emImCOstunGbXUpp7HdBrFQX6rJzn3sPT397Wp5aCwCHg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.9:
-    resolution: {integrity: sha512-7a70Nsot+EMX9fFU3064K/kdHWZqGVY+BADLyXc8Dfv+mTLLVl6JzJpPaCZ2kQL9gIJvKXSLMHhqdRRjwQeFtw==}
-    engines: {node: ^10 || ^12 || >=14}
-
   prettier@2.8.8:
     resolution: {integrity: sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==}
     engines: {node: '>=10.13.0'}
@@ -3214,7 +3238,7 @@ snapshots:
       '@oxc-project/runtime': 0.123.0
       '@oxc-project/types': 0.123.0
       lightningcss: 1.32.0
-      postcss: 8.5.9
+      postcss: 8.5.14
     optionalDependencies:
       '@types/node': 22.19.15
       fsevents: 2.3.3
@@ -3225,7 +3249,7 @@ snapshots:
       '@oxc-project/runtime': 0.124.0
       '@oxc-project/types': 0.124.0
       lightningcss: 1.32.0
-      postcss: 8.5.9
+      postcss: 8.5.14
     optionalDependencies:
       '@types/node': 22.19.15
       fsevents: 2.3.3
@@ -4019,12 +4043,6 @@ snapshots:
       source-map-js: 1.2.1
 
   postcss@8.5.8:
-    dependencies:
-      nanoid: 3.3.11
-      picocolors: 1.1.1
-      source-map-js: 1.2.1
-
-  postcss@8.5.9:
     dependencies:
       nanoid: 3.3.11
       picocolors: 1.1.1

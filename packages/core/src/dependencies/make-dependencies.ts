@@ -2,6 +2,7 @@
  * 依赖工厂 — 创建所有基础依赖
  */
 
+import { secureFetch, type SecureFetchOptions } from "../http/secure-fetch";
 import { getLocaleAttributes } from "../i18n/locale";
 import { resolveMessages, type TranslationMessages } from "../i18n/messages";
 import { SimpleTranslator } from "../i18n/translator";
@@ -71,6 +72,12 @@ export const DEP_KEYS = {
     FEATURE_FLAGS: "featureFlags",
     METRICS: "metrics",
     FETCH: "fetch",
+    /**
+     * `fetch` 包了 SSRF 防护（拒绝 private / loopback / 保留 IP + DNS resolve 后逐 IP 校验）。
+     * 当 controller 用用户可控的 URL 发起请求（图片代理、链接预览、回调等），
+     * 优先 resolve 这个 key 而不是 `FETCH`。要 opt-out 可手动调 `secureFetch(baseFetch, { allowInternalHosts: true })`。
+     */
+    SAFE_FETCH: "safeFetch",
     EVENT_RECORDER: "eventRecorder",
     LOCALE: "locale",
     PLATFORM: "platform",
@@ -158,6 +165,11 @@ export interface MakeDependenciesOptions {
     locale?: string;
     /** 自定义 PlatformInfo（默认通过 UA 自动检测） */
     platform?: PlatformInfo;
+    /**
+     * 覆盖 `DEP_KEYS.SAFE_FETCH` 默认行为。比如服务正常需要打内网，可以传
+     * `{ allowInternalHosts: true }` 整体放行；或自定义 DNS 校验策略。
+     */
+    safeFetch?: SecureFetchOptions;
 }
 
 interface InternalMakeDependenciesOptions extends MakeDependenciesOptions {
@@ -240,4 +252,10 @@ export function makeDependencies(
     );
 
     container.register(DEP_KEYS.FETCH, () => fetchFn);
+
+    // ===== SAFE_FETCH (SSRF-defended wrapper around FETCH) =====
+    const safeFetchOpts = options.safeFetch ?? {};
+    container.register<typeof globalThis.fetch>(DEP_KEYS.SAFE_FETCH, () =>
+        secureFetch(fetchFn, safeFetchOpts),
+    );
 }

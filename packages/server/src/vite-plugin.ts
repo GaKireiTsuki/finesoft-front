@@ -121,6 +121,25 @@ function normalizePathForGlob(pathname: string): string {
     return pathname.replace(/\\/g, "/");
 }
 
+let devSafetyBannerPrinted = false;
+
+/**
+ * 在 dev 启动时打印一次安全提示：dev 模式会通过 `/src/*` 和 `/@fs/*` 暴露源码（HMR
+ * 必需），切勿对公网开放。Vite preview / `vp build` 产物不受影响。
+ */
+function printDevSafetyBanner(): void {
+    if (devSafetyBannerPrinted) return;
+    devSafetyBannerPrinted = true;
+    const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+    const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+    console.log(
+        `\n${yellow("[finesoft]")} dev server is exposing source via /src/* and /@fs/* (HMR).\n` +
+            dim(
+                "           Do NOT expose this server to untrusted networks; run `vp build && vp preview` for production.\n",
+            ),
+    );
+}
+
 async function resolveMessagesDir(root: string, messagesDir: string): Promise<string> {
     const { existsSync } = await dynamicImport("node:fs");
     const path = await dynamicImport("node:path");
@@ -309,6 +328,8 @@ export async function loadMessages(locale) {
             return async () => {
                 const { Hono: HonoClass } = await dynamicImport("hono");
                 const { getRequestListener } = await dynamicImport("@hono/node-server");
+
+                printDevSafetyBanner();
 
                 const app = new HonoClass();
 

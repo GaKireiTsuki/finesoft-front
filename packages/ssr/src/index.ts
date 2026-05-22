@@ -6,7 +6,7 @@ export {
     type InjectSSROptions,
 } from "./inject";
 export { ssrRender, type SSRContext, type SSRRenderOptions, type SSRRenderResult } from "./render";
-export { serializeServerData } from "./server-data";
+export { serializeServerData, type SerializeServerDataOptions } from "./server-data";
 
 // ===== Re-exports from @finesoft/core (convenience) =====
 export { Framework } from "@finesoft/core";
