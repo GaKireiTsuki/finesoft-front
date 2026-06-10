@@ -98,8 +98,10 @@ function isIpLiteral(host: string): boolean {
 }
 
 interface NodeDns {
-    resolve4(hostname: string): Promise<string[]>;
-    resolve6(hostname: string): Promise<string[]>;
+    lookup(
+        hostname: string,
+        options: { all: true },
+    ): Promise<Array<{ address: string; family: number }>>;
 }
 
 async function resolveAndClassify(
@@ -113,14 +115,23 @@ async function resolveAndClassify(
     } catch {
         return { ok: true };
     }
-    const settled = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname)]);
-    const addrs: string[] = [];
-    for (const r of settled) if (r.status === "fulfilled") addrs.push(...r.value);
+    // Use dns.lookup (getaddrinfo) — NOT resolve4/resolve6. getaddrinfo consults
+    // the OS resolver including /etc/hosts, matching what the real fetch() will do.
+    // resolve4/6 issue raw DNS queries that skip host aliases, so a name resolving
+    // only via /etc/hosts would return zero addresses here and be waved through,
+    // then fetch to a private/loopback IP — an SSRF bypass of the host guard.
+    let addrs: Array<{ address: string }>;
+    try {
+        addrs = await dns.lookup(hostname, { all: true });
+    } catch {
+        // Resolution failed → the real fetch will fail too; let it surface there.
+        return { ok: true };
+    }
     if (addrs.length === 0) return { ok: true };
-    for (const ip of addrs) {
-        const verdict = classifyUrl(`http://${ip.includes(":") ? `[${ip}]` : ip}/`);
+    for (const { address } of addrs) {
+        const verdict = classifyUrl(`http://${address.includes(":") ? `[${address}]` : address}/`);
         if (!verdict.ok) {
-            return { ok: false, reason: `host resolves to ${ip} (${verdict.reason})` };
+            return { ok: false, reason: `host resolves to ${address} (${verdict.reason})` };
         }
     }
     return { ok: true };

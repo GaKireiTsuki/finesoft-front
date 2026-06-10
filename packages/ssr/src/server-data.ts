@@ -7,8 +7,8 @@
 
 import { BASE_PAGE_FIELDS, getPublicFields, type PrefetchedIntent } from "@finesoft/core";
 
-const LINE_SEPARATOR = " ";
-const PARAGRAPH_SEPARATOR = " ";
+const LINE_SEPARATOR = "\u2028";
+const PARAGRAPH_SEPARATOR = "\u2029";
 
 const HTML_REPLACEMENTS: Record<string, string> = {
     "<": "\\u003C",
@@ -23,6 +23,11 @@ const HTML_REPLACEMENTS: Record<string, string> = {
 const HTML_ESCAPE_PATTERN = new RegExp("[<>/\\u2028\\u2029]", "g");
 
 let unmarkedPageWarned = false;
+
+/** @internal Test-only: reset the once-per-process unmarked-page warning flag. */
+export function __resetUnmarkedPageWarning(): void {
+    unmarkedPageWarned = false;
+}
 
 export interface SerializeServerDataOptions {
     /**

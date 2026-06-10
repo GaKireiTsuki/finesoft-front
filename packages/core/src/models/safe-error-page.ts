@@ -9,10 +9,11 @@
  * helper produces a safe-by-default error page; the unsafe `devError` payload is
  * only included when the runtime is clearly a non-production environment.
  *
- * Production detection is conservative: `process.env.NODE_ENV === "production"`
- * means production (no devError appended). Anything else is treated as dev. In
- * browser/edge runtimes where `process.env` is unavailable, we fall back to
- * "production-like" and never expose devError. Applications can pass an
+ * Production detection is conservative — it errs toward hiding devError.
+ * Treated as production-like (no devError appended): `NODE_ENV === "production"`,
+ * `NODE_ENV` unset/undefined, and runtimes where `process.env` is unavailable
+ * (browser/edge). devError is surfaced ONLY when `NODE_ENV` is explicitly set to
+ * a non-production value (e.g. "development", "test"). Applications can pass an
  * explicit `isProduction` to override.
  *
  * @example

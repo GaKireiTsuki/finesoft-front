@@ -3,7 +3,7 @@ import { markPublic, type BasePage } from "../../core/src/index";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index"));
 
-import { serializeServerData } from "../src/server-data";
+import { __resetUnmarkedPageWarning, serializeServerData } from "../src/server-data";
 
 interface ProfilePage extends BasePage {
     email?: string;
@@ -47,6 +47,9 @@ describe("serializeServerData — markPublic allowlist", () => {
     });
 
     test("unmarked page is still fully serialized (back-compat) but warns once", () => {
+        // The "warn once" guard is a module-level flag; reset it so this assertion
+        // doesn't depend on whether an earlier test already tripped the warning.
+        __resetUnmarkedPageWarning();
         const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
         try {
             const page: ProfilePage = {
