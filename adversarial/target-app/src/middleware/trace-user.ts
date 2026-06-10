@@ -14,7 +14,10 @@ export interface TracedUser {
 export const TRACED_USER = defineRequestScopedKey<TracedUser | null>("app.traced-user");
 
 export const traceUser: BeforeLoadGuard = (ctx) => {
-    const fromQuery = ctx.params["user"];
+    // ctx.params values are `unknown` (a route codec may have converted them);
+    // this guard only wants the raw string form of `user`.
+    const rawUser = ctx.params["user"];
+    const fromQuery = typeof rawUser === "string" ? rawUser : undefined;
     const fromCookie = ctx.getCookie("user");
     const userName = fromQuery ?? fromCookie;
     TRACED_USER.set(ctx, userName ? { name: userName, seenAt: Date.now() } : null);
