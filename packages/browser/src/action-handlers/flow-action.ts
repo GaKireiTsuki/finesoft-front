@@ -65,7 +65,7 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
         const shouldReplace =
             isFirstPage || url === window.location.pathname + window.location.search;
 
-        const match = framework.routeUrl(url);
+        const match = await framework.routeUrl(url);
         if (!match) {
             log.warn(`FlowAction: no route for ${url}`);
             return;
@@ -181,7 +181,7 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
 
         // 模态展示
         if (flowAction.presentationContext === "modal") {
-            const match = framework.routeUrl(url);
+            const match = await framework.routeUrl(url);
             if (match) {
                 const page = (await framework.dispatch(match.intent)) as BasePage;
                 callbacks.onModal(page);
@@ -207,7 +207,7 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
         }
 
         const parsed = new URL(url);
-        const routeMatch = framework.routeUrl(parsed.pathname + parsed.search);
+        const routeMatch = await framework.routeUrl(parsed.pathname + parsed.search);
         if (!routeMatch) {
             log.error("received popstate without data, but URL was unroutable:", url);
             didEnterPage(null);

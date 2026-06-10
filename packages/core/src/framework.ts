@@ -97,7 +97,7 @@ export class Framework {
     }
 
     /** 路由 URL — 将 URL 解析为 Intent + Action */
-    routeUrl(url: string): RouteMatch | null {
+    async routeUrl(url: string): Promise<RouteMatch | null> {
         return this.router.resolve(url);
     }
 
