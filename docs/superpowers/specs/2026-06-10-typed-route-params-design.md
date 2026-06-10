@@ -35,7 +35,7 @@
 4. **零依赖底座**：内置一组原语，开箱即用，不强制用户安装任何校验库。
 5. **生态可扩展**：内置原语和 zod/valibot/arktype 走同一条校验路径（Standard Schema）。
 6. **path + query 都覆盖**。
-7. **path 参数名一致性**：从 `path` 字面量类型推导参数名，`params` 的 key 写错/缺失立即类型报错。
+7. **path 参数名一致性**：从 `path` 字面量类型推导参数名，`params` 写入 path 中不存在的参数名立即类型报错（防 typo）。`params` 的 key 为**可选**——可只为部分 path 参数声明 codec，未声明的参数保持 `string`（渐进增强、向后兼容；缺失某参数的 codec 不报错）。
 
 ### 非目标（v1 不做，留作未来增强）
 
@@ -188,9 +188,9 @@ type ExtractParamNames<Path extends string> = Path extends `${infer _Head}:${inf
 // ExtractParamNames<"/product/:id">            → "id"
 // ExtractParamNames<"/post/:slug/:page?">      → "slug" | "page"
 
-// 2. params 字段的形状约束（6c 一致性的载体）
+// 2. params 字段的形状约束（6c 一致性的载体）；key 可选——允许只为部分参数声明 codec
 type ParamsFor<Path extends string> = {
-    [K in ExtractParamNames<Path>]: ParamSchema;
+    [K in ExtractParamNames<Path>]?: ParamSchema;
 };
 
 // 3. 从 codec map 推导运行期类型
