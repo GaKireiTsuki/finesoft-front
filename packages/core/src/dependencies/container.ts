@@ -60,6 +60,19 @@ export class Container {
     }
 
     /**
+     * 移除当前容器的注册（不影响 parent）。
+     *
+     * 用途：在 scope 内显式撤销之前覆写的依赖，避免用 `register(() => null)` 这种
+     * 反语义的写法。被移除的 key 之后再 resolve 会回退到 parent 容器。
+     *
+     * 返回 true 表示当前层确实存在过这个注册并被移除，false 表示未注册（含「只在
+     * parent 注册」的情况，本方法不向上递归删除 —— scope 不应能影响 parent 状态）。
+     */
+    unregister(key: string): boolean {
+        return this.registrations.delete(key);
+    }
+
+    /**
      * 创建子容器（请求级 scope）
      *
      * 子容器可覆写父容器的依赖（如每请求的 locale、user），

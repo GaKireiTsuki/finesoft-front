@@ -3,7 +3,12 @@
  *
  * 为 API Client 提供标准化的 HTTP 请求能力。
  * 子类继承后只需关注业务端点定义，不需要重复实现 fetch / JSON 解析 / 错误处理。
+ *
+ * 默认安全：拒绝向内网 / loopback / 保留地址发请求（SSRF 防御）。应用层
+ * 显式 opt-out 用 `allowInternalHosts: true`。详见 host-guard.ts。
  */
+
+import { classifyUrl, type HostCheckResult } from "./host-guard";
 
 /** HTTP 请求错误 */
 export class HttpError extends Error {
@@ -14,6 +19,20 @@ export class HttpError extends Error {
     ) {
         super(`HTTP ${status}: ${statusText}`);
         this.name = "HttpError";
+    }
+}
+
+/**
+ * SSRF 防护拦截到不安全的目标地址时抛出。应用层可以 catch 它来给出业务友好的错误，
+ * 不需要靠 message 字符串匹配。
+ */
+export class HostGuardError extends Error {
+    constructor(
+        public readonly url: string,
+        public readonly reason: string,
+    ) {
+        super(`Refused to fetch ${url}: ${reason}`);
+        this.name = "HostGuardError";
     }
 }
 
@@ -39,6 +58,22 @@ export interface HttpClientConfig {
     requestInterceptors?: RequestInterceptor[];
     /** 响应拦截器（按注册顺序执行） */
     responseInterceptors?: ResponseInterceptor[];
+    /**
+     * 是否允许向私有 / loopback / 保留 IP 段发请求。
+     *
+     * **默认 false** —— 阻止内网穿透（SSRF）。如果你的服务正常需要打内网（如
+     * 微服务对内 API、127.0.0.1 上的开发依赖），把它设为 true 显式 opt-out，并
+     * 自己做来源校验。
+     */
+    allowInternalHosts?: boolean;
+    /**
+     * 是否在请求前 DNS 解析 hostname 并对解析结果做 IP 段校验。
+     *
+     * **默认 true**（仅 Node 环境有效；浏览器静默跳过）。配合 `allowInternalHosts`
+     * 防御 DNS rebinding：如果 hostname 不是 IP 字面量，框架会 resolve 它的 A/AAAA
+     * 记录并按 IP 段校验。`false` 关闭只剩 IP 字面量同步校验。
+     */
+    validateDns?: boolean;
 }
 
 /**
@@ -61,6 +96,8 @@ export abstract class HttpClient {
     protected readonly fetchFn: typeof globalThis.fetch;
     private readonly requestInterceptors: RequestInterceptor[];
     private readonly responseInterceptors: ResponseInterceptor[];
+    private readonly allowInternalHosts: boolean;
+    private readonly validateDns: boolean;
 
     constructor(config: HttpClientConfig) {
         this.baseUrl = config.baseUrl;
@@ -68,6 +105,8 @@ export abstract class HttpClient {
         this.fetchFn = config.fetch ?? globalThis.fetch.bind(globalThis);
         this.requestInterceptors = [...(config.requestInterceptors ?? [])];
         this.responseInterceptors = [...(config.responseInterceptors ?? [])];
+        this.allowInternalHosts = config.allowInternalHosts ?? false;
+        this.validateDns = config.validateDns ?? true;
     }
 
     /** 动态添加请求拦截器 */
@@ -115,6 +154,7 @@ export abstract class HttpClient {
      *
      * 自动处理:
      * - URL 拼接 (baseUrl + path + params)
+     * - SSRF 防护（IP 字面量同步校验 + 可选 DNS 解析校验）
      * - 默认 headers 合并
      * - JSON body 序列化
      * - 响应 JSON 解析
@@ -130,6 +170,10 @@ export abstract class HttpClient {
         },
     ): Promise<T> {
         const url = this.buildUrl(path, options?.params);
+
+        if (!this.allowInternalHosts) {
+            await this.enforceHostGuard(url);
+        }
 
         const headers: Record<string, string> = {
             ...this.defaultHeaders,
@@ -198,4 +242,81 @@ export abstract class HttpClient {
         }
         return `${url.pathname}${url.search}`;
     }
+
+    private async enforceHostGuard(url: string): Promise<void> {
+        // 相对 URL（baseUrl 不是绝对）不做检查 —— 调用方已经知道在自己的域内。
+        // 任何带 scheme 的绝对 URL 都走 classifyUrl，由它判 scheme + host。
+        let parsed: URL;
+        try {
+            parsed = new URL(url);
+        } catch {
+            return;
+        }
+
+        const verdict = classifyUrl(url);
+        if (!verdict.ok) {
+            throw new HostGuardError(url, verdict.reason);
+        }
+
+        if (this.validateDns && parsed.hostname && !isIpLiteral(parsed.hostname)) {
+            const dnsVerdict = await resolveAndClassify(parsed.hostname);
+            if (!dnsVerdict.ok) {
+                throw new HostGuardError(url, dnsVerdict.reason);
+            }
+        }
+    }
+}
+
+function isIpLiteral(host: string): boolean {
+    // brackets stripped by URL parser, so IPv6 here is bare like "::1"
+    if (host.includes(":")) return true;
+    return /^[0-9.]+$/.test(host) || /^0x[0-9a-f]+$/i.test(host);
+}
+
+/**
+ * Resolve `hostname` to its A and AAAA records and run each through host-guard.
+ * Returns the first failing verdict; ok if every record passes.
+ *
+ * Only operates on Node. In browser / edge runtimes where `node:dns/promises`
+ * cannot be imported, this silently returns ok — the SOP / CSP / network
+ * sandbox are expected to do the actual blocking there.
+ */
+interface NodeDns {
+    resolve4(hostname: string): Promise<string[]>;
+    resolve6(hostname: string): Promise<string[]>;
+}
+
+async function resolveAndClassify(hostname: string): Promise<HostCheckResult> {
+    let dns: NodeDns;
+    try {
+        // Dynamic import via a variable specifier keeps Node-only "node:dns/promises"
+        // out of TS module resolution (no @types/node needed for @finesoft/core) and
+        // out of bundler-resolved browser graphs.
+        const specifier = "node:dns/promises";
+        const mod = (await import(specifier)) as { default?: NodeDns } & NodeDns;
+        dns = mod.default ?? mod;
+    } catch {
+        return { ok: true };
+    }
+
+    const settled = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname)]);
+    const addrs: string[] = [];
+    for (const r of settled) {
+        if (r.status === "fulfilled") addrs.push(...r.value);
+    }
+
+    if (addrs.length === 0) {
+        // Hostname doesn't resolve. Let the actual fetch produce the real error
+        // — host-guard's job is to refuse known-bad addresses, not to gatekeep
+        // unrelated DNS failures.
+        return { ok: true };
+    }
+
+    for (const ip of addrs) {
+        const verdict = classifyUrl(`http://${ip.includes(":") ? `[${ip}]` : ip}/`);
+        if (!verdict.ok) {
+            return { ok: false, reason: `host resolves to ${ip} (${verdict.reason})` };
+        }
+    }
+    return { ok: true };
 }
