@@ -56,28 +56,27 @@ Standard Schema v1 接口（**纯 type-level 规范 + 运行时鸭子类型，�
 
 ```ts
 interface StandardSchemaV1<Input = unknown, Output = Input> {
-  readonly "~standard": {
-    readonly version: 1;
-    readonly vendor: string;
-    readonly validate: (
-      value: unknown,
-    ) => StandardResult<Output> | Promise<StandardResult<Output>>;
-    readonly types?: { readonly input: Input; readonly output: Output };
-  };
+    readonly "~standard": {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (
+            value: unknown,
+        ) => StandardResult<Output> | Promise<StandardResult<Output>>;
+        readonly types?: { readonly input: Input; readonly output: Output };
+    };
 }
 
 type StandardResult<Output> =
-  | { readonly value: Output; readonly issues?: undefined }
-  | { readonly issues: ReadonlyArray<StandardIssue> };
+    | { readonly value: Output; readonly issues?: undefined }
+    | { readonly issues: ReadonlyArray<StandardIssue> };
 
 interface StandardIssue {
-  readonly message: string;
-  readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>;
+    readonly message: string;
+    readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>;
 }
 
 // 框架自带的最小类型别名，避免运行时依赖 @standard-schema/spec
-type InferOutput<S extends StandardSchemaV1> =
-  NonNullable<S["~standard"]["types"]>["output"];
+type InferOutput<S extends StandardSchemaV1> = NonNullable<S["~standard"]["types"]>["output"];
 ```
 
 > **关键约束（来自 spec 核对）**：`validate` 可能返回 `Promise`。框架支持异步校验（见 3.5、决策 5）。
@@ -92,21 +91,21 @@ type ParamSchema<T = unknown> = StandardSchemaV1<string, T>;
 
 每个构造器返回一个实现了 `~standard` 的对象，`validate` 同步执行。
 
-| 构造器 | 输入 → 输出 | 校验内容 |
-| --- | --- | --- |
-| `str(opts?)` | `string` → `string` | `minLength` / `maxLength` / `pattern`（`RegExp`） |
-| `int(opts?)` | `string` → `number` | `Number.isInteger` + `min` / `max` |
-| `num(opts?)` | `string` → `number` | `Number.isFinite` + `min` / `max` |
-| `bool()` | `"true"\|"1"\|"false"\|"0"` → `boolean` | 成员集合，其余 issue |
-| `oneOf(values as const)` | `string` → 字面量联合 | `values.includes(raw)` |
-| `uuid()` | `string` → `string` | UUID v1–v5 正则 |
+| 构造器                   | 输入 → 输出                             | 校验内容                                          |
+| ------------------------ | --------------------------------------- | ------------------------------------------------- |
+| `str(opts?)`             | `string` → `string`                     | `minLength` / `maxLength` / `pattern`（`RegExp`） |
+| `int(opts?)`             | `string` → `number`                     | `Number.isInteger` + `min` / `max`                |
+| `num(opts?)`             | `string` → `number`                     | `Number.isFinite` + `min` / `max`                 |
+| `bool()`                 | `"true"\|"1"\|"false"\|"0"` → `boolean` | 成员集合，其余 issue                              |
+| `oneOf(values as const)` | `string` → 字面量联合                   | `values.includes(raw)`                            |
+| `uuid()`                 | `string` → `string`                     | UUID v1–v5 正则                                   |
 
 `opts` 示例：
 
 ```ts
-int({ min: 1 });                          // 正整数
-str({ minLength: 1, maxLength: 64 });     // 非空、限长
-oneOf(["asc", "desc"] as const);          // 输出类型 "asc" | "desc"
+int({ min: 1 }); // 正整数
+str({ minLength: 1, maxLength: 64 }); // 非空、限长
+oneOf(["asc", "desc"] as const); // 输出类型 "asc" | "desc"
 ```
 
 #### 修饰器（包装函数，保持 codec 为纯数据）
@@ -129,20 +128,20 @@ withDefault<T>(codec: ParamSchema<T>, fallback: T): ParamSchema<T>;
 type QuerySchemaMap = Record<string, StandardSchemaV1<string, unknown>>;
 
 interface RouteDefinition<
-  Path extends string = string,
-  P extends ParamsFor<Path> = ParamsFor<Path>,
-  Q extends QuerySchemaMap = QuerySchemaMap,
+    Path extends string = string,
+    P extends ParamsFor<Path> = ParamsFor<Path>,
+    Q extends QuerySchemaMap = QuerySchemaMap,
 > {
-  path: Path;
-  intentId: string;
-  controller?: IntentController;
-  /** path 参数 codec；key 必须是 path 中出现的 :param 名 */
-  params?: P;
-  /** query 参数 codec；key 自由开放 */
-  query?: Q;
-  renderMode?: RenderMode;
-  beforeLoad?: BeforeLoadGuard[];
-  afterLoad?: AfterLoadGuard[];
+    path: Path;
+    intentId: string;
+    controller?: IntentController;
+    /** path 参数 codec；key 必须是 path 中出现的 :param 名 */
+    params?: P;
+    /** query 参数 codec；key 自由开放 */
+    query?: Q;
+    renderMode?: RenderMode;
+    beforeLoad?: BeforeLoadGuard[];
+    afterLoad?: AfterLoadGuard[];
 }
 ```
 
@@ -150,26 +149,29 @@ interface RouteDefinition<
 
 ```ts
 const productParams = { id: int({ min: 1 }) };
-const productQuery = { page: withDefault(int({ min: 1 }), 1), sort: oneOf(["asc", "desc"] as const) };
+const productQuery = {
+    page: withDefault(int({ min: 1 }), 1),
+    sort: oneOf(["asc", "desc"] as const),
+};
 
 class ProductController extends BaseController<
-  InferParams<typeof productParams> & InferQuery<typeof productQuery>, // { id: number } & { page: number; sort: "asc" | "desc" }
-  ProductPage
+    InferParams<typeof productParams> & InferQuery<typeof productQuery>, // { id: number } & { page: number; sort: "asc" | "desc" }
+    ProductPage
 > {
-  readonly intentId = "product";
-  execute(params, container) {
-    // params.id: number, params.page: number, params.sort: "asc" | "desc"
-  }
+    readonly intentId = "product";
+    execute(params, container) {
+        // params.id: number, params.page: number, params.sort: "asc" | "desc"
+    }
 }
 
 defineRoutes(framework, [
-  {
-    path: "/product/:id",
-    intentId: "product",
-    controller: new ProductController(),
-    params: productParams,
-    query: productQuery,
-  },
+    {
+        path: "/product/:id",
+        intentId: "product",
+        controller: new ProductController(),
+        params: productParams,
+        query: productQuery,
+    },
 ]);
 ```
 
@@ -178,30 +180,30 @@ defineRoutes(framework, [
 ```ts
 // 1. 从 path 字面量提取参数名（处理可选 :param?）
 type StripOptional<S extends string> = S extends `${infer N}?` ? N : S;
-type ExtractParamNames<Path extends string> =
-  Path extends `${infer _Head}:${infer Rest}`
+type ExtractParamNames<Path extends string> = Path extends `${infer _Head}:${infer Rest}`
     ? Rest extends `${infer Name}/${infer Tail}`
-      ? StripOptional<Name> | ExtractParamNames<`/${Tail}`>
-      : StripOptional<Rest>
+        ? StripOptional<Name> | ExtractParamNames<`/${Tail}`>
+        : StripOptional<Rest>
     : never;
 // ExtractParamNames<"/product/:id">            → "id"
 // ExtractParamNames<"/post/:slug/:page?">      → "slug" | "page"
 
 // 2. params 字段的形状约束（6c 一致性的载体）
 type ParamsFor<Path extends string> = {
-  [K in ExtractParamNames<Path>]: ParamSchema;
+    [K in ExtractParamNames<Path>]: ParamSchema;
 };
 
 // 3. 从 codec map 推导运行期类型
 type InferParams<P extends Record<string, StandardSchemaV1>> = {
-  [K in keyof P]: InferOutput<P[K]>;
+    [K in keyof P]: InferOutput<P[K]>;
 };
 type InferQuery<Q extends QuerySchemaMap> = {
-  [K in keyof Q]: InferOutput<Q[K]>;
+    [K in keyof Q]: InferOutput<Q[K]>;
 };
 ```
 
 > **实现注记**：
+>
 > - `ExtractParamNames` 须与 `Router.add` 的分段正则 `/(\/:[\w]+\??)/` 对齐（参数名为 `\w+`，可带尾随 `?`）。类型测试用 `expectTypeOf` 锁定若干 path 形态。
 > - `optional()` / `withDefault()` 让 `InferOutput` 含 `undefined` 时，是否进一步把该 key 渲染成可选属性（`page?: number`）由实现细化；v1 至少保证值类型为 `T | undefined`。
 > - **locale 前缀参数**：`defineRoutes({ locales })` 自动生成的 `/:locale/...` 路由，其 `:locale` 由框架注入并保持 `string`，**不纳入用户 codec、不参与 `ParamsFor` 约束**——一致性校验只针对用户书写的原始 `path`。
@@ -271,13 +273,13 @@ async resolve(urlOrPath: string): Promise<RouteMatch | null> {
 
 ```ts
 async function runStandard(
-  schema: StandardSchemaV1,
-  raw: string | undefined,
+    schema: StandardSchemaV1,
+    raw: string | undefined,
 ): Promise<{ ok: true; value: unknown } | { ok: false; issues: readonly StandardIssue[] }> {
-  const out = schema["~standard"].validate(raw);
-  const result = out instanceof Promise ? await out : out;
-  if (result.issues) return { ok: false, issues: result.issues };
-  return { ok: true, value: result.value };
+    const out = schema["~standard"].validate(raw);
+    const result = out instanceof Promise ? await out : out;
+    if (result.issues) return { ok: false, issues: result.issues };
+    return { ok: true, value: result.value };
 }
 ```
 
@@ -296,15 +298,15 @@ async function runStandard(
 
 ## 4. 关键决策记录
 
-| # | 决策 | 选择 | 理由 |
-| --- | --- | --- | --- |
-| 1 | 核心定位 | 验证 + 转换 + 编译期推断三位一体 | 用户明确要最完整形态 |
-| 2 | API 形态 | 混合：内置原语 + 任意 Standard Schema | 零依赖底座 + 生态可扩展，原语满足 80% 场景 |
-| 3 | 失败语义 | 不匹配 → fall-through → 现有 404 | 复用现有 `resolve()→null→404`，零新增错误通道，支持重叠路由 |
-| 4 | 范围 | path + query 都类型化 | 两者最终都在 `intent.params`，统一处理 |
-| 5 | 同步约束 | **支持异步校验**（resolve 异步化） | 5 个调用点已在 async 上下文，成本仅「2 签名 + 5 await」，server 零改动 |
-| 6 | 一致性校验 | **v1 就做** path/params 类型级一致性 | 用户要求；模板字面量类型可达成 |
-| 7 | 字段组织 | `params`(path) 与 `query` 分字段 | 让 6c 校验干净：`params` key 受 path 约束、query 开放 |
+| #   | 决策       | 选择                                  | 理由                                                                   |
+| --- | ---------- | ------------------------------------- | ---------------------------------------------------------------------- |
+| 1   | 核心定位   | 验证 + 转换 + 编译期推断三位一体      | 用户明确要最完整形态                                                   |
+| 2   | API 形态   | 混合：内置原语 + 任意 Standard Schema | 零依赖底座 + 生态可扩展，原语满足 80% 场景                             |
+| 3   | 失败语义   | 不匹配 → fall-through → 现有 404      | 复用现有 `resolve()→null→404`，零新增错误通道，支持重叠路由            |
+| 4   | 范围       | path + query 都类型化                 | 两者最终都在 `intent.params`，统一处理                                 |
+| 5   | 同步约束   | **支持异步校验**（resolve 异步化）    | 5 个调用点已在 async 上下文，成本仅「2 签名 + 5 await」，server 零改动 |
+| 6   | 一致性校验 | **v1 就做** path/params 类型级一致性  | 用户要求；模板字面量类型可达成                                         |
+| 7   | 字段组织   | `params`(path) 与 `query` 分字段      | 让 6c 校验干净：`params` key 受 path 约束、query 开放                  |
 
 ---
 
@@ -313,13 +315,13 @@ async function runStandard(
 ### `@finesoft/core`
 
 - **新增** `src/router/params/`：
-  - `standard.ts`：`StandardSchemaV1` / `StandardResult` / `StandardIssue` / `InferOutput` 类型别名 + `runStandard` 助手。
-  - `primitives.ts`：`str` / `int` / `num` / `bool` / `oneOf` / `uuid`。
-  - `modifiers.ts`：`optional` / `withDefault`。
-  - `infer.ts`：`ExtractParamNames` / `ParamsFor` / `InferParams` / `InferQuery` / `ParamSchema` / `QuerySchemaMap`。
+    - `standard.ts`：`StandardSchemaV1` / `StandardResult` / `StandardIssue` / `InferOutput` 类型别名 + `runStandard` 助手。
+    - `primitives.ts`：`str` / `int` / `num` / `bool` / `oneOf` / `uuid`。
+    - `modifiers.ts`：`optional` / `withDefault`。
+    - `infer.ts`：`ExtractParamNames` / `ParamsFor` / `InferParams` / `InferQuery` / `ParamSchema` / `QuerySchemaMap`。
 - **改 `src/router/router.ts`**：
-  - `add(pattern, intentId, opts)` 的 `opts` 增加 `paramCodecs` / `queryCodecs`；`InternalRouteDefinition` 同步增加字段。
-  - `resolve` 改为 `async resolve(...): Promise<RouteMatch | null>`，加入 3.5 的校验流程。
+    - `add(pattern, intentId, opts)` 的 `opts` 增加 `paramCodecs` / `queryCodecs`；`InternalRouteDefinition` 同步增加字段。
+    - `resolve` 改为 `async resolve(...): Promise<RouteMatch | null>`，加入 3.5 的校验流程。
 - **改 `src/bootstrap/define-routes.ts`**：`RouteDefinition` 泛型化（`Path`/`P`/`Q`），透传 `params`/`query` 到 `router.add`；`defineRoutes` 保留每条路由的字面量类型以使一致性校验生效。
 - **改 `src/framework.ts`**：`routeUrl` 改为 `async routeUrl(url): Promise<RouteMatch | null>`。
 - **改 `src/intents/types.ts`**：`Intent.params` 由 `Record<string, string>` 放宽为 `Record<string, unknown>`。
@@ -366,11 +368,11 @@ async function runStandard(
 1. **原语单测**（`core/test/router/params/`）：每个原语的通过 / 失败 / 边界（空串、超限、非法格式、`oneOf` 非成员）。
 2. **修饰器单测**：`optional` 缺失返回 `undefined`、`withDefault` 缺失返回默认值、存在时委托内部。
 3. **`resolve` 集成测**（扩 `core/test/router/router.test.ts`，改 async）：
-   - 校验通过 → `params` 为转换后强类型值；
-   - 校验失败 → fall-through，最终 `null`；
-   - 重叠路由按顺序匹配（`int` 落空被 `str` 接住）；
-   - path + query 混合；未声明 codec 的 query 保持 string；
-   - 防原型污染用例（`__proto__` 等）仍通过。
+    - 校验通过 → `params` 为转换后强类型值；
+    - 校验失败 → fall-through，最终 `null`；
+    - 重叠路由按顺序匹配（`int` 落空被 `str` 接住）；
+    - path + query 混合；未声明 codec 的 query 保持 string；
+    - 防原型污染用例（`__proto__` 等）仍通过。
 4. **异步 schema 适配测**：mock 一个返回 `Promise` 的 Standard Schema，验证 `resolve` 正确 `await`。
 5. **类型测**（`expectTypeOf`）：`ExtractParamNames` 多形态、`InferParams`/`InferQuery` 推断、`ParamsFor` 对错误 key 报错（6c）。
 6. **调用链回归**：`framework.test.ts`、`browser` flow-action / start-app 测试加 `await`，确保导航与 popstate 路径不回归。

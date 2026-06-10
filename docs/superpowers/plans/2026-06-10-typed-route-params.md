@@ -16,36 +16,37 @@
 
 新增（全部在 `@finesoft/core`）：
 
-| 文件 | 职责 |
-| --- | --- |
-| `packages/core/src/router/params/standard.ts` | Standard Schema v1 本地类型别名 + `makeSchema` 工厂 + `runStandard` 助手 |
-| `packages/core/src/router/params/primitives.ts` | `str`/`int`/`num`/`bool`/`oneOf`/`uuid` |
-| `packages/core/src/router/params/modifiers.ts` | `optional`/`withDefault` |
-| `packages/core/src/router/params/infer.ts` | `ExtractParamNames`/`ParamsFor`/`InferParams`/`InferQuery`/`QuerySchemaMap` |
-| `packages/core/src/router/params/index.ts` | barrel 导出 |
-| `packages/core/test/router/params/*.test.ts` | 原语/修饰器/standard 的运行时测试 |
-| `packages/core/test/router/params/types.assert.ts` | 类型断言（靠 `vp check`/tsc 验证，非 vitest 用例） |
+| 文件                                               | 职责                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------- |
+| `packages/core/src/router/params/standard.ts`      | Standard Schema v1 本地类型别名 + `makeSchema` 工厂 + `runStandard` 助手    |
+| `packages/core/src/router/params/primitives.ts`    | `str`/`int`/`num`/`bool`/`oneOf`/`uuid`                                     |
+| `packages/core/src/router/params/modifiers.ts`     | `optional`/`withDefault`                                                    |
+| `packages/core/src/router/params/infer.ts`         | `ExtractParamNames`/`ParamsFor`/`InferParams`/`InferQuery`/`QuerySchemaMap` |
+| `packages/core/src/router/params/index.ts`         | barrel 导出                                                                 |
+| `packages/core/test/router/params/*.test.ts`       | 原语/修饰器/standard 的运行时测试                                           |
+| `packages/core/test/router/params/types.assert.ts` | 类型断言（靠 `vp check`/tsc 验证，非 vitest 用例）                          |
 
 修改：
 
-| 文件 | 改动 |
-| --- | --- |
-| `packages/core/src/router/router.ts` | `RouteAddOptions`/内部定义加 codec 字段；`resolve` 改 async + 校验 + fall-through |
-| `packages/core/src/framework.ts:100` | `routeUrl` 改 async |
-| `packages/core/src/intents/types.ts` | `Intent.params` → `Record<string, unknown>` |
-| `packages/core/src/intents/base-controller.ts` | `TParams` 约束放宽为 `Record<string, unknown>` |
-| `packages/core/src/bootstrap/define-routes.ts` | `RouteDefinition` 泛型化 + `params`/`query` 字段 + `route()` helper + 透传 codec |
-| `packages/core/src/index.ts` | 导出 params 公共 API |
-| `packages/browser/src/start-app.ts:147` | `await framework.routeUrl(...)` |
-| `packages/browser/src/action-handlers/flow-action.ts:68/184/210` | `await framework.routeUrl(...)` |
-| `packages/ssr/src/render.ts:149` | `await framework.routeUrl(...)` |
-| `templates/*/src/lib/controllers/product-detail.ts` | 示范：`:id` 用 `int()` |
+| 文件                                                             | 改动                                                                              |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `packages/core/src/router/router.ts`                             | `RouteAddOptions`/内部定义加 codec 字段；`resolve` 改 async + 校验 + fall-through |
+| `packages/core/src/framework.ts:100`                             | `routeUrl` 改 async                                                               |
+| `packages/core/src/intents/types.ts`                             | `Intent.params` → `Record<string, unknown>`                                       |
+| `packages/core/src/intents/base-controller.ts`                   | `TParams` 约束放宽为 `Record<string, unknown>`                                    |
+| `packages/core/src/bootstrap/define-routes.ts`                   | `RouteDefinition` 泛型化 + `params`/`query` 字段 + `route()` helper + 透传 codec  |
+| `packages/core/src/index.ts`                                     | 导出 params 公共 API                                                              |
+| `packages/browser/src/start-app.ts:147`                          | `await framework.routeUrl(...)`                                                   |
+| `packages/browser/src/action-handlers/flow-action.ts:68/184/210` | `await framework.routeUrl(...)`                                                   |
+| `packages/ssr/src/render.ts:149`                                 | `await framework.routeUrl(...)`                                                   |
+| `templates/*/src/lib/controllers/product-detail.ts`              | 示范：`:id` 用 `int()`                                                            |
 
 ---
 
 ## Task 1: Standard Schema 类型 + makeSchema + runStandard
 
 **Files:**
+
 - Create: `packages/core/src/router/params/standard.ts`
 - Test: `packages/core/test/router/params/standard.test.ts`
 
@@ -136,9 +137,9 @@ describe("makeSchema / runStandard", () => {
     });
 
     test("awaits an async schema", async () => {
-        const asyncUpper: ParamSchema<string> = makeSchema<string>(
-            async (v) => ({ value: String(v).toUpperCase() }),
-        );
+        const asyncUpper: ParamSchema<string> = makeSchema<string>(async (v) => ({
+            value: String(v).toUpperCase(),
+        }));
         const r = await runStandard(asyncUpper, "abc");
         expect(r).toEqual({ ok: true, value: "ABC" });
     });
@@ -162,6 +163,7 @@ git commit -m "feat(core): add Standard Schema types + makeSchema/runStandard"
 ## Task 2: 内置原语 str/int/num/bool/oneOf/uuid
 
 **Files:**
+
 - Create: `packages/core/src/router/params/primitives.ts`
 - Test: `packages/core/test/router/params/primitives.test.ts`
 
@@ -324,6 +326,7 @@ git commit -m "feat(core): add built-in param primitives (str/int/num/bool/oneOf
 ## Task 3: 修饰器 optional/withDefault
 
 **Files:**
+
 - Create: `packages/core/src/router/params/modifiers.ts`
 - Test: `packages/core/test/router/params/modifiers.test.ts`
 
@@ -339,7 +342,10 @@ import { runStandard } from "../../../src/router/params/standard";
 
 describe("modifiers", () => {
     test("optional: undefined input yields undefined value, no validation", async () => {
-        expect(await runStandard(optional(int()), undefined)).toEqual({ ok: true, value: undefined });
+        expect(await runStandard(optional(int()), undefined)).toEqual({
+            ok: true,
+            value: undefined,
+        });
     });
 
     test("optional: present input is delegated to inner codec", async () => {
@@ -401,6 +407,7 @@ git commit -m "feat(core): add optional/withDefault param modifiers"
 ## Task 4: 类型推断工具 + barrel + 类型断言
 
 **Files:**
+
 - Create: `packages/core/src/router/params/infer.ts`
 - Create: `packages/core/src/router/params/index.ts`
 - Test: `packages/core/test/router/params/types.assert.ts`
@@ -414,12 +421,11 @@ import type { InferOutput, ParamSchema, StandardSchemaV1 } from "./standard";
 export type StripOptional<S extends string> = S extends `${infer N}?` ? N : S;
 
 /** 从 path pattern 字面量提取参数名联合（处理 :param 与 :param?） */
-export type ExtractParamNames<Path extends string> =
-    Path extends `${infer _Head}:${infer Rest}`
-        ? Rest extends `${infer Name}/${infer Tail}`
-            ? StripOptional<Name> | ExtractParamNames<`/${Tail}`>
-            : StripOptional<Rest>
-        : never;
+export type ExtractParamNames<Path extends string> = Path extends `${infer _Head}:${infer Rest}`
+    ? Rest extends `${infer Name}/${infer Tail}`
+        ? StripOptional<Name> | ExtractParamNames<`/${Tail}`>
+        : StripOptional<Rest>
+    : never;
 
 /** path 参数 codec map 的形状：key 只能是 path 中出现的参数名（均可选声明） */
 export type ParamsFor<Path extends string> = {
@@ -442,7 +448,13 @@ export type InferQuery<Q extends QuerySchemaMap> = {
 
 ```ts
 export { makeSchema, runStandard } from "./standard";
-export type { InferOutput, ParamSchema, StandardIssue, StandardResult, StandardSchemaV1 } from "./standard";
+export type {
+    InferOutput,
+    ParamSchema,
+    StandardIssue,
+    StandardResult,
+    StandardSchemaV1,
+} from "./standard";
 export { bool, int, num, oneOf, str, uuid } from "./primitives";
 export type { NumOptions, StrOptions } from "./primitives";
 export { optional, withDefault } from "./modifiers";
@@ -476,9 +488,7 @@ type _Names4 = Expect<Equal<ExtractParamNames<"/product/:id/reviews">, "id">>;
 
 // — InferParams —
 const sample = { id: int(), tab: optional(oneOf(["a", "b"] as const)) };
-type _Infer = Expect<
-    Equal<InferParams<typeof sample>, { id: number; tab: "a" | "b" | undefined }>
->;
+type _Infer = Expect<Equal<InferParams<typeof sample>, { id: number; tab: "a" | "b" | undefined }>>;
 
 // — 6c 一致性：合法 key 通过 —
 const okParams: ParamsFor<"/product/:id"> = { id: int() };
@@ -511,6 +521,7 @@ git commit -m "feat(core): add param type inference utils + barrel + type assert
 ## Task 5: Router 接收 codec + resolve 异步化 + fall-through
 
 **Files:**
+
 - Modify: `packages/core/src/router/router.ts`
 - Test: `packages/core/test/router/router.test.ts`
 
@@ -687,17 +698,17 @@ function createNullPrototypeRecord<V = string>(source?: Record<string, V>): Reco
 `add` 的 `this.routes.push({...})` 增加两个字段（其余不变）：
 
 ```ts
-        this.routes.push({
-            pattern,
-            intentId,
-            regex: new RegExp(`^${regexStr}/?$`),
-            paramNames,
-            renderMode: opts.renderMode,
-            beforeGuards: opts.beforeGuards,
-            afterGuards: opts.afterGuards,
-            paramCodecs: opts.paramCodecs,
-            queryCodecs: opts.queryCodecs,
-        });
+this.routes.push({
+    pattern,
+    intentId,
+    regex: new RegExp(`^${regexStr}/?$`),
+    paramNames,
+    renderMode: opts.renderMode,
+    beforeGuards: opts.beforeGuards,
+    afterGuards: opts.afterGuards,
+    paramCodecs: opts.paramCodecs,
+    queryCodecs: opts.queryCodecs,
+});
 ```
 
 `resolve` 整体替换为异步版：
@@ -789,6 +800,7 @@ git commit -m "feat(core): async resolve with param codec validation + fall-thro
 ## Task 6: framework.routeUrl 异步化
 
 **Files:**
+
 - Modify: `packages/core/src/framework.ts:100-102`
 - Test: `packages/core/test/framework.test.ts:80`
 
@@ -833,6 +845,7 @@ git commit -m "feat(core): make framework.routeUrl async"
 ## Task 7: Intent.params 与 BaseController TParams 放宽
 
 **Files:**
+
 - Modify: `packages/core/src/intents/types.ts:11`
 - Modify: `packages/core/src/intents/base-controller.ts:36`
 - Test: `packages/core/test/intents/*.test.ts`（回归）
@@ -882,6 +895,7 @@ git commit -m "feat(core): widen Intent.params and BaseController TParams to unk
 ## Task 8: browser 调用点 await
 
 **Files:**
+
 - Modify: `packages/browser/src/start-app.ts:147`
 - Modify: `packages/browser/src/action-handlers/flow-action.ts:68,184,210`
 - Test: `packages/browser/test/...`（回归）
@@ -889,7 +903,7 @@ git commit -m "feat(core): widen Intent.params and BaseController TParams to unk
 - [ ] **Step 1: 改 start-app.ts:147**
 
 ```ts
-    const initialAction = await framework.routeUrl(initialUrl);
+const initialAction = await framework.routeUrl(initialUrl);
 ```
 
 - [ ] **Step 2: 改 flow-action.ts 三处**
@@ -897,19 +911,19 @@ git commit -m "feat(core): widen Intent.params and BaseController TParams to unk
 `:68`（`navigateTo` 内）：
 
 ```ts
-        const match = await framework.routeUrl(url);
+const match = await framework.routeUrl(url);
 ```
 
 `:184`（FLOW handler 的 modal 分支内）：
 
 ```ts
-            const match = await framework.routeUrl(url);
+const match = await framework.routeUrl(url);
 ```
 
 `:210`（popstate handler 内）：
 
 ```ts
-        const routeMatch = await framework.routeUrl(parsed.pathname + parsed.search);
+const routeMatch = await framework.routeUrl(parsed.pathname + parsed.search);
 ```
 
 - [ ] **Step 3: 跑 browser 测试确认通过**
@@ -936,13 +950,14 @@ git commit -m "feat(browser): await async routeUrl at all call sites"
 ## Task 9: ssr 调用点 await
 
 **Files:**
+
 - Modify: `packages/ssr/src/render.ts:149`
 - Test: `packages/ssr/test/...`（回归）
 
 - [ ] **Step 1: 改 render.ts:149**
 
 ```ts
-        const match = await framework.routeUrl(fullPath);
+const match = await framework.routeUrl(fullPath);
 ```
 
 - [ ] **Step 2: 跑 ssr 测试 + 类型检查**
@@ -962,6 +977,7 @@ git commit -m "feat(ssr): await async routeUrl in render"
 ## Task 10: RouteDefinition 泛型化 + route() helper + defineRoutes 透传
 
 **Files:**
+
 - Modify: `packages/core/src/bootstrap/define-routes.ts`
 - Test: `packages/core/test/bootstrap/define-routes.test.ts`（运行时）
 - Test: `packages/core/test/bootstrap/define-routes.assert.ts`（类型）
@@ -1079,22 +1095,22 @@ export function route<
 `defineRoutes` 的 `definitions` 参数类型改为 `RouteDefinition[]`（保持运行时简单），并在 `routeOpts` 透传 codec：
 
 ```ts
-        const routeOpts = {
-            renderMode: def.renderMode,
-            beforeGuards: def.beforeLoad,
-            afterGuards: def.afterLoad,
-            paramCodecs: def.params as Record<string, ParamSchema> | undefined,
-            queryCodecs: def.query,
-        };
+const routeOpts = {
+    renderMode: def.renderMode,
+    beforeGuards: def.beforeLoad,
+    afterGuards: def.afterLoad,
+    paramCodecs: def.params as Record<string, ParamSchema> | undefined,
+    queryCodecs: def.query,
+};
 
-        // 注册原始路由（含路由级守卫与 codec）
-        framework.router.add(def.path, def.intentId, routeOpts);
+// 注册原始路由（含路由级守卫与 codec）
+framework.router.add(def.path, def.intentId, routeOpts);
 
-        // 注册 locale 前缀路由（:locale 由框架注入、保持 string，沿用同一 codec 集）
-        if (options?.locales?.length) {
-            const localePath = def.path === "/" ? "/:locale" : `/:locale${def.path}`;
-            framework.router.add(localePath, def.intentId, routeOpts);
-        }
+// 注册 locale 前缀路由（:locale 由框架注入、保持 string，沿用同一 codec 集）
+if (options?.locales?.length) {
+    const localePath = def.path === "/" ? "/:locale" : `/:locale${def.path}`;
+    framework.router.add(localePath, def.intentId, routeOpts);
+}
 ```
 
 （`defineRoutes` 函数签名保持 `definitions: RouteDefinition[]`，其余逻辑不变。）
@@ -1142,6 +1158,7 @@ git commit -m "feat(core): typed RouteDefinition + route() helper + codec passth
 ## Task 11: core 导出面 + front 验证
 
 **Files:**
+
 - Modify: `packages/core/src/index.ts`
 - Verify: `packages/front`（`export * from "@finesoft/core"` 自动带出）
 
@@ -1151,7 +1168,18 @@ git commit -m "feat(core): typed RouteDefinition + route() helper + codec passth
 
 ```ts
 // ===== Route Params (typed validation) =====
-export { bool, int, makeSchema, num, oneOf, optional, runStandard, str, uuid, withDefault } from "./router/params";
+export {
+    bool,
+    int,
+    makeSchema,
+    num,
+    oneOf,
+    optional,
+    runStandard,
+    str,
+    uuid,
+    withDefault,
+} from "./router/params";
 export type {
     ExtractParamNames,
     InferOutput,
@@ -1180,9 +1208,11 @@ Expected: 全部包构建成功，无 dts 错误。
 - [ ] **Step 3: 烟雾验证 front 导出可用**
 
 Run:
+
 ```bash
 node -e "import('@finesoft/front').then(m => console.log(['int','str','oneOf','optional','route','defineRoutes'].map(k => k+':'+typeof m[k]).join(' ')))"
 ```
+
 Expected: 形如 `int:function str:function oneOf:function optional:function route:function defineRoutes:function`
 
 > 若 `@finesoft/front` 未链接到本地构建产物，改用 `node -e "import('./packages/front/dist/index.js').then(...)"`。
@@ -1199,6 +1229,7 @@ git commit -m "feat(core): export typed route params public API"
 ## Task 12: 模板示范 + changeset
 
 **Files:**
+
 - Modify: `templates/{svelte,vue,react}/src/lib/{bootstrap,routes}.ts`（路由定义处）与 `controllers/product-detail.ts`
 - Create: changeset
 
@@ -1237,6 +1268,7 @@ Expected: 无类型错误。
 - [ ] **Step 4: 创建 changeset**
 
 Run: `changeset`
+
 - 选择 `@finesoft/front` 作为受影响包
 - bump 类型：**minor**（新增能力 + `Intent.params`/`routeUrl` 的类型层 breaking，但运行时向后兼容；如团队约定将类型层 breaking 视为 major，则选 major）
 - 摘要：
@@ -1261,24 +1293,25 @@ git commit -m "feat: demo typed route params in templates + changeset"
 
 **1. Spec coverage（逐节核对 spec → task）：**
 
-| spec 节 | 覆盖 task |
-| --- | --- |
-| §3.1 Standard Schema 统一契约 | Task 1 |
-| §3.2 内置原语 + 修饰器 | Task 2, 3 |
-| §3.3 RouteDefinition params/query 分字段 | Task 10 |
-| §3.4 类型推断（ExtractParamNames/ParamsFor/InferParams/InferQuery） | Task 4；6c 经 Task 10 的 `route()` |
-| §3.5 异步 resolve + 校验 + fall-through | Task 5 |
-| §3.6 失败语义 → 404 | Task 5（fall-through 返回 null）+ Task 8/9（404 路径已存在，未改） |
-| §5 改动清单（core/browser/ssr/front） | Task 5-11 |
-| §6 向后兼容（Intent.params 放宽、PrefetchedIntents） | Task 7；PrefetchedIntents 命中由 Task 5 的「未声明 codec 保持 string」+ 同构 bootstrap 保证，Task 5/10 运行时测试覆盖转换一致性 |
-| §7 安全（null-proto） | Task 5（`createNullPrototypeRecord` 保留）+ router.test.ts 污染用例 |
-| §8 测试策略 | Task 1-5、10 的测试步骤 |
+| spec 节                                                             | 覆盖 task                                                                                                                       |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| §3.1 Standard Schema 统一契约                                       | Task 1                                                                                                                          |
+| §3.2 内置原语 + 修饰器                                              | Task 2, 3                                                                                                                       |
+| §3.3 RouteDefinition params/query 分字段                            | Task 10                                                                                                                         |
+| §3.4 类型推断（ExtractParamNames/ParamsFor/InferParams/InferQuery） | Task 4；6c 经 Task 10 的 `route()`                                                                                              |
+| §3.5 异步 resolve + 校验 + fall-through                             | Task 5                                                                                                                          |
+| §3.6 失败语义 → 404                                                 | Task 5（fall-through 返回 null）+ Task 8/9（404 路径已存在，未改）                                                              |
+| §5 改动清单（core/browser/ssr/front）                               | Task 5-11                                                                                                                       |
+| §6 向后兼容（Intent.params 放宽、PrefetchedIntents）                | Task 7；PrefetchedIntents 命中由 Task 5 的「未声明 codec 保持 string」+ 同构 bootstrap 保证，Task 5/10 运行时测试覆盖转换一致性 |
+| §7 安全（null-proto）                                               | Task 5（`createNullPrototypeRecord` 保留）+ router.test.ts 污染用例                                                             |
+| §8 测试策略                                                         | Task 1-5、10 的测试步骤                                                                                                         |
 
 无遗漏。`framework.routeUrl` 异步化（§5）= Task 6。
 
 **2. Placeholder scan：** 无 TBD/TODO；所有代码步骤含完整代码；测试步骤含完整断言；命令含预期输出。Task 12 Step 2 因三模板接线各异，给出了模式 + 「按实际微调」指引而非逐文件死代码——这是对模板差异的诚实处理，非占位符。
 
 **3. Type consistency（跨 task 命名核对）：**
+
 - `makeSchema`/`runStandard`/`ParamSchema`/`StandardSchemaV1`/`StandardResult`/`StandardIssue`/`InferOutput`：Task 1 定义，Task 2/3/4/5 一致引用。
 - `str`/`int`/`num`/`bool`/`oneOf`/`uuid`/`StrOptions`/`NumOptions`：Task 2 定义，barrel（Task 4）与导出（Task 11）一致。
 - `optional`/`withDefault`：Task 3 定义，Task 4/11 一致。
