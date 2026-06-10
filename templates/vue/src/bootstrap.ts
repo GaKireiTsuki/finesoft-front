@@ -1,4 +1,4 @@
-import { type Framework, defineRoutes } from "@finesoft/front";
+import { type Framework, defineRoutes, int, route } from "@finesoft/front";
 import { AboutController } from "./lib/controllers/about";
 import { HomeController } from "./lib/controllers/home";
 import { ProductDetailController } from "./lib/controllers/product-detail";
@@ -13,11 +13,11 @@ export function bootstrap(framework: Framework): void {
     defineRoutes(framework, [
         // SSR routes (default)
         { path: "/", intentId: "home", controller: new HomeController() },
-        {
-            path: "/products/:id",
+        route("/products/:id", {
             intentId: "product-detail",
             controller: new ProductDetailController(),
-        },
+            params: { id: int() },
+        }),
         {
             path: "/search",
             intentId: "search",
