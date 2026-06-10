@@ -47,6 +47,8 @@ function createNullPrototypeRecord<V = string>(source?: Record<string, V>): Reco
 export class Router {
     private routes: InternalRouteDefinition[] = [];
 
+    constructor(private readonly debug?: (message: string) => void) {}
+
     /** 添加路由规则 */
     add(pattern: string, intentId: string, renderModeOrOptions?: string | RouteAddOptions): this {
         const opts: RouteAddOptions =
@@ -109,6 +111,9 @@ export class Router {
                 if (codec) {
                     const r = await runStandard(codec, raw);
                     if (!r.ok) {
+                        this.debug?.(
+                            `[Router] route "${route.pattern}" skipped: path param "${name}" failed validation: ${r.issues[0]?.message ?? "invalid"}`,
+                        );
                         ok = false;
                         break;
                     }
@@ -124,6 +129,9 @@ export class Router {
                 for (const name of Object.keys(route.queryCodecs)) {
                     const r = await runStandard(route.queryCodecs[name], queryParams[name]);
                     if (!r.ok) {
+                        this.debug?.(
+                            `[Router] route "${route.pattern}" skipped: query param "${name}" failed validation: ${r.issues[0]?.message ?? "invalid"}`,
+                        );
                         ok = false;
                         break;
                     }

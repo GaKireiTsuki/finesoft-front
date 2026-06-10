@@ -48,7 +48,7 @@ export function createServerContext(options: ServerContextOptions): NavigationCo
     return {
         url,
         path: parsed.pathname,
-        params: (intent.params as Record<string, string>) ?? {},
+        params: intent.params ?? {},
         intent,
         isServer: true,
         container,
@@ -75,7 +75,7 @@ export function createBrowserContext(options: BrowserContextOptions): Navigation
     return {
         url,
         path: parsed.pathname,
-        params: (intent.params as Record<string, string>) ?? {},
+        params: intent.params ?? {},
         intent,
         isServer: false,
         container,

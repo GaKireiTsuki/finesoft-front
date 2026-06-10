@@ -17,6 +17,12 @@ describe("primitives", () => {
         expect(await runStandard(int({ min: 1, max: 9 }), "5")).toEqual({ ok: true, value: 5 });
     });
 
+    test("int/num: min and max boundaries are inclusive", async () => {
+        expect(await runStandard(int({ min: 1 }), "1")).toEqual({ ok: true, value: 1 });
+        expect(await runStandard(int({ max: 9 }), "9")).toEqual({ ok: true, value: 9 });
+        expect(await runStandard(num({ min: 1.5 }), "1.5")).toEqual({ ok: true, value: 1.5 });
+    });
+
     test("num: parses decimals, rejects junk", async () => {
         expect(await runStandard(num(), "3.14")).toEqual({ ok: true, value: 3.14 });
         expect((await runStandard(num(), "1e3")).ok).toBe(false);

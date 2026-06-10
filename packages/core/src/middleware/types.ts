@@ -22,8 +22,8 @@ export interface NavigationContext {
     readonly url: string;
     /** 仅路径部分 */
     readonly path: string;
-    /** 路由参数 + 查询参数 */
-    readonly params: Record<string, string>;
+    /** 路由参数 + 查询参数（codec 转换后可能是 number/boolean 等） */
+    readonly params: Record<string, unknown>;
     /** 匹配的 Intent */
     readonly intent: Intent;
     /** 是否在服务端运行 */

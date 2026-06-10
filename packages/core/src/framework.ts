@@ -52,7 +52,7 @@ export class Framework {
         this.container = container;
         this.intentDispatcher = new IntentDispatcher();
         this.actionDispatcher = new ActionDispatcher();
-        this.router = new Router();
+        this.router = new Router((message) => this.getLogger().debug(message));
         this.prefetchedIntents = prefetchedIntents;
     }
 

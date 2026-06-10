@@ -108,4 +108,13 @@ describe("Router", () => {
         const match = await router.resolve("/search?page=2&q=hello");
         expect(match?.intent.params).toEqual({ page: 2, q: "hello" });
     });
+
+    test("logs a debug message when a route is skipped due to codec failure", async () => {
+        const messages: string[] = [];
+        const router = new Router((m) => messages.push(m));
+        router.add("/product/:id", "product", { paramCodecs: { id: int() } });
+
+        expect(await router.resolve("/product/abc")).toBeNull();
+        expect(messages.some((m) => m.includes("/product/:id") && m.includes("id"))).toBe(true);
+    });
 });
