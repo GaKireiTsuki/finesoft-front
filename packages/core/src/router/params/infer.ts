@@ -19,7 +19,7 @@ export type ParamsFor<Path extends string> = {
 export type QuerySchemaMap = Record<string, StandardSchemaV1<string, unknown>>;
 
 /** 从 codec map 推导运行期参数类型 */
-export type InferParams<P extends Record<string, StandardSchemaV1>> = {
+export type InferParams<P extends Record<string, ParamSchema>> = {
     [K in keyof P]: InferOutput<P[K]>;
 };
 export type InferQuery<Q extends QuerySchemaMap> = {

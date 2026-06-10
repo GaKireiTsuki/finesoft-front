@@ -34,7 +34,7 @@ function inRange(n: number, opts: NumOptions): StandardResult<number> | null {
 export function int(opts: NumOptions = {}): ParamSchema<number> {
     return makeSchema<number>((value) => {
         if (typeof value !== "string" || !/^-?\d+$/.test(value))
-            return fail(`"${value}" is not an integer`);
+            return fail(`"${String(value)}" is not an integer`);
         const n = Number(value);
         return inRange(n, opts) ?? { value: n };
     });
@@ -43,7 +43,7 @@ export function int(opts: NumOptions = {}): ParamSchema<number> {
 export function num(opts: NumOptions = {}): ParamSchema<number> {
     return makeSchema<number>((value) => {
         if (typeof value !== "string" || !/^-?\d+(\.\d+)?$/.test(value))
-            return fail(`"${value}" is not a number`);
+            return fail(`"${String(value)}" is not a number`);
         const n = Number(value);
         return inRange(n, opts) ?? { value: n };
     });
@@ -56,7 +56,7 @@ export function bool(): ParamSchema<boolean> {
     return makeSchema<boolean>((value) => {
         if (typeof value === "string" && TRUE.has(value)) return { value: true };
         if (typeof value === "string" && FALSE.has(value)) return { value: false };
-        return fail(`"${value}" is not a boolean (true/false/1/0)`);
+        return fail(`"${String(value)}" is not a boolean (true/false/1/0)`);
     });
 }
 
@@ -64,7 +64,7 @@ export function oneOf<const T extends readonly string[]>(values: T): ParamSchema
     return makeSchema<T[number]>((value) => {
         if (typeof value === "string" && (values as readonly string[]).includes(value))
             return { value: value as T[number] };
-        return fail(`"${value}" is not one of: ${values.join(", ")}`);
+        return fail(`"${String(value)}" is not one of: ${values.join(", ")}`);
     });
 }
 
@@ -73,6 +73,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 export function uuid(): ParamSchema<string> {
     return makeSchema<string>((value) => {
         if (typeof value === "string" && UUID_RE.test(value)) return { value };
-        return fail(`"${value}" is not a valid UUID`);
+        return fail(`"${String(value)}" is not a valid UUID`);
     });
 }
