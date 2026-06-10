@@ -8,38 +8,59 @@
 import type { Framework } from "../framework";
 import type { IntentController } from "../intents/types";
 import type { AfterLoadGuard, BeforeLoadGuard } from "../middleware/types";
+import type { ParamSchema, ParamsFor, QuerySchemaMap } from "../router/params";
 
 /** 渲染模式 */
 export type RenderMode = "ssr" | "csr" | "prerender";
 
 /** 单条路由定义 */
-export interface RouteDefinition {
-    /** URL pattern (如 "/product/:productId") */
-    path: string;
-    /** Intent ID (如 "product-page") */
+export interface RouteDefinition<
+    Path extends string = string,
+    P extends ParamsFor<Path> = ParamsFor<Path>,
+    Q extends QuerySchemaMap = QuerySchemaMap,
+> {
+    /** URL pattern (如 "/product/:id") */
+    path: Path;
+    /** Intent ID */
     intentId: string;
-    /**
-     * Controller 实例（可选）。
-     * 同一个 intentId 的多条路由只需在第一条提供 controller。
-     */
+    /** Controller 实例（可选）。同一 intentId 的多条路由只需在第一条提供。 */
     controller?: IntentController;
-    /**
-     * 渲染模式（可选，默认 "ssr"）。
-     * - "ssr": 服务端渲染（默认）
-     * - "csr": 客户端渲染（返回空壳 HTML，由客户端 JS 渲染）
-     * - "prerender": 预渲染（构建时生成静态 HTML + ISR 缓存）
-     */
+    /** path 参数 codec；key 必须是 path 中出现的 :param 名 */
+    params?: P;
+    /** query 参数 codec；key 自由 */
+    query?: Q;
+    /** 渲染模式（可选，默认 "ssr"） */
     renderMode?: RenderMode;
-    /**
-     * 路由级 beforeLoad 守卫（可选）。
-     * 在全局守卫之后执行，仅对匹配此路由的请求生效。
-     */
+    /** 路由级 beforeLoad 守卫 */
     beforeLoad?: BeforeLoadGuard[];
-    /**
-     * 路由级 afterLoad 守卫（可选）。
-     * 在全局守卫之后执行，仅对匹配此路由的请求生效。
-     */
+    /** 路由级 afterLoad 守卫 */
     afterLoad?: AfterLoadGuard[];
+}
+
+/**
+ * 构造一条强类型路由定义。
+ * `params` 的 key 受 `path` 字面量约束——写入 path 中不存在的参数名会编译期报错。
+ *
+ * @example
+ * route("/product/:id", { intentId: "product", controller, params: { id: int() } })
+ */
+export function route<
+    const Path extends string,
+    P extends ParamsFor<Path> = ParamsFor<Path>,
+    Q extends QuerySchemaMap = QuerySchemaMap,
+>(
+    path: Path,
+    def: {
+        intentId: string;
+        controller?: IntentController;
+        params?: P;
+        query?: Q;
+        renderMode?: RenderMode;
+        beforeLoad?: BeforeLoadGuard[];
+        afterLoad?: AfterLoadGuard[];
+    },
+): RouteDefinition {
+    return { path, ...def } as RouteDefinition;
 }
 
 /** defineRoutes 选项 */
@@ -94,6 +115,8 @@ export function defineRoutes(
             renderMode: def.renderMode,
             beforeGuards: def.beforeLoad,
             afterGuards: def.afterLoad,
+            paramCodecs: def.params as Record<string, ParamSchema> | undefined,
+            queryCodecs: def.query,
         };
 
         // 注册原始路由（含路由级守卫）
