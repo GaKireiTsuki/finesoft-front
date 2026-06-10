@@ -33,7 +33,7 @@ import type { Intent, IntentController } from "./types";
  * ```
  */
 export abstract class BaseController<
-    TParams extends Record<string, string | undefined> = Record<string, string>,
+    TParams extends Record<string, unknown> = Record<string, unknown>,
     TResult = unknown,
 > implements IntentController<TResult> {
     /** Controller 对应的 Intent ID */
