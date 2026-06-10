@@ -34,6 +34,35 @@ export { defineRequestScopedKey, type RequestScopedKey } from "./dependencies/re
 export { Router } from "./router/router";
 export type { RouteAddOptions, RouteMatch } from "./router/router";
 
+// ===== Route Params (typed validation) =====
+export {
+    bool,
+    int,
+    makeSchema,
+    num,
+    oneOf,
+    optional,
+    runStandard,
+    str,
+    uuid,
+    withDefault,
+} from "./router/params";
+export type {
+    ExtractParamNames,
+    InferOutput,
+    InferParams,
+    InferQuery,
+    NumOptions,
+    ParamSchema,
+    ParamsFor,
+    QuerySchemaMap,
+    StandardIssue,
+    StandardResult,
+    StandardSchemaV1,
+    StrOptions,
+    StripOptional,
+} from "./router/params";
+
 // ===== Logger =====
 export { BaseLogger } from "./logger/base";
 export { CompositeLogger, CompositeLoggerFactory } from "./logger/composite";
@@ -82,7 +111,7 @@ export { mapEach, pipe, pipeAsync } from "./data/mapper";
 export type { AsyncMapper, Mapper } from "./data/mapper";
 
 // ===== Bootstrap =====
-export { defineRoutes } from "./bootstrap/define-routes";
+export { defineRoutes, route } from "./bootstrap/define-routes";
 export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstrap/define-routes";
 
 // ===== Utils =====
