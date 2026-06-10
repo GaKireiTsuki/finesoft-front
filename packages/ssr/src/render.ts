@@ -146,7 +146,7 @@ async function ssrRenderInternal(
     bootstrap(framework);
 
     try {
-        const match = framework.routeUrl(fullPath);
+        const match = await framework.routeUrl(fullPath);
 
         // CSR 模式：跳过服务端渲染，返回空内容由客户端 JS 渲染
         if (match?.renderMode === "csr") {

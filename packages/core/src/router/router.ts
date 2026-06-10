@@ -5,6 +5,7 @@
 import { makeFlowAction, type FlowAction } from "../actions/types";
 import type { Intent } from "../intents/types";
 import type { AfterLoadGuard, BeforeLoadGuard } from "../middleware/types";
+import { runStandard, type ParamSchema, type StandardSchemaV1 } from "./params/standard";
 
 /** 路由匹配结果 */
 export interface RouteMatch {
@@ -22,6 +23,8 @@ export interface RouteAddOptions {
     renderMode?: string;
     beforeGuards?: BeforeLoadGuard[];
     afterGuards?: AfterLoadGuard[];
+    paramCodecs?: Record<string, ParamSchema>;
+    queryCodecs?: Record<string, StandardSchemaV1<string, unknown>>;
 }
 
 interface InternalRouteDefinition {
@@ -32,15 +35,19 @@ interface InternalRouteDefinition {
     renderMode?: string;
     beforeGuards?: BeforeLoadGuard[];
     afterGuards?: AfterLoadGuard[];
+    paramCodecs?: Record<string, ParamSchema>;
+    queryCodecs?: Record<string, StandardSchemaV1<string, unknown>>;
 }
 
-function createNullPrototypeRecord(source?: Record<string, string>): Record<string, string> {
+function createNullPrototypeRecord<V = string>(source?: Record<string, V>): Record<string, V> {
     // 通过一个无原型的目标对象进行复制，这样 URL 控制的键就保持为惰性数据。
-    return Object.assign(Object.create(null), source) as Record<string, string>;
+    return Object.assign(Object.create(null), source) as Record<string, V>;
 }
 
 export class Router {
     private routes: InternalRouteDefinition[] = [];
+
+    constructor(private readonly debug?: (message: string) => void) {}
 
     /** 添加路由规则 */
     add(pattern: string, intentId: string, renderModeOrOptions?: string | RouteAddOptions): this {
@@ -78,34 +85,75 @@ export class Router {
             renderMode: opts.renderMode,
             beforeGuards: opts.beforeGuards,
             afterGuards: opts.afterGuards,
+            paramCodecs: opts.paramCodecs,
+            queryCodecs: opts.queryCodecs,
         });
 
         return this;
     }
 
-    /** 解析 URL → RouteMatch */
-    resolve(urlOrPath: string): RouteMatch | null {
+    /** 解析 URL → RouteMatch（含参数校验；校验失败则 fall-through 到下一条路由） */
+    async resolve(urlOrPath: string): Promise<RouteMatch | null> {
         const { path, queryParams } = this.parseUrl(urlOrPath);
 
         for (const route of this.routes) {
             const match = path.match(route.regex);
-            if (match) {
-                // 使用无原型对象，这样 URL 提供的键就不会通过像 "__proto__" 这样的特殊名称
-                // 去篡改 Object.prototype。
-                const params = createNullPrototypeRecord(queryParams);
-                route.paramNames.forEach((name, index) => {
-                    const value = match[index + 1];
-                    if (value) params[name] = value;
-                });
+            if (!match) continue;
 
-                return {
-                    intent: { id: route.intentId, params },
-                    action: makeFlowAction(urlOrPath),
-                    renderMode: route.renderMode,
-                    beforeGuards: route.beforeGuards,
-                    afterGuards: route.afterGuards,
-                };
+            const params = createNullPrototypeRecord<unknown>();
+            let ok = true;
+
+            // —— path 参数 ——
+            for (let i = 0; i < route.paramNames.length; i++) {
+                const name = route.paramNames[i];
+                const raw = match[i + 1];
+                const codec = route.paramCodecs?.[name];
+                if (codec) {
+                    const r = await runStandard(codec, raw);
+                    if (!r.ok) {
+                        this.debug?.(
+                            `[Router] route "${route.pattern}" skipped: path param "${name}" failed validation: ${r.issues[0]?.message ?? "invalid"}`,
+                        );
+                        ok = false;
+                        break;
+                    }
+                    if (r.value !== undefined) params[name] = r.value;
+                } else if (raw) {
+                    params[name] = raw;
+                }
             }
+            if (!ok) continue;
+
+            // —— query 参数：声明了 codec 的走校验 ——
+            if (route.queryCodecs) {
+                for (const name of Object.keys(route.queryCodecs)) {
+                    const r = await runStandard(route.queryCodecs[name], queryParams[name]);
+                    if (!r.ok) {
+                        this.debug?.(
+                            `[Router] route "${route.pattern}" skipped: query param "${name}" failed validation: ${r.issues[0]?.message ?? "invalid"}`,
+                        );
+                        ok = false;
+                        break;
+                    }
+                    if (r.value !== undefined) params[name] = r.value;
+                }
+            }
+            if (!ok) continue;
+
+            // —— 未声明 codec 的 query 参数：保持 string（向后兼容） ——
+            for (const key of Object.keys(queryParams)) {
+                if (!(key in params) && !route.queryCodecs?.[key]) {
+                    params[key] = queryParams[key];
+                }
+            }
+
+            return {
+                intent: { id: route.intentId, params },
+                action: makeFlowAction(urlOrPath),
+                renderMode: route.renderMode,
+                beforeGuards: route.beforeGuards,
+                afterGuards: route.afterGuards,
+            };
         }
 
         return null;

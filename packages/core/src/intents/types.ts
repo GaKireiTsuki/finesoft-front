@@ -8,8 +8,8 @@ import type { Container } from "../dependencies/container";
 export interface Intent<T = unknown> {
     /** Intent 标识符（用于匹配 Controller） */
     id: string;
-    /** 意图参数 */
-    params?: Record<string, string>;
+    /** 意图参数（path/query 经 codec 转换后可能是 number/boolean 等） */
+    params?: Record<string, unknown>;
     /** 预期返回的数据（仅用于类型推断） */
     _returnType?: T;
 }

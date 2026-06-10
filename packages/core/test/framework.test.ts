@@ -77,7 +77,7 @@ describe("Framework", () => {
             kind: ACTION_KINDS.EXTERNAL_URL,
             url: "https://example.com",
         });
-        expect(framework.routeUrl("/")?.intent).toEqual({
+        expect((await framework.routeUrl("/"))?.intent).toEqual({
             id: "home",
             params: {},
         });

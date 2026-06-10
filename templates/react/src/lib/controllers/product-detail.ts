@@ -7,10 +7,10 @@ import {
 } from "@finesoft/front";
 import type { ProductPage } from "../models/product";
 
-export class ProductDetailController extends BaseController<{ id: string }, ProductPage> {
+export class ProductDetailController extends BaseController<{ id: number }, ProductPage> {
     readonly intentId = "product-detail";
 
-    async execute(params: { id: string }, container: Container): Promise<ProductPage> {
+    async execute(params: { id: number }, container: Container): Promise<ProductPage> {
         const loggerFactory = container.resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
         const log: Logger = loggerFactory.loggerFor("ProductDetailController");
         log.info(`Loading product ${params.id}`);
@@ -23,7 +23,7 @@ export class ProductDetailController extends BaseController<{ id: string }, Prod
             description: `Details for product ${params.id}`,
             url: `/products/${params.id}`,
             product: {
-                id: params.id,
+                id: String(params.id),
                 name: `Product ${params.id}`,
                 price: 29.99,
                 description:
@@ -33,7 +33,7 @@ export class ProductDetailController extends BaseController<{ id: string }, Prod
         };
     }
 
-    fallback(params: { id: string }, error: Error): ProductPage {
+    fallback(params: { id: number }, error: Error): ProductPage {
         return {
             id: `product-${params.id}`,
             pageType: "product",
@@ -41,7 +41,7 @@ export class ProductDetailController extends BaseController<{ id: string }, Prod
             description: error.message,
             url: `/products/${params.id}`,
             product: {
-                id: params.id,
+                id: String(params.id),
                 name: "Unknown Product",
                 price: 0,
                 description: "Could not load product data.",

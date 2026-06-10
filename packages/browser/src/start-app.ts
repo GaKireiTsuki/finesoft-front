@@ -144,7 +144,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     await onBeforeStart?.(framework);
 
     // 3. 路由初始 URL
-    const initialAction = framework.routeUrl(initialUrl);
+    const initialAction = await framework.routeUrl(initialUrl);
 
     // 4. 挂载应用（框架无关）
     const target = document.getElementById(mountId);
