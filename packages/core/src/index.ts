@@ -125,6 +125,7 @@ export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstr
 
 // ===== Navigation =====
 export {
+    collectAllLeaves,
     collectVisibleDestinations,
     createActiveLeafCodec,
     createFullStateCodec,
