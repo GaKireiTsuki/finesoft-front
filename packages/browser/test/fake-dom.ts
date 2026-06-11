@@ -191,6 +191,21 @@ export class FakeElement {
         return null;
     }
 
+    /** Returns the first child element, or null (mirrors HTMLElement.firstChild). */
+    get firstChild(): FakeElement | null {
+        return this._children[0] ?? null;
+    }
+
+    /**
+     * Append one or more child elements (mirrors Element.append(...nodes)).
+     * Accepts any number of FakeElement arguments.
+     */
+    append(...nodes: FakeElement[]): void {
+        for (const node of nodes) {
+            this.appendChild(node);
+        }
+    }
+
     get children(): FakeElement[] {
         return [...this._children];
     }

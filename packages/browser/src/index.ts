@@ -35,6 +35,7 @@ export {
     type ResolvedEntry,
 } from "./navigation-islands";
 export { createAppHandle, type AppHandle } from "./app-handle";
+export { resolveIslandsShell, type IslandsShell } from "./islands-shell";
 
 // ===== Session =====
 export {

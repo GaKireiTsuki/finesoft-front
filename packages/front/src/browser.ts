@@ -20,6 +20,7 @@ export {
     registerActionHandlers,
     registerExternalUrlHandler,
     registerFlowActionHandler,
+    resolveIslandsShell,
     startBrowserApp,
     tryScroll,
 } from "@finesoft/browser";
@@ -35,6 +36,7 @@ export type {
     FlowActionCallbacks,
     FlowActionDependencies,
     IslandHandle,
+    IslandsShell,
     IslandOrchestrator,
     IslandOrchestratorOptions,
     MountEntry,

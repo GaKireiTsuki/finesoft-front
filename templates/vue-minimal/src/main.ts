@@ -1,4 +1,5 @@
 import {
+    resolveIslandsShell,
     startBrowserApp,
     type AppHandle,
     type MountEntry,
@@ -55,18 +56,10 @@ void startBrowserApp({
             nav.subscribe((s) => (state.snapshot = s));
         }
         // 方案 C：chrome 挂到 sibling chrome-root（不含 outlet）；outlet 由框架编排器独占。
-        let chromeRoot = target.querySelector<HTMLElement>("[data-fs-chrome]");
-        if (!chromeRoot) {
-            // 纯 CSR（无 SSR shell）兜底：建 chrome-root + 空 outlet 兄弟。
-            chromeRoot = document.createElement("div");
-            chromeRoot.setAttribute("data-fs-chrome", "");
-            const outlet = document.createElement("main");
-            outlet.setAttribute("data-fs-outlet", "");
-            target.append(chromeRoot, outlet);
-        }
-        // 有 SSR 内容 → 水合；否则客户端新建。
-        const factory = chromeRoot.firstChild ? createSSRApp : createApp;
-        factory(App, { state, controller: markRaw(ctx.app!) }).mount(chromeRoot);
+        const { chromeRoot, hydrate } = resolveIslandsShell(target);
+        (hydrate ? createSSRApp : createApp)(App, { state, controller: markRaw(ctx.app!) }).mount(
+            chromeRoot,
+        );
         return () => undefined;
     },
     callbacks: {
