@@ -39,6 +39,7 @@ import {
     type LoggerFactory,
 } from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
+import { createAppHandle, type AppHandle } from "./app-handle";
 import { createDomRestore } from "./dom-restore";
 import { activateFlatIslands, type ActivatedFlatIslands } from "./flat-islands";
 import { createIslandOrchestrator, type MountEntry } from "./navigation-islands";
@@ -59,7 +60,7 @@ interface InternalBrowserFrameworkConfig extends FrameworkConfig {
  * - 用 `initial` 树构建 `NavigationController`（守卫上下文走 `createBrowserContext`，
  *   预取缓存复用 `framework.prefetchedIntents`）；
  * - 装配 `NavigationBridge`（snapshot → history/URL，popstate → hydrate）；
- * - 解析首屏树（一次 `resolve()`），通过 `onNavigationReady` 把 handle 交给应用。
+ * - 解析首屏树（一次 `resolve()`），通过 mount context 把 handle 交给应用。
  */
 export interface BrowserNavigationConfig {
     /** 初始导航树（单 LeafNode = 今天的扁平单页）。 */
@@ -88,7 +89,7 @@ export interface BrowserNavigationConfig {
  *   接 `framework.perform(makeFlowAction(url))`）；
  * - 注册 `providers` 为全局切片来源；
  * - 装配 `SessionBridge`（导航变更防抖落盘 + `pagehide` / `visibilitychange` 即时落盘 + scoped prune）；
- * - 首次导航后 `restore(initialUrl)` 完成 boot 恢复，并把 handle 交给 `onSessionReady`。
+ * - mount 后 `restore(initialUrl)` 完成 boot 恢复，handle 经 mount context 交付。
  */
 export interface BrowserSessionConfig {
     /** 全局状态切片 provider；启动时全部注册。 */
@@ -135,12 +136,17 @@ export interface BrowserAppConfig {
      * 框架无关 — Svelte / React / Vue 均可通过此回调实现。
      *
      * @param target - DOM 挂载点
-     * @param context - Framework 实例 + 语言
+     * @param context - Framework 实例 + 语言 + handle（配了 navigation/session 时）
      * @returns 更新函数，用于后续页面切换
      */
     mount: (
         target: HTMLElement,
-        context: { framework: Framework },
+        context: {
+            framework: Framework;
+            navigation?: NavigationHandle;
+            session?: SessionHandle;
+            app?: AppHandle;
+        },
     ) => (props: { page: Promise<BasePage> | BasePage; isFirstPage?: boolean }) => void;
 
     /** FlowAction / ExternalUrl 回调 */
@@ -164,36 +170,19 @@ export interface BrowserAppConfig {
     /**
      * 结构化导航定义（可选）。
      *
-     * 提供后，`startBrowserApp` 在挂载后构建 NavigationController + NavigationBridge，
-     * 解析首屏树，并通过 `onNavigationReady` 把导航 handle 交给应用。缺省时走原有
-     * 扁平单页路径（FlowAction handler），行为完全不变。
+     * 提供后，`startBrowserApp` 在 mount 前构建 NavigationController + NavigationBridge，
+     * 并通过 mount context 把导航 handle 交给应用。缺省时走原有扁平单页路径，行为完全不变。
      */
     navigation?: BrowserNavigationConfig;
 
     /**
-     * 导航就绪回调 —— bridge 装配并完成首屏 `resolve()` 后调用。
-     *
-     * 仅当提供了 `navigation` 时触发。应用拿到 handle 后用它驱动导航
-     * （push/pop/selectTab…）并订阅快照渲染 UI。
-     */
-    onNavigationReady?: (handle: NavigationHandle) => void | Promise<void>;
-
-    /**
      * 会话恢复定义（可选）。
      *
-     * 提供后，`startBrowserApp` 在首次导航后装配 `SessionStore` + `SessionBridge`，
-     * 完成 boot 恢复，并通过 `onSessionReady` 把会话 handle 交给应用。缺省时整段不生效，
-     * 启动路径字节级不变。
+     * 提供后，`startBrowserApp` 在 mount 前装配 `SessionStore` + `SessionBridge`，
+     * 并通过 mount context 把会话 handle 交给应用；boot 恢复（restore）在 mount 后执行。
+     * 缺省时整段不生效，启动路径字节级不变。
      */
     session?: BrowserSessionConfig;
-
-    /**
-     * 会话就绪回调 —— bridge 装配并完成 boot 恢复后调用。
-     *
-     * 仅当提供了 `session` 时触发。应用拿到 handle 后可用 `save()` / `clear()` 手动控制
-     * 落盘，或在卸载时 `dispose()`。
-     */
-    onSessionReady?: (handle: SessionHandle) => void | Promise<void>;
 
     /**
      * opt-in 重载 DOM 自动恢复（spec §4.5）。仅当同时提供 `navigation.mountEntry`（islands）+
@@ -273,7 +262,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     // 3. 路由初始 URL
     const initialAction = await framework.routeUrl(initialUrl);
 
-    // 4. 挂载应用（框架无关）
+    // 4. 挂载点校验（早于 nav/session core，让错误尽早暴露）
     const target = document.getElementById(mountId);
     if (!target) {
         throw new Error(
@@ -281,24 +270,59 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
                 `Ensure your HTML has <div id="${mountId}"></div>.`,
         );
     }
-    const updateApp = mount(target, { framework });
 
-    // 5. 注册 Action Handlers
+    // 5. 【mount 前】nav-core：建 controller/bridge（handle 就绪；此刻 getSnapshot = {tree, []}）
+    let navCore: NavigationCore | undefined;
+    if (config.navigation) {
+        navCore = await activateNavigationCore({
+            framework,
+            navigation: config.navigation,
+            log,
+            getScrollablePageElement: config.getScrollablePageElement,
+        });
+    }
+
+    // 6. 【mount 前】flatNavigation 发射器（真扁平 session 用）+ session-core（建 store/bridge，不 restore）
     //    「真扁平」会话（有 session、无 navigation、无 mountEntry）需要一个导航变更信号驱动自动落盘
     //    + scoped prune。唯一的扁平导航信号是 FlowAction handler 提交后调用的 `callbacks.onNavigate`，
     //    故把它 tee 给会话监听器。仅在该场景包装 callbacks；其余情形透传原对象，启动路径字节级不变。
     //    flat-islands（有 mountEntry）的正向导航 **bypass** callbacks.onNavigate（走隐式单栈
     //    controller.push），onNavigate tee 收不到信号；故 flat-islands 不创建 flatNavigation，
-    //    会话改订阅 islands controller 的快照（见 activateSession）。
+    //    会话改订阅 islands controller 的快照（见 activateSessionCore）。
     const flatNavigation =
         config.session && !config.navigation && !config.mountEntry
             ? createNavigationEmitter()
             : undefined;
 
-    // flat-islands：deferred-ref，由下方 activateFlatIslands 填充后供 onForward 使用。
-    // onForward 本身在 registerActionHandlers 调用时就已绑定（闭包捕获 ref），
-    // 而 flatPush 在 activateFlatIslands 完成后才非 undefined——这是正确的：
-    // onForward 只会在用户触发 FlowAction 时调用，彼时启动流程早已完成。
+    let sessionHandle: SessionHandle | undefined;
+    if (config.session) {
+        sessionHandle = activateSessionCore({
+            framework,
+            session: config.session,
+            navController: navCore?.controller,
+            flatNavigation,
+        });
+    }
+
+    // 7. 【mount 前】建统一 app 句柄
+    const app =
+        navCore !== undefined || sessionHandle !== undefined
+            ? createAppHandle(navCore?.handle, sessionHandle)
+            : undefined;
+
+    // 8. 【mount】context 交付 handle/app
+    const updateApp = mount(target, {
+        framework,
+        navigation: navCore?.handle,
+        session: sessionHandle,
+        app,
+    });
+
+    // 9. 注册 action handlers（需 updateApp）
+    //    flat-islands：deferred-ref，由下方 activateFlatIslands 填充后供 onForward 使用。
+    //    onForward 本身在 registerActionHandlers 调用时就已绑定（闭包捕获 ref），
+    //    而 flatPush 在 activateFlatIslands 完成后才非 undefined——这是正确的：
+    //    onForward 只会在用户触发 FlowAction 时调用，彼时启动流程早已完成。
     let flatPush: ((url: string) => Promise<void>) | undefined;
 
     registerActionHandlers({
@@ -314,9 +338,9 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         onForward: config.mountEntry && !config.navigation ? (url) => flatPush?.(url) : undefined,
     });
 
-    // 5.5 flat-islands 激活（可选）—— 合成隐式单栈 + 编排器 + 首屏 island。
+    // 10. flat-islands 激活（可选）—— 合成隐式单栈 + 编排器 + 首屏 island。
     //     必须在 registerActionHandlers 之后（handler 已注册，action 可 dispatch），
-    //     在 step-6 perform 之前（避免双重渲染）。
+    //     在 step-11 perform 之前（避免双重渲染）。
     let activatedFlatIslands: ActivatedFlatIslands | undefined;
     if (config.mountEntry && !config.navigation) {
         activatedFlatIslands = await activateFlatIslands({
@@ -331,12 +355,15 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         flatPush = activatedFlatIslands.pushUrl;
     }
 
-    // 6. 触发初始页面
-    //    flat-islands 下首屏已由 activateFlatIslands 内的 controller.resolve() 完成；
-    //    跳过 framework.perform 避免双重渲染。
-    //    结构化导航（config.navigation）不跳过：step-6 仍需驱动 updateApp 初始渲染（flat UI
-    //    side），activateNavigation 的 resolve() 是独立的 islands 通道，两者互不干扰。
-    if (!activatedFlatIslands) {
+    // 11. 首屏触发
+    //     flat-islands 下首屏已由 activateFlatIslands 内的 controller.resolve() 完成；
+    //     跳过 framework.perform 避免双重渲染。
+    //     结构化导航（navCore）走 attachNavigation（resolve + islands 装配，均在 mount 后）。
+    let islandsOutlet: HTMLElement | undefined;
+    if (navCore !== undefined) {
+        const { outlet } = await attachNavigation({ core: navCore, target });
+        islandsOutlet = outlet;
+    } else if (activatedFlatIslands === undefined) {
         if (initialAction) {
             await framework.perform(initialAction.action);
         } else {
@@ -346,64 +373,40 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
             });
         }
     }
+    islandsOutlet ??= activatedFlatIslands?.outlet;
 
-    // 6.5 结构化导航（可选）—— 仅当应用提供 navigation 定义时激活，
-    // 否则上面的扁平单页路径已是全部行为。
-    let activatedNavigation: ActivatedNavigation | undefined;
-    if (config.navigation) {
-        activatedNavigation = await activateNavigation({
-            framework,
-            navigation: config.navigation,
-            log,
-            target,
-            getScrollablePageElement: config.getScrollablePageElement,
-        });
-        await config.onNavigationReady?.(activatedNavigation.handle);
-    }
+    // 12. 会话 boot 恢复（mount 后：保 SSR 水合 parity）
+    if (sessionHandle !== undefined) await sessionHandle.restore(initialUrl);
 
-    // 6.7 会话恢复（可选）—— 仅当应用提供 session 定义时激活，缺省整段不生效。
-    let sessionHandle: SessionHandle | undefined;
-    if (config.session) {
-        sessionHandle = await activateSession({
-            framework,
-            session: config.session,
-            navigation: activatedNavigation,
-            flatIslands: activatedFlatIslands,
-            flatNavigation,
-            initialUrl,
-        });
-        await config.onSessionReady?.(sessionHandle);
-    }
-
-    // 6.8 重载 DOM 自动恢复（opt-in）—— 需 islands outlet + session scope。
-    // attach 在会话已恢复 scope（6.7）之后运行，内部 catch-up 回填 boot DOM。
-    // 支持结构化导航（activatedNavigation.outlet）和 flat-islands（activatedFlatIslands.outlet）。
-    const islandsOutlet = activatedNavigation?.outlet ?? activatedFlatIslands?.outlet;
-    if (config.domRestore && islandsOutlet && sessionHandle) {
+    // 13. 重载 DOM 自动恢复（opt-in）—— 需 islands outlet + session scope。
+    //     attach 在会话已恢复 scope（12）之后运行，内部 catch-up 回填 boot DOM。
+    //     支持结构化导航（islandsOutlet via attachNavigation）和 flat-islands（activatedFlatIslands.outlet）。
+    if (config.domRestore && islandsOutlet && sessionHandle !== undefined) {
         createDomRestore({ scope: sessionHandle.scope }).attach(islandsOutlet);
     }
 
-    // 7. 启动后钩子
+    // 14. 启动后钩子
     await onAfterStart?.(framework);
 }
 
-/** 已激活的结构化导航：对外 handle + 内部 controller（供会话结构化适配器引用）。 */
-interface ActivatedNavigation {
+/** nav-core 建出的中间结构（mount 前就绪）。 */
+interface NavigationCore {
     readonly handle: NavigationHandle;
     readonly controller: NavigationController;
-    /** islands の outlet（仅 mountEntry 提供时存在，供 domRestore 接线）。 */
-    readonly outlet?: HTMLElement;
+    readonly mountEntry?: MountEntry;
 }
 
-/** 装配 NavigationController + NavigationBridge，解析首屏树，返回导航 handle + controller。 */
-async function activateNavigation(args: {
+/**
+ * mount 前：建 NavigationController + NavigationBridge（handle 就绪；此刻 getSnapshot = {tree, []}）。
+ * 不在此 resolve()、不建 orchestrator —— 均移到 mount 后（attachNavigation）。
+ */
+async function activateNavigationCore(args: {
     framework: Framework;
     navigation: BrowserNavigationConfig;
     log: Logger;
-    target: HTMLElement;
     getScrollablePageElement?: () => HTMLElement | null;
-}): Promise<ActivatedNavigation> {
-    const { framework, navigation, log, target, getScrollablePageElement } = args;
+}): Promise<NavigationCore> {
+    const { framework, navigation, log, getScrollablePageElement } = args;
     const codec = navigation.codec ?? createActiveLeafCodec();
 
     const controller = createNavigationController({
@@ -442,30 +445,42 @@ async function activateNavigation(args: {
         getScrollablePageElement,
     });
 
-    // 首屏解析：提交首个快照（bridge 用 replaceState 写入 history，不污染历史栈）。
-    await controller.resolve();
+    // 注意：不在此 resolve()、不建 orchestrator —— 均移到 mount 后（attachNavigation）。
+    return { handle, controller, mountEntry: navigation.mountEntry };
+}
 
-    // opt-in islands：从 outlet 建编排器，首同步 + 订阅后续快照。
-    let outlet: HTMLElement | undefined;
-    if (navigation.mountEntry) {
-        const found = target.querySelector<HTMLElement>("[data-fs-outlet]");
-        if (!found) {
-            throw new Error(
-                "[startBrowserApp] navigation.mountEntry 已提供，但 mount 渲染的 DOM 里找不到 [data-fs-outlet]。" +
-                    "请在 chrome 里放一个稳定、空的 <main data-fs-outlet></main>。",
-            );
-        }
-        outlet = found;
-        const orchestrator = createIslandOrchestrator({
-            outlet,
-            mountEntry: navigation.mountEntry,
-        });
-        orchestrator.sync(controller.getSnapshot());
-        // 订阅与 orchestrator 的生命周期绑定到页面（同 NavigationBridge，无需 teardown）。
-        controller.subscribe((snapshot) => orchestrator.sync(snapshot));
+/**
+ * mount 后：resolve 首屏 + （若有 mountEntry）从 outlet 建 orchestrator 首次 sync。
+ * 返回 outlet（供 domRestore）。
+ *
+ * resolve() 出 pages；redirect→perform 此刻安全（registerActionHandlers 已注册）。
+ */
+async function attachNavigation(args: {
+    core: NavigationCore;
+    target: HTMLElement;
+}): Promise<{ outlet?: HTMLElement }> {
+    const { core, target } = args;
+    await core.controller.resolve();
+
+    if (core.mountEntry === undefined) return {};
+
+    const found = target.querySelector<HTMLElement>("[data-fs-outlet]");
+    if (!found) {
+        throw new Error(
+            "[startBrowserApp] navigation.mountEntry 已提供，但 mount 渲染的 DOM 里找不到 [data-fs-outlet]。" +
+                "请在 chrome 里放一个稳定、空的 <main data-fs-outlet></main>。",
+        );
     }
 
-    return { handle, controller, outlet };
+    const orchestrator = createIslandOrchestrator({
+        outlet: found,
+        mountEntry: core.mountEntry,
+    });
+    orchestrator.sync(core.controller.getSnapshot());
+    // 订阅与 orchestrator 的生命周期绑定到页面（同 NavigationBridge，无需 teardown）。
+    core.controller.subscribe((snapshot) => orchestrator.sync(snapshot));
+
+    return { outlet: found };
 }
 
 /** 扁平导航变更发射器：tee `FlowActionCallbacks.onNavigate` 给会话监听器。 */
@@ -486,11 +501,11 @@ interface FlatNavigationEmitter {
 function createNavigationEmitter(): FlatNavigationEmitter {
     const listeners = new Set<() => void>();
     return {
-        wrap(callbacks: FlowActionCallbacks): FlowActionCallbacks {
+        wrap(cbs: FlowActionCallbacks): FlowActionCallbacks {
             return {
-                ...callbacks,
+                ...cbs,
                 onNavigate(pathname: string): void {
-                    callbacks.onNavigate(pathname);
+                    cbs.onNavigate(pathname);
                     for (const listener of listeners) listener();
                 },
             };
@@ -505,33 +520,33 @@ function createNavigationEmitter(): FlatNavigationEmitter {
 }
 
 /**
- * 装配 SessionStore + SessionBridge，注册 providers，完成 boot 恢复，返回会话 handle。
+ * mount 前：装配 SessionStore + SessionBridge，注册 providers。不调 restore。
+ * restore 留在 mount 后（保 SSR 水合 parity）。
  *
  * 导航适配器二选一：
  * - **有 NavigationController**（结构化 `navigation` 或 flat-islands `flatIslands`）→
  *   `createNavigationSessionAdapter(controller)`：捕获整棵树、`presentKeys` 收全部 leaf（含
- *   保活的栈底）供 scoped prune；导航变更经该 controller 的 `handle.subscribe` 订阅。
+ *   保活的栈底）供 scoped prune；导航变更经该 controller 的 `subscribe` 订阅。
  * - **真扁平**（无 controller）→ `createUrlSessionAdapter`：`apply` 走
  *   `framework.perform(makeFlowAction(url))`，导航变更经 `flatNavigation.subscribe`
  *   （tee 自 `callbacks.onNavigate`）订阅。
  *
  * flat-islands 走第一条：它的正向导航 bypass `callbacks.onNavigate`，URL 适配器的单条目
  * `presentKeys` 也会误 prune 掉保活的栈内条目，故必须用结构化适配器 + controller 快照信号。
+ *
+ * 注意：flat-islands 的 controller 在 activateFlatIslands（mount 后）建，session-core 跑在 mount 前，
+ * 此时 navController 尚无 flat-islands controller —— flat-islands+session 是未用组合，
+ * 无 navController 时退 flatNavigation 保持已有行为即可，不为它额外加工。
  */
-async function activateSession(args: {
+function activateSessionCore(args: {
     framework: Framework;
     session: BrowserSessionConfig;
-    navigation: ActivatedNavigation | undefined;
-    flatIslands: ActivatedFlatIslands | undefined;
+    navController: NavigationController | undefined;
     flatNavigation: FlatNavigationEmitter | undefined;
-    initialUrl: string;
-}): Promise<SessionHandle> {
-    const { framework, session, navigation, flatIslands, flatNavigation, initialUrl } = args;
+}): SessionHandle {
+    const { framework, session, navController, flatNavigation } = args;
 
     const currentUrl = (): string => window.location.pathname + window.location.search;
-    // 结构化导航与 flat-islands 都持有一个真实 NavigationController + 订阅式 handle，走同一条路径。
-    const navController = navigation?.controller ?? flatIslands?.controller;
-    const navHandle = navigation?.handle ?? flatIslands?.handle;
     const adapter = navController
         ? createNavigationSessionAdapter(navController, currentUrl)
         : createUrlSessionAdapter({
@@ -539,8 +554,8 @@ async function activateSession(args: {
               navigate: (url) => framework.perform(makeFlowAction(url)),
           });
 
-    const subscribeNavigation = navHandle
-        ? (onChange: () => void): (() => void) => navHandle.subscribe(() => onChange())
+    const subscribeNavigation = navController
+        ? (onChange: () => void): (() => void) => navController.subscribe(() => onChange())
         : flatNavigation
           ? (onChange: () => void): (() => void) => flatNavigation.subscribe(onChange)
           : undefined;
@@ -556,18 +571,13 @@ async function activateSession(args: {
         store.register(provider);
     }
 
-    const bridge = createSessionBridge({
+    return createSessionBridge({
         store,
         adapter,
         subscribeNavigation,
         debounceMs: session.debounceMs,
         shouldRestore: session.shouldRestore,
     });
-
-    // boot 恢复：首次导航已在上面完成，此处读快照并按门控整体应用（nav + slices）。
-    await bridge.restore(initialUrl);
-
-    return bridge;
 }
 
 function resolveBrowserLocale(locale?: string): string | undefined {

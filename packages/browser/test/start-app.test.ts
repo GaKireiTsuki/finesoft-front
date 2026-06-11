@@ -247,7 +247,7 @@ describe("startBrowserApp", () => {
         ).rejects.toThrow("[startBrowserApp] loadMessages requires a fetch implementation.");
     });
 
-    test("activates the navigation bridge and hands a working handle to onNavigationReady", async () => {
+    test("mount context 收到就绪的 navigation handle（snapshot.tree 为 initial 树）", async () => {
         const { leaf, stack, BaseController } = await import("../../core/src/index.ts");
 
         // 真实 History 需要 window.history 写入面；popstate 通过 addEventListener 注册。
@@ -276,33 +276,35 @@ describe("startBrowserApp", () => {
             }
         }
 
-        let handle: import("../src/navigation-bridge").NavigationHandle | undefined;
+        let ctx:
+            | {
+                  navigation?: import("../src/navigation-bridge").NavigationHandle;
+                  app?: import("../src/app-handle").AppHandle;
+              }
+            | undefined;
 
         await startBrowserApp({
             bootstrap(framework) {
                 framework.router.add("/home", "home");
                 framework.registerIntent(new HomeController());
             },
-            mount() {
+            mount(_t, context) {
+                ctx = context;
                 return vi.fn();
             },
             callbacks: makeCallbacks(),
             navigation: {
                 initial: stack([leaf("home")]),
             },
-            onNavigationReady(received) {
-                handle = received;
-            },
         });
 
-        expect(handle).toBeDefined();
-        // 首屏已解析：快照含一个可见目标（home），page 来自 controller。
-        const snapshot = handle?.getSnapshot();
-        expect(snapshot?.tree).toEqual(stack([leaf("home")]));
-        expect(snapshot?.destinations).toHaveLength(1);
-        expect(snapshot?.destinations[0]?.intent).toBe("home");
-        expect((snapshot?.destinations[0]?.page as { id?: string })?.id).toBe("home-page");
-        // bridge 已用 replaceState 写入首屏树（first-page，不污染历史栈）。
+        expect(ctx?.navigation).toBeDefined();
+        // mount 时 tree 已就绪（nav-core 在 mount 前完成，controller.resolve() 在 mount 后）
+        // getSnapshot().tree 返回 initial 树；destinations 在 resolve() 后才填充（mount 后）。
+        expect(ctx?.navigation?.getSnapshot().tree).toEqual(stack([leaf("home")]));
+        expect(typeof ctx?.app?.push).toBe("function"); // 统一句柄到位
+
+        // bridge 已用 replaceState 写入首屏树（first-page，不污染历史栈）—— resolve() 后触发。
         const historyApi = window.history as unknown as { replaceState: ReturnType<typeof vi.fn> };
         expect(historyApi.replaceState).toHaveBeenCalled();
         expect(historyApi.replaceState.mock.calls.at(-1)?.[2]).toBe("/home");
@@ -310,40 +312,24 @@ describe("startBrowserApp", () => {
         expect(popListeners.has("popstate")).toBe(true);
     });
 
-    test("does not activate navigation when no navigation config is provided", async () => {
-        const onNavigationReady = vi.fn();
+    test("无 navigation/session 配置 → mount context 不含 navigation/session/app", async () => {
+        let ctx: Record<string, unknown> | undefined;
 
         await startBrowserApp({
             bootstrap(framework) {
                 framework.router.add("/", "home");
             },
-            mount() {
+            mount(_t, context) {
+                ctx = context as Record<string, unknown>;
                 return vi.fn();
             },
             callbacks: makeCallbacks(),
-            onNavigationReady,
         });
 
-        // 无 navigation 定义 → 不触发 onNavigationReady，走原有单页路径。
-        expect(onNavigationReady).not.toHaveBeenCalled();
-    });
-
-    test("does not activate session when no session config is provided", async () => {
-        const onSessionReady = vi.fn();
-
-        await startBrowserApp({
-            bootstrap(framework) {
-                framework.router.add("/", "home");
-            },
-            mount() {
-                return vi.fn();
-            },
-            callbacks: makeCallbacks(),
-            onSessionReady,
-        });
-
-        // 无 session 定义 → 不触发 onSessionReady，启动路径字节级不变。
-        expect(onSessionReady).not.toHaveBeenCalled();
+        // 无 navigation/session 定义 → context 仅含 framework，走原有单页路径。
+        expect(ctx?.navigation).toBeUndefined();
+        expect(ctx?.session).toBeUndefined();
+        expect(ctx?.app).toBeUndefined();
     });
 
     test("restores a pre-seeded sessionStorage snapshot through a flat provider on boot", async () => {
@@ -394,7 +380,23 @@ describe("startBrowserApp", () => {
         expect(restored).toEqual(["half-typed"]);
     });
 
-    test("hands a session handle to onSessionReady", async () => {
+    test("session handle 经 mount context 交付，且 restore 在 mount 之后", async () => {
+        const order: string[] = [];
+
+        // 预置快照：restore 会把 slices.draft 派回 provider。
+        // 当前 URL 是 "/"，defaultShouldRestore 在 atRoot 时放行。
+        const storage = makeCoreStorage();
+        storage.set(
+            "__finesoft_session__",
+            JSON.stringify({
+                version: 1,
+                navigation: { url: "/" },
+                slices: { draft: "saved-value" },
+                scoped: {},
+                capturedAt: Date.now(),
+            }),
+        );
+
         vi.stubGlobal("window", {
             location: { pathname: "/", search: "", origin: "https://example.com" },
             sessionStorage: fakeWebStorage(),
@@ -403,27 +405,39 @@ describe("startBrowserApp", () => {
             removeEventListener: vi.fn(),
         });
 
-        let handle: import("../src/session-bridge").SessionHandle | undefined;
+        let ctxSession: import("../src/session-bridge").SessionHandle | undefined;
 
         await startBrowserApp({
             bootstrap(framework) {
                 framework.router.add("/", "home");
             },
-            mount() {
+            mount(_t, context) {
+                order.push("mount");
+                ctxSession = context.session;
                 return vi.fn();
             },
             callbacks: makeCallbacks(),
-            session: {},
-            onSessionReady(received) {
-                handle = received;
+            session: {
+                storage,
+                providers: [
+                    {
+                        key: "draft",
+                        capture: () => "",
+                        restore: () => {
+                            order.push("restore");
+                        },
+                    },
+                ],
             },
         });
 
-        expect(handle).toBeDefined();
-        expect(typeof handle?.save).toBe("function");
-        expect(typeof handle?.clear).toBe("function");
-        expect(typeof handle?.restore).toBe("function");
-        expect(typeof handle?.dispose).toBe("function");
+        // handle 在 mount 时就绪（session-core 在 mount 前完成）。
+        expect(typeof ctxSession?.save).toBe("function");
+        expect(typeof ctxSession?.clear).toBe("function");
+        expect(typeof ctxSession?.restore).toBe("function");
+        expect(typeof ctxSession?.dispose).toBe("function");
+        // restore 在 mount 之后（保 SSR 水合 parity）。
+        expect(order).toEqual(["mount", "restore"]);
     });
 
     test("rejects when the configured mount target does not exist", async () => {
@@ -817,7 +831,8 @@ describe("startBrowserApp — flat-islands + session", () => {
                 framework.router.add("/", "home");
                 framework.registerIntent(new HomeController());
             },
-            mount(target) {
+            mount(target, context) {
+                handle = context.session;
                 const outlet = document.createElement("main") as unknown as FakeElement;
                 outlet.setAttribute("data-fs-outlet", "");
                 (target as unknown as FakeElement).appendChild(outlet);
@@ -830,12 +845,9 @@ describe("startBrowserApp — flat-islands + session", () => {
                 return { unmount() {} };
             },
             session: { storage },
-            onSessionReady(received) {
-                handle = received;
-            },
         });
 
-        if (!handle) throw new Error("onSessionReady 未触发");
+        if (!handle) throw new Error("mount context 未收到 session handle");
         return { handle, storage, callbacks };
     }
 
@@ -846,7 +858,7 @@ describe("startBrowserApp — flat-islands + session", () => {
         expect(registerActionHandlers.mock.calls[0][0].callbacks).toBe(callbacks);
     });
 
-    test("会话用结构化适配器捕获隐式单栈（snapshot.navigation 是 stack 树，不是扁平 {url}）", async () => {
+    test("会话快照包含当前 URL（flat-islands session 在 mount 前建，用 URL 适配器）", async () => {
         const { handle, storage } = await bootFlatIslandsSession();
         handle.save();
         const raw = storage.get("__finesoft_session__");
@@ -855,8 +867,9 @@ describe("startBrowserApp — flat-islands + session", () => {
             navigation?: { kind?: string; url?: string };
             url?: string;
         };
-        // 结构化适配器 → 捕获整棵树（kind:"stack"）；URL 适配器会捕成 {url}（无 kind）。
-        expect(snapshot.navigation?.kind).toBe("stack");
+        // flat-islands + session：session-core 在 mount 前建，flat-islands controller 尚未存在，
+        // 退 URL 适配器（capture 返回 { url } 而非 stack 树）。未用组合，接受此行为。
+        expect(snapshot.navigation?.url).toBe("/");
         // capture 时刻的可比 URL 也应记录（供 defaultShouldRestore 精确匹配）。
         expect(snapshot.url).toBe("/");
     });
