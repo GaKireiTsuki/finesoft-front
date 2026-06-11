@@ -34,6 +34,7 @@ export {
     type MountEntry,
     type ResolvedEntry,
 } from "./navigation-islands";
+export { createAppHandle, type AppHandle } from "./app-handle";
 
 // ===== Session =====
 export {

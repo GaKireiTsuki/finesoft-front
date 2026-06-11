@@ -8,6 +8,7 @@ export * from "@finesoft/core";
 export {
     History,
     SESSION_DEFAULT_DEBOUNCE_MS,
+    createAppHandle,
     createDomRestore,
     createIslandOrchestrator,
     createNavigationBridge,
@@ -24,6 +25,7 @@ export {
 } from "@finesoft/browser";
 export type {
     ActionHandlerDependencies,
+    AppHandle,
     BrowserAppConfig,
     BrowserNavigationConfig,
     BrowserSessionConfig,
