@@ -244,6 +244,87 @@ describe("startBrowserApp", () => {
         ).rejects.toThrow("[startBrowserApp] loadMessages requires a fetch implementation.");
     });
 
+    test("activates the navigation bridge and hands a working handle to onNavigationReady", async () => {
+        const { leaf, stack, BaseController } = await import("../../core/src/index.ts");
+
+        // 真实 History 需要 window.history 写入面；popstate 通过 addEventListener 注册。
+        const popListeners = new Map<string, (event: PopStateEvent) => void>();
+        vi.stubGlobal("window", {
+            location: {
+                pathname: "/home",
+                search: "",
+                origin: "https://example.com",
+                href: "https://example.com/home",
+            },
+            history: {
+                state: null as { id?: string } | null,
+                replaceState: vi.fn(),
+                pushState: vi.fn(),
+            },
+            addEventListener: vi.fn((type: string, listener: (event: PopStateEvent) => void) => {
+                popListeners.set(type, listener);
+            }),
+        });
+
+        class HomeController extends BaseController<Record<string, never>, { id: string }> {
+            readonly intentId = "home";
+            execute(): { id: string } {
+                return { id: "home-page" };
+            }
+        }
+
+        let handle: import("../src/navigation-bridge").NavigationHandle | undefined;
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/home", "home");
+                framework.registerIntent(new HomeController());
+            },
+            mount() {
+                return vi.fn();
+            },
+            callbacks: makeCallbacks(),
+            navigation: {
+                initial: stack([leaf("home")]),
+            },
+            onNavigationReady(received) {
+                handle = received;
+            },
+        });
+
+        expect(handle).toBeDefined();
+        // 首屏已解析：快照含一个可见目标（home），page 来自 controller。
+        const snapshot = handle?.getSnapshot();
+        expect(snapshot?.tree).toEqual(stack([leaf("home")]));
+        expect(snapshot?.destinations).toHaveLength(1);
+        expect(snapshot?.destinations[0]?.intent).toBe("home");
+        expect((snapshot?.destinations[0]?.page as { id?: string })?.id).toBe("home-page");
+        // bridge 已用 replaceState 写入首屏树（first-page，不污染历史栈）。
+        const historyApi = window.history as unknown as { replaceState: ReturnType<typeof vi.fn> };
+        expect(historyApi.replaceState).toHaveBeenCalled();
+        expect(historyApi.replaceState.mock.calls.at(-1)?.[2]).toBe("/home");
+        // popstate listener 已注册（bridge 装配）。
+        expect(popListeners.has("popstate")).toBe(true);
+    });
+
+    test("does not activate navigation when no navigation config is provided", async () => {
+        const onNavigationReady = vi.fn();
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+            },
+            mount() {
+                return vi.fn();
+            },
+            callbacks: makeCallbacks(),
+            onNavigationReady,
+        });
+
+        // 无 navigation 定义 → 不触发 onNavigationReady，走原有单页路径。
+        expect(onNavigationReady).not.toHaveBeenCalled();
+    });
+
     test("rejects when the configured mount target does not exist", async () => {
         vi.stubGlobal("document", {
             documentElement: {

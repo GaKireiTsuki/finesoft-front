@@ -14,6 +14,7 @@ export const sidebarZh: DefaultTheme.SidebarItem[] = [
             { text: "可观测性", link: "/zh/08-observability" },
             { text: "服务器与部署", link: "/zh/09-server-and-deployment" },
             { text: "Feature flags、平台、PWA", link: "/zh/10-features-platform-pwa" },
+            { text: "导航", link: "/zh/11-navigation" },
         ],
     },
     {

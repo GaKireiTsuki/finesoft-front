@@ -5,6 +5,18 @@ export {
     SSR_PLACEHOLDERS,
     type InjectSSROptions,
 } from "./inject";
+export {
+    createSSRNavigationRender,
+    extractNavigationTree,
+    NAVIGATION_TREE_INTENT_ID,
+    ssrRenderNavigation,
+    stripNavigationTree,
+    type SerializedNavigationTreePayload,
+    type SSRNavigationDefinition,
+    type SSRNavigationRenderConfig,
+    type SSRRenderNavigationOptions,
+    type SSRRenderNavigationResult,
+} from "./navigation";
 export { ssrRender, type SSRContext, type SSRRenderOptions, type SSRRenderResult } from "./render";
 export { serializeServerData, type SerializeServerDataOptions } from "./server-data";
 
