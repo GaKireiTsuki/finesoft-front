@@ -34,7 +34,7 @@ import type {
 import { runAfterLoadGuards, runBeforeLoadGuards } from "../middleware/pipeline";
 import type { BasePage } from "../models/page";
 import type { PrefetchedIntents } from "../prefetched-intents/prefetched-intents";
-import { stableStringify } from "../prefetched-intents/stable-stringify";
+import { entryKey } from "./keys";
 import type { Router } from "../router/router";
 import type { RouteParams } from "../router/types";
 import { leaf } from "./nodes";
@@ -286,9 +286,9 @@ export interface PushOptions {
 // 实现
 // =====================================================================
 
-/** 可见目标的稳定身份键：intent + 稳定序列化的 params。 */
+/** 可见目标的稳定身份键（委派 entryKey 单一来源）。 */
 function destinationKey(intent: string, params: RouteParams): string {
-    return `${intent} ${stableStringify(params)}`;
+    return entryKey(intent, params);
 }
 
 /** 默认兜底错误页（应用未提供 getErrorPage 时）。 */

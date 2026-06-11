@@ -13,7 +13,7 @@
  * 区别于 `collectVisibleDestinations`（仅沿可见路径）—— 作用域保留需要全部 present 条目。
  */
 
-import { stableStringify } from "../prefetched-intents/stable-stringify";
+import { entryKey } from "../navigation/keys";
 import { collectAllLeaves } from "../navigation/operations";
 import type { NavigationNode } from "../navigation";
 import type { RouteParams } from "../router/types";
@@ -26,7 +26,7 @@ import type { NavigationScopedState } from "./types";
  * 故 `{a,b}` 与 `{b,a}` 产出同一键）。
  */
 export function sessionEntryKey(intent: string, params: RouteParams): string {
-    return `${intent} ${stableStringify(params)}`;
+    return entryKey(intent, params);
 }
 
 /**

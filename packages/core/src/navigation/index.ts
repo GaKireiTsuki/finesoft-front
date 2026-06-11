@@ -36,6 +36,9 @@ export {
     type TabsInit,
 } from "./nodes";
 
+// ===== Keys（稳定身份键）=====
+export { entryKey } from "./keys";
+
 // ===== Operations（纯函数）=====
 export {
     collectAllLeaves,
