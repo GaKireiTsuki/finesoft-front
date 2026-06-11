@@ -63,6 +63,8 @@ interface MountedIsland {
     attached: boolean;
     /** fs:enter 是否已派发（挂载时置 false，首次 attach 后置 true）。 */
     entered: boolean;
+    /** 挂载时对应的 page 引用（用于检测 controller.refresh 产出的新 page，触发 remount）。 */
+    page: BasePage;
     /** conceal 时记录的滚动位置（按可滚动元素序）。 */
     scroll?: { top: number; left: number }[];
 }
@@ -148,10 +150,15 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
         }
 
         // 2) 确保每个可见目标已挂载（首次可见才挂），并按序 attach。
+        //    若 page 引用变化（controller.refresh 产出新 page），先 teardown 再重挂。
         const visibleKeys: string[] = [];
         for (const d of snapshot.destinations) {
             const key = sessionEntryKey(d.intent, d.params);
             visibleKeys.push(key);
+            const existing = mounted.get(key);
+            if (existing !== undefined && existing.page !== d.page) {
+                teardown(key, existing); // page 变了（refresh）→ 重挂拿新 page
+            }
             if (!mounted.has(key)) {
                 const container = document.createElement("div");
                 container.setAttribute("data-fs-entry", "");
@@ -164,7 +171,13 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
                     page: d.page,
                 };
                 const handle = mountEntry(entry, container);
-                mounted.set(key, { container, handle, attached: false, entered: false });
+                mounted.set(key, {
+                    container,
+                    handle,
+                    attached: false,
+                    entered: false,
+                    page: d.page,
+                });
             }
         }
 

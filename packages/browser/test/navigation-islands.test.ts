@@ -252,14 +252,18 @@ describe("island orchestrator — 生命周期", () => {
         const outlet = document.createElement("div") as unknown as HTMLElement;
         const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
 
-        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] });
+        // 固定 home/detail 引用：page-identity 检测要求同一 dest 对象复用同一 page 引用。
+        const dHome = dest("home");
+        const dDetail = dest("detail");
+
+        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dDetail] });
         // 注意：上一步 home 从未可见过 → 未挂载。先让 home 可见一次再 push，模拟真实路径。
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] }); // home 挂载
-        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] }); // detail 挂载，home detach
+        o.sync({ tree: stack([leaf("home")]), destinations: [dHome] }); // home 挂载
+        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dDetail] }); // detail 挂载，home detach
         events.length = 0;
 
         // pop：tree=[home]，可见=[home]。home 仍在 mounted → 复用 + 重 attach；detail 离树 → unmount。
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+        o.sync({ tree: stack([leaf("home")]), destinations: [dHome] });
 
         expect(events).toEqual([`unmount:${KEY("detail")}`]); // detail 离树 unmount；home 不重挂
         expect(attachedKeys(outlet)).toEqual([KEY("home")]); // home 重 attach
@@ -381,6 +385,50 @@ describe("island orchestrator — fs:* 生命周期事件", () => {
 // Task 3: 滚动 conceal/reveal 往返
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Task 4: page 变化 remount
+// ---------------------------------------------------------------------------
+
+describe("island orchestrator — page 变化 remount", () => {
+    test("同 entryKey 但 page 引用变化 → unmount 旧 + mount 新", () => {
+        const events: string[] = [];
+        const outlet = document.createElement("div") as unknown as HTMLElement;
+        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
+
+        const d1 = dest("home");
+        o.sync({ tree: stack([leaf("home")]), destinations: [d1] });
+        events.length = 0;
+
+        // 同 key、新 page 对象（模拟 refresh 后控制器产出的新页）
+        const d2: ResolvedDestination = {
+            intent: "home",
+            params: {},
+            page: { id: "home", pageType: "home", title: "fresh" } as BasePage,
+        };
+        o.sync({ tree: stack([leaf("home")]), destinations: [d2] });
+
+        expect(events).toEqual([`unmount:${KEY("home")}`, `mount:${KEY("home")}`]);
+        expect(
+            (outlet as unknown as FakeElement).querySelector("[data-fs-entry]")?.textContent,
+        ).toBe("fresh");
+    });
+
+    test("page 引用不变 → 不 remount（保活）", () => {
+        const events: string[] = [];
+        const outlet = document.createElement("div") as unknown as HTMLElement;
+        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
+        const d = dest("home");
+        o.sync({ tree: stack([leaf("home")]), destinations: [d] });
+        events.length = 0;
+        o.sync({ tree: stack([leaf("home")]), destinations: [d] }); // 同一 page 引用
+        expect(events).toEqual([]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Task 3: 滚动 conceal/reveal 往返
+// ---------------------------------------------------------------------------
+
 describe("island orchestrator — 滚动 conceal/reveal 往返", () => {
     test("conceal 记录 scrollTop，reveal 重放", () => {
         const outlet = document.createElement("div") as unknown as HTMLElement;
@@ -394,7 +442,11 @@ describe("island orchestrator — 滚动 conceal/reveal 往返", () => {
         // 注入同步 scheduler（替代 rAF）便于断言
         const o = createIslandOrchestrator({ outlet, mountEntry, schedule: (cb) => cb() });
 
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+        // 固定 dest 引用：page-identity 检测要求同一 dest 复用同一 page 引用（keep-alive 路径）。
+        const dHome = dest("home");
+        const dDetail = dest("detail");
+
+        o.sync({ tree: stack([leaf("home")]), destinations: [dHome] });
 
         // 找到 outlet 里的 data-fs-scroll 元素，设置 scrollTop
         const scroller = (outlet as unknown as FakeElement).querySelector(
@@ -403,11 +455,11 @@ describe("island orchestrator — 滚动 conceal/reveal 往返", () => {
         scroller.scrollTop = 120;
 
         // push detail → home conceal（记录 120）
-        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] });
+        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dDetail] });
         // 模拟 detach 期间 scrollTop 归零（真实浏览器行为；jsdom 需手动置 0 验证重放）
         scroller.scrollTop = 0;
         // pop → home reveal → 重放 120
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+        o.sync({ tree: stack([leaf("home")]), destinations: [dHome] });
 
         expect(scroller.scrollTop).toBe(120);
     });
