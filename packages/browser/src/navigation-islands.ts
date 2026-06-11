@@ -125,6 +125,18 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
         island.attached = false;
     }
 
+    /**
+     * 销毁 island 并派发 `fs:exit`。
+     *
+     * **`fs:exit` 语义说明**
+     * - `fs:exit` 在 unmount 前无条件派发到 island 的容器元素上。
+     * - island **仍在 document（attached）时**：事件 bubbles，outlet 上的委托监听器可收到。
+     * - island **已被 conceal（detached，容器已出 document）时**：事件仅在孤立容器上
+     *   触发，**不会冒泡到 outlet 级委托监听器**（实 DOM 行为）。
+     *
+     * 因此，需要可靠接收每个 island teardown 通知的应用，应在 `mountEntry` 传入的
+     * `container` 上直接监听 `fs:exit`，而不要依赖 outlet 级委托。
+     */
     function teardown(key: string, island: MountedIsland): void {
         // Emit fs:exit unconditionally (before remove if attached, or on the orphaned container if
         // already detached). Attached path bubbles to outlet-level listeners; detached path fires

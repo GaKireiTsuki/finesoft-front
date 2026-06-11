@@ -8,6 +8,7 @@ export * from "@finesoft/core";
 export {
     History,
     SESSION_DEFAULT_DEBOUNCE_MS,
+    createDomRestore,
     createIslandOrchestrator,
     createNavigationBridge,
     createPrefetchedIntentsFromDom,
@@ -26,6 +27,8 @@ export type {
     BrowserAppConfig,
     BrowserNavigationConfig,
     BrowserSessionConfig,
+    DomRestore,
+    DomRestoreOptions,
     ExternalUrlDependencies,
     FlowActionCallbacks,
     FlowActionDependencies,
