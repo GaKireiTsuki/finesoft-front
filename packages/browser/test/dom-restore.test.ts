@@ -4,7 +4,7 @@ vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import { vi } from "vite-plus/test";
 import { createNavigationScopedState } from "@finesoft/core";
-import { FakeElement, FakeEvent, stubDomGlobals } from "./fake-dom";
+import { FakeCustomEvent, FakeElement, FakeEvent, stubDomGlobals } from "./fake-dom";
 import { createDomRestore } from "../src/dom-restore";
 
 // Register Event + CustomEvent + document globals before any DOM usage.
@@ -191,6 +191,138 @@ describe("dom-restore — 回填", () => {
             .querySelector("[data-restore-root]")!
             .querySelector("[name]") as unknown as FakeElement;
         expect(inputEl.value).toBe("orig");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// attach tests
+// ---------------------------------------------------------------------------
+
+describe("dom-restore — attach 接线", () => {
+    /** Trigger a bubbling CustomEvent on target (models orchestrator fs:* dispatch). */
+    function fire(target: FakeElement, type: string): void {
+        target.dispatchEvent(new FakeCustomEvent(type, { bubbles: true }));
+    }
+
+    test("fs:conceal → 捕获该 island 进 scope", () => {
+        const scope = createNavigationScopedState();
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        dr.attach(asHTMLElement(outlet));
+        const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "typed" }]);
+        outlet.appendChild(c);
+
+        fire(c, "fs:conceal");
+
+        const dom = (scope.get("k {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom;
+        expect(dom?.fields).toEqual({ note: "typed" });
+    });
+
+    test("input 事件（委托）→ 实时捕获", () => {
+        const scope = createNavigationScopedState();
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        dr.attach(asHTMLElement(outlet));
+        const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "" }]);
+        outlet.appendChild(c);
+
+        // Simulate user typing: update value then dispatch input event
+        const inputEl = c
+            .querySelector("[data-restore-root]")!
+            .querySelector("[name]") as FakeElement;
+        inputEl.value = "x";
+        inputEl.dispatchEvent(new FakeEvent("input", { bubbles: true }));
+
+        const dom = (scope.get("k {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom;
+        expect(dom?.fields).toEqual({ note: "x" });
+    });
+
+    test("attach 时 catch-up：对已 attached 的 island 立即回填一次（boot 路径）", () => {
+        const scope = createNavigationScopedState();
+        scope.set("k {}", { __dom: { fields: { note: "boot" } } });
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "" }]);
+        outlet.appendChild(c); // boot: island already in outlet before attach
+
+        dr.attach(asHTMLElement(outlet)); // catch-up should restore
+
+        const inputEl = c
+            .querySelector("[data-restore-root]")!
+            .querySelector("[name]") as FakeElement;
+        expect(inputEl.value).toBe("boot");
+    });
+
+    test("fs:enter → 回填（会话内新挂载，scope 空则 no-op）", () => {
+        const scope = createNavigationScopedState();
+        scope.set("k {}", { __dom: { fields: { note: "later" } } });
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        dr.attach(asHTMLElement(outlet));
+        const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "" }]);
+        outlet.appendChild(c);
+
+        fire(c, "fs:enter");
+
+        const inputEl = c
+            .querySelector("[data-restore-root]")!
+            .querySelector("[name]") as FakeElement;
+        expect(inputEl.value).toBe("later");
+    });
+
+    test("pagehide → flush 所有可见 islands 进 scope", () => {
+        const scope = createNavigationScopedState();
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        dr.attach(asHTMLElement(outlet));
+        const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "flush-me" }]);
+        outlet.appendChild(c);
+
+        // Trigger pagehide on the fake window global
+        const fakeWindow = globalThis.window as unknown as import("./fake-dom").FakeGlobalTarget;
+        fakeWindow.dispatchEvent(new FakeEvent("pagehide", { bubbles: false }));
+
+        const dom = (scope.get("k {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom;
+        expect(dom?.fields).toEqual({ note: "flush-me" });
+    });
+
+    test("visibilitychange(hidden) → flush 所有可见 islands 进 scope", () => {
+        const scope = createNavigationScopedState();
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        dr.attach(asHTMLElement(outlet));
+        const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "vis-flush" }]);
+        outlet.appendChild(c);
+
+        // Set document.visibilityState to "hidden" then fire visibilitychange
+        const fakeDoc = globalThis.document as unknown as {
+            visibilityState: string;
+        } & import("./fake-dom").FakeGlobalTarget;
+        fakeDoc.visibilityState = "hidden";
+        fakeDoc.dispatchEvent(new FakeEvent("visibilitychange", { bubbles: false }));
+
+        const dom = (scope.get("k {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom;
+        expect(dom?.fields).toEqual({ note: "vis-flush" });
+    });
+
+    test("dispose 解绑：dispose 后 fs:conceal 不再捕获", () => {
+        const scope = createNavigationScopedState();
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        dr.attach(asHTMLElement(outlet));
+        const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "before" }]);
+        outlet.appendChild(c);
+
+        dr.dispose();
+
+        // Update value then conceal → should NOT be captured
+        const inputEl = c
+            .querySelector("[data-restore-root]")!
+            .querySelector("[name]") as FakeElement;
+        inputEl.value = "after";
+        fire(c, "fs:conceal");
+
+        expect(scope.get("k {}")).toBeUndefined();
     });
 });
 

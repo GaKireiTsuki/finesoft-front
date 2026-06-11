@@ -140,11 +140,57 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
         schedule(() => apply(container, dom));
     }
 
-    // attach / dispose 在 Task 2 实现；先给占位以满足接口（Task 2 替换）。
-    function attach(_outlet: HTMLElement): void {
-        throw new Error("not implemented until Task 2");
+    let boundOutlet: HTMLElement | undefined;
+
+    /** Walk from event target up to the nearest island container ([data-fs-entry]). */
+    function containerOf(target: EventTarget | null): HTMLElement | undefined {
+        return (target as HTMLElement | null)?.closest<HTMLElement>("[data-fs-entry]") ?? undefined;
     }
-    function dispose(): void {}
+
+    const onEnter = (e: Event): void => {
+        const c = containerOf(e.target);
+        if (c) restoreEntry(c);
+    };
+    const onConceal = (e: Event): void => {
+        const c = containerOf(e.target);
+        if (c) captureEntry(c);
+    };
+    const onEdit = (e: Event): void => {
+        const c = containerOf(e.target);
+        if (c) captureEntry(c);
+    };
+    const flushVisible = (): void => {
+        if (!boundOutlet) return;
+        for (const c of boundOutlet.querySelectorAll<HTMLElement>("[data-fs-entry]"))
+            captureEntry(c);
+    };
+    const onVisibility = (): void => {
+        if (document.visibilityState === "hidden") flushVisible();
+    };
+
+    function attach(outlet: HTMLElement): void {
+        boundOutlet = outlet;
+        outlet.addEventListener("fs:enter", onEnter);
+        outlet.addEventListener("fs:conceal", onConceal);
+        outlet.addEventListener("input", onEdit, true);
+        outlet.addEventListener("change", onEdit, true);
+        window.addEventListener("pagehide", flushVisible);
+        document.addEventListener("visibilitychange", onVisibility);
+        // boot catch-up: islands may already be mounted (fs:enter already fired) when attach runs;
+        // restore each one now (scope was restored by the session layer just before attach).
+        for (const c of outlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) restoreEntry(c);
+    }
+
+    function dispose(): void {
+        if (!boundOutlet) return;
+        boundOutlet.removeEventListener("fs:enter", onEnter);
+        boundOutlet.removeEventListener("fs:conceal", onConceal);
+        boundOutlet.removeEventListener("input", onEdit, true);
+        boundOutlet.removeEventListener("change", onEdit, true);
+        window.removeEventListener("pagehide", flushVisible);
+        document.removeEventListener("visibilitychange", onVisibility);
+        boundOutlet = undefined;
+    }
 
     return { captureEntry, restoreEntry, attach, dispose };
 }

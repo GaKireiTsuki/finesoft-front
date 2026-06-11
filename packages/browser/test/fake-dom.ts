@@ -241,18 +241,71 @@ function matchesSingleSelector(el: FakeElement, selector: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// FakeGlobalTarget — minimal event registry for window / document globals
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal event-target mixin for global objects (window, document).
+ * Unlike FakeElement (which is a DOM node with parent/children), these are
+ * singletons that only need addEventListener / removeEventListener /
+ * dispatchEvent plus a small set of readable properties.
+ *
+ * dispatchEvent walks the handler list synchronously, matching the real
+ * global-target behaviour.  This allows pagehide / visibilitychange tests
+ * to work without capturing and manually invoking the vi.fn() mock.
+ */
+export class FakeGlobalTarget {
+    private _handlers: Map<string, ((e: FakeEvent) => void)[]> = new Map();
+
+    addEventListener(type: string, handler: (e: FakeEvent) => void): void {
+        const list = this._handlers.get(type) ?? [];
+        list.push(handler);
+        this._handlers.set(type, list);
+    }
+
+    removeEventListener(type: string, handler: (e: FakeEvent) => void): void {
+        const list = this._handlers.get(type);
+        if (!list) return;
+        this._handlers.set(
+            type,
+            list.filter((h) => h !== handler),
+        );
+    }
+
+    dispatchEvent(event: FakeEvent): void {
+        const handlers = this._handlers.get(event.type);
+        if (handlers) {
+            // Snapshot to guard against mutation during iteration
+            const snapshot = handlers.slice();
+            for (const h of snapshot) h(event);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Document stub factory
 // ---------------------------------------------------------------------------
 
-/** Build a stub document that provides createElement returning a FakeElement. */
-export function makeFakeDocument(): {
+/**
+ * The shape returned by makeFakeDocument / makeFakeDocumentWithRoot.
+ * It is a plain object (not a class instance) so it can be safely spread in tests.
+ * The event registry is embedded via a shared FakeGlobalTarget held in closure.
+ */
+export type FakeDocument = {
     createElement(tag: string): FakeElement;
     getElementById(id: string): FakeElement | null;
     documentElement: { lang: string; dir: string };
-    addEventListener: ReturnType<typeof vi.fn>;
-    removeEventListener: ReturnType<typeof vi.fn>;
     visibilityState: string;
-} {
+    addEventListener(type: string, handler: (e: FakeEvent) => void): void;
+    removeEventListener(type: string, handler: (e: FakeEvent) => void): void;
+    dispatchEvent(event: FakeEvent): void;
+};
+
+/** Build a stub document that provides createElement returning a FakeElement. */
+export function makeFakeDocument(): FakeDocument {
+    // Plain-object shape so callers can safely spread it (class instances can't be spread).
+    // The event registry is handled by an embedded FakeGlobalTarget.
+    const registry = new FakeGlobalTarget();
     return {
         createElement(tag: string): FakeElement {
             return new FakeElement(tag);
@@ -262,20 +315,18 @@ export function makeFakeDocument(): {
             return null;
         },
         documentElement: { lang: "", dir: "" },
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
         visibilityState: "visible",
-    } as ReturnType<typeof makeFakeDocument>;
+        addEventListener: registry.addEventListener.bind(registry),
+        removeEventListener: registry.removeEventListener.bind(registry),
+        dispatchEvent: registry.dispatchEvent.bind(registry),
+    };
 }
 
 /**
  * Create a fake document that returns a pre-built FakeElement for getElementById(mountId).
  * Useful for start-app tests where we need #app to exist and be a FakeElement tree.
  */
-export function makeFakeDocumentWithRoot(
-    mountId: string,
-    root: FakeElement,
-): ReturnType<typeof makeFakeDocument> {
+export function makeFakeDocumentWithRoot(mountId: string, root: FakeElement): FakeDocument {
     const base = makeFakeDocument();
     return {
         ...base,
@@ -286,11 +337,15 @@ export function makeFakeDocumentWithRoot(
 }
 
 /**
- * Register vi.stubGlobal for Event + CustomEvent + document (basic, createElement-only).
+ * Register vi.stubGlobal for Event + CustomEvent + document + window.
+ * window is a FakeGlobalTarget with a faithful addEventListener registry so
+ * pagehide / visibilitychange handlers can be triggered via dispatchEvent.
+ *
  * Call at test file top level (before any imports that trigger document.createElement).
  */
 export function stubDomGlobals(): void {
     vi.stubGlobal("Event", FakeEvent);
     vi.stubGlobal("CustomEvent", FakeCustomEvent);
     vi.stubGlobal("document", makeFakeDocument());
+    vi.stubGlobal("window", new FakeGlobalTarget());
 }
