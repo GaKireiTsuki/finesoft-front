@@ -45,7 +45,7 @@ export interface IslandOrchestratorOptions {
     readonly mountEntry: MountEntry;
 }
 
-/** 编排器对外面。 */
+/** 编排器对外接口。 */
 export interface IslandOrchestrator {
     /** 把 DOM 同步到一个导航快照（挂新/卸离树/detach 隐藏/attach 可见）。 */
     sync(snapshot: NavigationSnapshot): void;
@@ -59,6 +59,16 @@ interface MountedIsland {
     readonly handle: IslandHandle;
     /** 当前是否 attached（在 document 里 = 可见）。 */
     attached: boolean;
+    /** 本次 sync 中是否是新建的（尚未派发 fs:enter）。 */
+    justCreated: boolean;
+}
+
+/** 在 container 上派发生命周期 CustomEvent（bubbles: true，会冒泡到 outlet）。 */
+function emit(
+    container: HTMLElement,
+    type: "fs:enter" | "fs:reveal" | "fs:conceal" | "fs:exit",
+): void {
+    container.dispatchEvent(new CustomEvent(type, { bubbles: true }));
 }
 
 export function createIslandOrchestrator(options: IslandOrchestratorOptions): IslandOrchestrator {
@@ -67,12 +77,23 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
 
     function conceal(island: MountedIsland): void {
         if (!island.attached) return;
+        emit(island.container, "fs:conceal");
         island.container.remove(); // 出 document（保活，实例不销毁）
         island.attached = false;
     }
 
     function teardown(key: string, island: MountedIsland): void {
-        conceal(island);
+        // Emit fs:exit while the container is still in the outlet (if attached) so the event
+        // can bubble to outlet-level listeners. Semantics: fs:exit means "being destroyed",
+        // distinct from fs:conceal ("going to background, staying alive").
+        // If already detached, fs:exit fires on the orphaned container only (no bubbling to outlet).
+        if (island.attached) {
+            emit(island.container, "fs:exit");
+            island.container.remove();
+            island.attached = false;
+        } else {
+            emit(island.container, "fs:exit");
+        }
         island.handle.unmount();
         mounted.delete(key);
     }
@@ -104,7 +125,7 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
                     page: d.page,
                 };
                 const handle = mountEntry(entry, container);
-                mounted.set(key, { container, handle, attached: false });
+                mounted.set(key, { container, handle, attached: false, justCreated: true });
             }
         }
 
@@ -115,11 +136,18 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
         }
 
         // 4) 按 destinations 顺序 attach/reorder 可见 island（appendChild 已在则移动 → 重排）。
+        //    派发顺序：新建的先 fs:enter（已在 outlet 内，可冒泡），再 fs:reveal；已有的只 fs:reveal。
         for (const key of visibleKeys) {
             const island = mounted.get(key);
             if (island === undefined) continue;
+            const wasAttached = island.attached;
             outlet.appendChild(island.container);
             island.attached = true;
+            if (island.justCreated) {
+                island.justCreated = false;
+                emit(island.container, "fs:enter");
+            }
+            if (!wasAttached) emit(island.container, "fs:reveal");
         }
     }
 

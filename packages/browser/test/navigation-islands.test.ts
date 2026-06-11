@@ -22,11 +22,32 @@ import {
 // 极简 DOM 实现（项目无 jsdom/happy-dom；对齐 start-app.test 用 vi.stubGlobal 风格）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// CustomEvent stub — headless 环境没有 CustomEvent，用 vi.stubGlobal 注入。
+// ---------------------------------------------------------------------------
+
+class FakeCustomEvent {
+    readonly type: string;
+    readonly bubbles: boolean;
+    target: FakeElement | null = null;
+    constructor(type: string, init?: { bubbles?: boolean }) {
+        this.type = type;
+        this.bubbles = init?.bubbles ?? false;
+    }
+}
+
+vi.stubGlobal("CustomEvent", FakeCustomEvent);
+
+// ---------------------------------------------------------------------------
+// FakeElement
+// ---------------------------------------------------------------------------
+
 class FakeElement {
     readonly tagName: string;
     private _attrs: Map<string, string> = new Map();
     private _children: FakeElement[] = [];
     private _parent: FakeElement | null = null;
+    private _handlers: Map<string, ((e: FakeCustomEvent) => void)[]> = new Map();
     textContent = "";
 
     constructor(tag: string) {
@@ -68,13 +89,38 @@ class FakeElement {
     /** Supports exact-attribute-match selectors: [attr] and [attr="value"]. */
     querySelectorAll(selector: string): FakeElement[] {
         const results: FakeElement[] = [];
-        const stack: FakeElement[] = [...this._children];
-        while (stack.length > 0) {
-            const el = stack.pop()!;
+        const queue: FakeElement[] = [...this._children];
+        while (queue.length > 0) {
+            const el = queue.pop()!;
             if (matchesSelector(el, selector)) results.unshift(el);
-            stack.push(...el._children);
+            queue.push(...el._children);
         }
         return results;
+    }
+
+    addEventListener(type: string, handler: (e: FakeCustomEvent) => void): void {
+        const list = this._handlers.get(type) ?? [];
+        list.push(handler);
+        this._handlers.set(type, list);
+    }
+
+    /**
+     * Dispatch an event on this element and bubble up the _parent chain.
+     * Faithfully models { bubbles: true } — event.target is set to the
+     * originating element (the container the orchestrator dispatches on).
+     */
+    dispatchEvent(event: FakeCustomEvent): void {
+        event.target = this;
+        // Walk from dispatch target up through ancestors, invoking handlers.
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        let current: FakeElement | null = this;
+        while (current !== null) {
+            const handlers = current._handlers.get(event.type);
+            if (handlers) {
+                for (const h of handlers) h(event);
+            }
+            current = event.bubbles ? current._parent : null;
+        }
     }
 
     get children(): FakeElement[] {
@@ -217,12 +263,6 @@ describe("island orchestrator — 生命周期", () => {
         const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
 
         o.sync({
-            tree: stack([leaf("x")]), // tree 形态不影响：present 由 collectAllLeaves 取，可见由 destinations 定
-            destinations: [dest("list"), dest("detail")],
-        });
-        // 但 present 集来自 tree（这里 tree 只有 x）——list/detail 不在 present 集会被立刻 unmount。
-        // 因此用一个真实 split 形态的树：
-        o.sync({
             tree: {
                 kind: "split",
                 columns: [
@@ -266,5 +306,52 @@ describe("island orchestrator — 生命周期", () => {
 
         expect(events).toEqual([`unmount:${KEY("home")}`]);
         expect((outlet as unknown as FakeElement).children).toHaveLength(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Task 2: fs:* 生命周期事件
+// ---------------------------------------------------------------------------
+
+describe("island orchestrator — fs:* 生命周期事件", () => {
+    /**
+     * 在 outlet 上委托监听 fs:* 事件（CustomEvent bubbles），记录 type:key。
+     * 读 e.target 上的 data-key（由 makeMountEntry 写入）来标识哪个 island 触发。
+     */
+    function listen(outlet: HTMLElement, log: string[]): void {
+        for (const type of ["fs:enter", "fs:reveal", "fs:conceal", "fs:exit"]) {
+            (outlet as unknown as FakeElement).addEventListener(type, (e) => {
+                const key = (e.target as unknown as FakeElement).getAttribute("data-key") ?? "";
+                log.push(`${type}:${key}`);
+            });
+        }
+    }
+
+    test("挂载→可见 派发 enter 然后 reveal", () => {
+        const outlet = document.createElement("div") as unknown as HTMLElement;
+        const log: string[] = [];
+        listen(outlet, log);
+        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry([]) });
+
+        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+
+        expect(log).toEqual([`fs:enter:${KEY("home")}`, `fs:reveal:${KEY("home")}`]);
+    });
+
+    test("push 使底层条目 conceal；pop 使其 reveal", () => {
+        const outlet = document.createElement("div") as unknown as HTMLElement;
+        const log: string[] = [];
+        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry([]) });
+        // 先让 home 挂载+可见，再开始记录事件
+        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+        listen(outlet, log);
+
+        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] });
+        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+
+        expect(log).toContain(`fs:conceal:${KEY("home")}`);
+        expect(log).toContain(`fs:enter:${KEY("detail")}`);
+        expect(log).toContain(`fs:reveal:${KEY("home")}`);
+        expect(log).toContain(`fs:exit:${KEY("detail")}`); // detail 离树
     });
 });
