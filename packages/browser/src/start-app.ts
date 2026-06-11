@@ -212,6 +212,8 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         callbacks,
         updateApp,
         getScrollablePageElement: config.getScrollablePageElement,
+        // 结构化导航下 history 由 NavigationBridge 独占；否则两套 History 争抢 window.history.state。
+        manageHistory: !config.navigation,
     });
 
     // 6. 触发初始页面
