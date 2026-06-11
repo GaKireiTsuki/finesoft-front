@@ -462,3 +462,39 @@ describe("defaultShouldRestore", () => {
         expect(defaultShouldRestore(s, "/anything/deep")).toBe(true);
     });
 });
+
+// =====================================================================
+// createSessionBridge —— scope 暴露（导航作用域读写）
+// =====================================================================
+
+describe("createSessionBridge — scope handle", () => {
+    test("handle.scope 委托 store.scope（读写互通）", () => {
+        vi.stubGlobal("window", makeEventTarget());
+        vi.stubGlobal("document", makeEventTarget());
+        const store = makeStore();
+        const bridge = build({ store, adapter: makeAdapter(() => []) });
+
+        bridge.scope.set("home {}", { q: "hi" });
+        expect(store.scope.get("home {}")).toEqual({ q: "hi" });
+        expect(bridge.scope.get("home {}")).toEqual({ q: "hi" });
+        bridge.dispose();
+    });
+
+    test("handle.scope 始终取最新 store.scope 实例（restore 重建后不失效）", () => {
+        vi.stubGlobal("window", makeEventTarget());
+        vi.stubGlobal("document", makeEventTarget());
+        const store = makeStore();
+        const bridge = build({ store, adapter: makeAdapter(() => []) });
+        // 模拟 restore 重建 scope：替换 store.scope 为新实例
+        const fresh = {
+            get: () => "restored",
+            set: () => {},
+            delete: () => {},
+            prune: () => {},
+            keys: () => [],
+        };
+        (store as { scope: unknown }).scope = fresh;
+        expect(bridge.scope.get("anything")).toBe("restored");
+        bridge.dispose();
+    });
+});

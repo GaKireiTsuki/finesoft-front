@@ -18,7 +18,12 @@
  */
 
 import { isUrlLocation } from "@finesoft/core";
-import type { SessionNavigationAdapter, SessionSnapshot, SessionStore } from "@finesoft/core";
+import type {
+    NavigationScopedState,
+    SessionNavigationAdapter,
+    SessionSnapshot,
+    SessionStore,
+} from "@finesoft/core";
 
 /** 导航变更后自动落盘的默认防抖窗口（ms）：合并连续导航，避免每跳一屏写一次。 */
 export const SESSION_DEFAULT_DEBOUNCE_MS = 500;
@@ -37,9 +42,15 @@ export interface SessionBridgeOptions {
     readonly shouldRestore?: (snapshot: SessionSnapshot, currentUrl: string) => boolean;
 }
 
-/** SessionBridge 对外句柄：boot 恢复 + 手动逃生口 + 解绑。 */
+/** SessionBridge 对外句柄：导航作用域读写 + boot 恢复 + 手动逃生口 + 解绑。 */
 export interface SessionHandle {
-    /** boot 时调用：读快照，通过门控则整体恢复（nav + slices）。 */
+    /**
+     * 导航作用域状态（每屏 per-entry）。应用渲染某屏时用 `scope.get(entryKey)` /
+     * `set(entryKey, data)` 读写（`entryKey = sessionEntryKey(intent, params)`）。
+     * 始终委托当前 store 的 scope —— restore 会重建 scope map，经此 getter 取到的恒是最新实例。
+     */
+    readonly scope: NavigationScopedState;
+    /** boot 时调用：读快照，通过门控则整体恢复（nav + slices + scoped）。 */
     restore(currentUrl: string): void | Promise<void>;
     /** 手动落盘（= `store.save()`）。 */
     save(): void;
@@ -124,6 +135,10 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     return {
+        // store.scope 在 restore 时被重建，故用 getter 委托而非捕获快照实例。
+        get scope(): NavigationScopedState {
+            return store.scope;
+        },
         restore(currentUrl: string): void | Promise<void> {
             const snapshot = store.load();
             if (snapshot !== undefined && shouldRestore(snapshot, currentUrl)) {

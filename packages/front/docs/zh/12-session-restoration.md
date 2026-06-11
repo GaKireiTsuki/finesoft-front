@@ -60,7 +60,7 @@ const bag = store.scope.get(key); // -> { scroll: 240, draft: "..." } | undefine
 - **切 TabView 的 tab** → 其它分支仍在树中 → 其状态保活（与 SwiftUI 让未激活 tab 保持挂载一致）。
 - **跨重载** → `scoped` 随快照序列化；重载后每个仍在树的条目恢复各自作用域，之后 pop 照常丢弃。
 
-`store.scope` 是 store 持有的 `NavigationScopedState` 实例 —— `get` / `set` / `delete` / `keys`，外加框架替你调用的 `prune(presentKeys)`。
+`store.scope` 是 store 持有的 `NavigationScopedState` 实例 —— `get` / `set` / `delete` / `keys`，外加框架替你调用的 `prune(presentKeys)`。用高层 `startBrowserApp({ session })` 时无需直接持有 store：`onSessionReady` 交给你的 `SessionHandle` 上的 `handle.scope` 就是同一个实例（restore 重建后仍指向最新），照样 `handle.scope.get(entryKey)` / `set(entryKey, data)`。
 
 ### 扁平 vs 结构化：保留语义**本质就是栈**
 

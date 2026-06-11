@@ -60,7 +60,7 @@ Walking through the lifecycle:
 - **switch a TabView tab** → the other branches are still in the tree → their state is kept alive (exactly like SwiftUI keeping inactive tabs mounted).
 - **across a reload** → `scoped` is serialized into the snapshot; after reload, every entry still in the tree gets its scope back, and a later pop discards it as usual.
 
-`store.scope` is the `NavigationScopedState` instance held by the store — `get` / `set` / `delete` / `keys`, plus the `prune(presentKeys)` the framework calls for you.
+`store.scope` is the `NavigationScopedState` instance held by the store — `get` / `set` / `delete` / `keys`, plus the `prune(presentKeys)` the framework calls for you. With the high-level `startBrowserApp({ session })` path you don't hold the store directly: the `SessionHandle` handed to `onSessionReady` exposes the same instance as `handle.scope` (still live after a restore rebuilds it), so you `handle.scope.get(entryKey)` / `set(entryKey, data)` the same way.
 
 ### Flat vs structured: retention _is_ a stack
 
