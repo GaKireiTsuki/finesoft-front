@@ -1,9 +1,8 @@
 import {
     startBrowserApp,
+    type AppHandle,
     type MountEntry,
-    type NavigationHandle,
     type NavigationSnapshot,
-    type SessionHandle,
     type SessionStateProvider,
 } from "@finesoft/front";
 import { createApp, createSSRApp, markRaw, reactive, type Component } from "vue";
@@ -18,11 +17,9 @@ export interface AppState {
     snapshot: NavigationSnapshot | null;
     name: string;
 }
+export type AppController = AppHandle; // 组件 prop 类型 = 框架统一句柄
 
 const state = reactive<AppState>({ snapshot: null, name: "" });
-
-let navHandle: NavigationHandle | null = null;
-let sessionHandle: SessionHandle | null = null;
 
 /** 全局切片（app-wide）：用户名字 —— 跨 tab、跨重载都在（对标 SwiftUI @SceneStorage）。 */
 const profileProvider: SessionStateProvider = {
@@ -33,19 +30,8 @@ const profileProvider: SessionStateProvider = {
     },
 };
 
-/** 交给 App.vue 的命令面（markRaw：不让 Vue 代理 handle 方法）。 */
-export type AppController = ReturnType<typeof makeController>;
-function makeController() {
-    return markRaw({
-        push: (intent: string, params?: Record<string, unknown>) =>
-            void navHandle?.push(intent, params),
-        pop: () => void navHandle?.pop(),
-        selectTab: (key: string) => void navHandle?.selectTab(key),
-        /** 手动落盘（全局切片改动后调；nav 变更已自动落盘）。 */
-        save: () => void sessionHandle?.save(),
-    });
-}
-const controller = makeController();
+/** islands 闭包引用：mount 回调赋值，islands(mount 后挂)读时已就绪。 */
+let controller: AppHandle | undefined;
 
 /** intent → 视图组件。islands 按 entry 挂为独立 Vue app。 */
 const VIEWS: Record<string, Component> = { home: HomeView, detail: DetailView, notes: NotesView };
@@ -61,7 +47,13 @@ const mountEntry: MountEntry = (entry, container) => {
 
 void startBrowserApp({
     bootstrap,
-    mount(target: HTMLElement) {
+    mount(target: HTMLElement, ctx) {
+        controller = ctx.app; // islands(mount 后挂)与 chrome 共用
+        const nav = ctx.navigation;
+        if (nav) {
+            state.snapshot = nav.getSnapshot(); // mount 时 tree 已就绪
+            nav.subscribe((s) => (state.snapshot = s));
+        }
         // 方案 C：chrome 挂到 sibling chrome-root（不含 outlet）；outlet 由框架编排器独占。
         let chromeRoot = target.querySelector<HTMLElement>("[data-fs-chrome]");
         if (!chromeRoot) {
@@ -74,7 +66,7 @@ void startBrowserApp({
         }
         // 有 SSR 内容 → 水合；否则客户端新建。
         const factory = chromeRoot.firstChild ? createSSRApp : createApp;
-        factory(App, { state, controller }).mount(chromeRoot);
+        factory(App, { state, controller: markRaw(ctx.app!) }).mount(chromeRoot);
         return () => undefined;
     },
     callbacks: {
@@ -85,16 +77,6 @@ void startBrowserApp({
     navigation: { ...navigation.toBrowserConfig(), mountEntry },
     // 重载 DOM 自动恢复：data-restore-root 内字段/滚动自动捕获回填。
     domRestore: true,
-    onNavigationReady(handle) {
-        navHandle = handle;
-        state.snapshot = handle.getSnapshot();
-        handle.subscribe((snapshot) => {
-            state.snapshot = snapshot;
-        });
-    },
     // 会话恢复：注册全局切片 provider；导航位置 + 作用域状态由框架自动捕获。
     session: { providers: [profileProvider] },
-    onSessionReady(handle) {
-        sessionHandle = handle;
-    },
 });

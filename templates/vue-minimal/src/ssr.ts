@@ -30,8 +30,10 @@ export const render = createSSRNavigationRender({
         return { id: "error", pageType: "error", title: `Error ${status}`, description: message };
     },
     async renderApp(page, _framework, snapshot) {
+        // 客户端 mount 时 navigation.getSnapshot() 即此 URL 推导 snapshot（tree 一致）→ chrome 水合无失配,
+        // 且 nav bar 首屏即被 SSR 渲出。name 仍默认 ""（会话恢复在 mount 后，水合后才生效）。
         const chromeHtml = await renderToString(
-            createSSRApp(App, { state: { snapshot: null, name: "" } }),
+            createSSRApp(App, { state: { snapshot, name: "" } }),
         );
         const islandsHtml = await renderIslandsHtml(snapshot, (entry: ResolvedEntry) =>
             renderToString(createSSRApp(VIEWS[entry.intent] ?? HomeView, { page: entry.page })),
