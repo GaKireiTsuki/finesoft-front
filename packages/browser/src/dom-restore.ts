@@ -79,7 +79,7 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
                         : el.value;
             }
             for (const d of root.querySelectorAll<HTMLDetailsElement>("details")) {
-                const key = d.getAttribute("data-restore-key") ?? d.id;
+                const key = d.getAttribute("data-restore-key");
                 if (key) details[key] = d.open;
             }
             for (const s of root.querySelectorAll<HTMLElement>("[data-restore-scroll]")) {
@@ -101,6 +101,7 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
     function apply(container: HTMLElement, dom: DomState): void {
         for (const root of restoreRoots(container)) {
             for (const [key, val] of Object.entries(dom.fields ?? {})) {
+                // 键为应用定义的 name / data-restore-key（受信，非用户输入）；不做选择器转义。
                 const el = root.querySelector<HTMLInputElement>(
                     `[data-restore-key="${key}"], [name="${key}"]`,
                 );
@@ -114,9 +115,9 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
                 el.dispatchEvent(new Event("change", { bubbles: true }));
             }
             for (const [key, open] of Object.entries(dom.details ?? {})) {
-                const d =
-                    root.querySelector<HTMLDetailsElement>(`details[data-restore-key="${key}"]`) ??
-                    root.querySelector<HTMLDetailsElement>(`details#${CSS.escape(key)}`);
+                const d = root.querySelector<HTMLDetailsElement>(
+                    `details[data-restore-key="${key}"]`,
+                );
                 if (d) d.open = open;
             }
             for (const [key, pos] of Object.entries(dom.scroll ?? {})) {

@@ -253,21 +253,18 @@ export function makeFakeDocument(): {
     removeEventListener: ReturnType<typeof vi.fn>;
     visibilityState: string;
 } {
-    const registry = new Map<string, FakeElement>();
     return {
         createElement(tag: string): FakeElement {
             return new FakeElement(tag);
         },
-        getElementById(id: string): FakeElement | null {
-            return registry.get(id) ?? null;
+        // Callers needing getElementById should use `makeFakeDocumentWithRoot`.
+        getElementById(_id: string): FakeElement | null {
+            return null;
         },
         documentElement: { lang: "", dir: "" },
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
         visibilityState: "visible",
-        /** Register an element so getElementById can find it. */
-        // Note: tests that need getElementById to return a specific FakeElement
-        // should use stubDocumentElement below instead.
     } as ReturnType<typeof makeFakeDocument>;
 }
 
