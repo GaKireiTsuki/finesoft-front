@@ -25,6 +25,16 @@ export {
     type NavigationHandle,
 } from "./navigation-bridge";
 
+// ===== Navigation Islands =====
+export {
+    createIslandOrchestrator,
+    type IslandHandle,
+    type IslandOrchestrator,
+    type IslandOrchestratorOptions,
+    type MountEntry,
+    type ResolvedEntry,
+} from "./navigation-islands";
+
 // ===== Session =====
 export {
     createSessionBridge,

@@ -39,6 +39,7 @@ import {
     type LoggerFactory,
 } from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
+import { createIslandOrchestrator, type MountEntry } from "./navigation-islands";
 import { createNavigationBridge, type NavigationHandle } from "./navigation-bridge";
 import { createPrefetchedIntentsFromDom } from "./server-data";
 import { createSessionBridge, type SessionHandle } from "./session-bridge";
@@ -69,6 +70,11 @@ export interface BrowserNavigationConfig {
     readonly afterLoad?: readonly AfterLoadGuard[];
     /** dispatch 失败 / deny 时的兜底错误页工厂。 */
     readonly getErrorPage?: (status: number, message: string) => BasePage;
+    /**
+     * opt-in islands 挂载原语：提供后框架按 per-entry 把视图挂为独立 root 并保活（见 Phase 2）。
+     * 缺省时走原有「单 mount + 应用订阅 snapshot 重渲」路径，不变。
+     */
+    readonly mountEntry?: MountEntry;
 }
 
 /**
@@ -291,6 +297,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
             framework,
             navigation: config.navigation,
             log,
+            target,
             getScrollablePageElement: config.getScrollablePageElement,
         });
         await config.onNavigationReady?.(activatedNavigation.handle);
@@ -323,9 +330,10 @@ async function activateNavigation(args: {
     framework: Framework;
     navigation: BrowserNavigationConfig;
     log: Logger;
+    target: HTMLElement;
     getScrollablePageElement?: () => HTMLElement | null;
 }): Promise<ActivatedNavigation> {
-    const { framework, navigation, log, getScrollablePageElement } = args;
+    const { framework, navigation, log, target, getScrollablePageElement } = args;
     const codec = navigation.codec ?? createActiveLeafCodec();
 
     const controller = createNavigationController({
@@ -366,6 +374,23 @@ async function activateNavigation(args: {
 
     // 首屏解析：提交首个快照（bridge 用 replaceState 写入 history，不污染历史栈）。
     await controller.resolve();
+
+    // opt-in islands：从 outlet 建编排器，首同步 + 订阅后续快照。
+    if (navigation.mountEntry) {
+        const outlet = target.querySelector<HTMLElement>("[data-fs-outlet]");
+        if (!outlet) {
+            throw new Error(
+                "[startBrowserApp] navigation.mountEntry 已提供，但 mount 渲染的 DOM 里找不到 [data-fs-outlet]。" +
+                    "请在 chrome 里放一个稳定、空的 <main data-fs-outlet></main>。",
+            );
+        }
+        const orchestrator = createIslandOrchestrator({
+            outlet,
+            mountEntry: navigation.mountEntry,
+        });
+        orchestrator.sync(controller.getSnapshot());
+        controller.subscribe((snapshot) => orchestrator.sync(snapshot));
+    }
 
     return { handle, controller };
 }

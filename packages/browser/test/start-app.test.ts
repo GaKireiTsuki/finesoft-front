@@ -12,6 +12,7 @@ vi.mock("../src/action-handlers/register", () => ({
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import { startBrowserApp } from "../src/start-app";
+import { FakeCustomEvent, FakeElement, makeFakeDocumentWithRoot } from "./fake-dom";
 
 describe("startBrowserApp", () => {
     const target = {} as HTMLElement;
@@ -445,6 +446,145 @@ describe("startBrowserApp", () => {
                 callbacks: makeCallbacks(),
             }),
         ).rejects.toThrow("[startBrowserApp] Mount target not found: #app.");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Islands integration — navigation.mountEntry opt-in
+// ---------------------------------------------------------------------------
+
+describe("startBrowserApp — islands（navigation.mountEntry）", () => {
+    beforeEach(() => {
+        registerActionHandlers.mockReset();
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+
+        // Islands path needs window.history + window.addEventListener (for NavigationBridge)
+        // and CustomEvent (for island lifecycle events).
+        vi.stubGlobal("CustomEvent", FakeCustomEvent);
+        vi.stubGlobal("window", {
+            location: {
+                pathname: "/",
+                search: "",
+                origin: "https://example.com",
+                href: "https://example.com/",
+            },
+            history: {
+                state: null as { id?: string } | null,
+                replaceState: vi.fn(),
+                pushState: vi.fn(),
+            },
+            addEventListener: vi.fn(),
+        });
+    });
+
+    afterEach(() => {
+        globalThis.__FINESOFT_I18N_LOADER__ = undefined;
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    test("提供 mountEntry：首屏可见目标挂为 outlet 内的 island", async () => {
+        const { leaf, stack, BaseController, sessionEntryKey } =
+            await import("../../core/src/index.ts");
+
+        // Build a FakeElement tree:  #app → <header data-chrome> + <main data-fs-outlet>
+        // We do this in the mount callback (DOM API, no innerHTML parser).
+        const appRoot = new FakeElement("div");
+        appRoot.setAttribute("id", "app");
+
+        // Stub document: createElement returns FakeElement, getElementById("app") → appRoot.
+        vi.stubGlobal("document", {
+            ...makeFakeDocumentWithRoot("app", appRoot),
+        });
+
+        class HomeController extends BaseController<
+            Record<string, never>,
+            { id: string; title?: string }
+        > {
+            readonly intentId = "home";
+            execute(): { id: string; title?: string } {
+                return { id: "home", pageType: "home", title: "Home" } as never;
+            }
+        }
+
+        const mountCalls: string[] = [];
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+                framework.registerIntent(new HomeController());
+            },
+            mount(target) {
+                // Build chrome + outlet via DOM API (FakeElement has no innerHTML parser).
+                const chrome = document.createElement("header") as unknown as FakeElement;
+                chrome.setAttribute("data-chrome", "");
+                const outlet = document.createElement("main") as unknown as FakeElement;
+                outlet.setAttribute("data-fs-outlet", "");
+                (target as unknown as FakeElement).appendChild(chrome);
+                (target as unknown as FakeElement).appendChild(outlet);
+                return () => undefined;
+            },
+            callbacks: makeCallbacks(),
+            navigation: {
+                initial: stack([leaf("home")]),
+                mountEntry(entry, container) {
+                    mountCalls.push(entry.entryKey);
+                    container.textContent =
+                        (entry.page as unknown as { title?: string }).title ?? "";
+                    return { unmount() {} };
+                },
+            },
+        });
+
+        // The outlet is the <main data-fs-outlet> child of appRoot.
+        const outlet = appRoot.querySelector("[data-fs-outlet]");
+        expect(outlet).not.toBeNull();
+        expect(mountCalls).toEqual([sessionEntryKey("home", {})]);
+        // Island container should be in the outlet.
+        const island = outlet?.querySelector("[data-fs-entry]");
+        expect(island).not.toBeNull();
+        expect(island?.textContent).toBe("Home");
+    });
+
+    test("不提供 mountEntry：走原有路径，outlet 内无 island", async () => {
+        const { leaf, stack, BaseController } = await import("../../core/src/index.ts");
+
+        const appRoot = new FakeElement("div");
+
+        vi.stubGlobal("document", {
+            ...makeFakeDocumentWithRoot("app", appRoot),
+        });
+
+        class HomeController extends BaseController<Record<string, never>, { id: string }> {
+            readonly intentId = "home";
+            execute(): { id: string } {
+                return { id: "home" };
+            }
+        }
+
+        const updateCalls: number[] = [];
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+                framework.registerIntent(new HomeController());
+            },
+            mount() {
+                // No outlet built — mountEntry absent so orchestrator never runs.
+                return () => {
+                    updateCalls.push(1);
+                };
+            },
+            callbacks: makeCallbacks(),
+            navigation: {
+                initial: stack([leaf("home")]),
+                // No mountEntry → islands path inactive.
+            },
+        });
+
+        // appRoot has no [data-fs-outlet] child → orchestrator code path was not reached.
+        expect(appRoot.querySelector("[data-fs-outlet]")).toBeNull();
+        expect(appRoot.querySelector("[data-fs-entry]")).toBeNull();
     });
 });
 
