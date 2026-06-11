@@ -6,7 +6,7 @@ import {
     type SessionHandle,
     type SessionStateProvider,
 } from "@finesoft/front";
-import { createApp, markRaw, reactive, type Component } from "vue";
+import { createApp, createSSRApp, markRaw, reactive, type Component } from "vue";
 import App from "./App.vue";
 import HomeView from "./views/HomeView.vue";
 import DetailView from "./views/DetailView.vue";
@@ -52,7 +52,9 @@ const VIEWS: Record<string, Component> = { home: HomeView, detail: DetailView, n
 
 const mountEntry: MountEntry = (entry, container) => {
     const view = VIEWS[entry.intent] ?? HomeView;
-    const app = createApp(view, { page: entry.page, controller });
+    // 首屏 island 已由 SSR 渲入容器（编排器收养并置 hydrate:true）→ 水合；否则新建。
+    const factory = entry.hydrate ? createSSRApp : createApp;
+    const app = factory(view, { page: entry.page, controller });
     app.mount(container);
     return { unmount: () => app.unmount() };
 };
@@ -60,8 +62,19 @@ const mountEntry: MountEntry = (entry, container) => {
 void startBrowserApp({
     bootstrap,
     mount(target: HTMLElement) {
-        createApp(App, { state, controller }).mount(target);
-        // chrome 由 snapshot 订阅驱动更新；islands 内容由 outlet 驱动，不需要 updateApp。
+        // 方案 C：chrome 挂到 sibling chrome-root（不含 outlet）；outlet 由框架编排器独占。
+        let chromeRoot = target.querySelector<HTMLElement>("[data-fs-chrome]");
+        if (!chromeRoot) {
+            // 纯 CSR（无 SSR shell）兜底：建 chrome-root + 空 outlet 兄弟。
+            chromeRoot = document.createElement("div");
+            chromeRoot.setAttribute("data-fs-chrome", "");
+            const outlet = document.createElement("main");
+            outlet.setAttribute("data-fs-outlet", "");
+            target.append(chromeRoot, outlet);
+        }
+        // 有 SSR 内容 → 水合；否则客户端新建。
+        const factory = chromeRoot.firstChild ? createSSRApp : createApp;
+        factory(App, { state, controller }).mount(chromeRoot);
         return () => undefined;
     },
     callbacks: {

@@ -1,37 +1,43 @@
-import { createSSRNavigationRender, serializeServerData } from "@finesoft/front";
-import { createSSRApp } from "vue";
+import {
+    createSSRNavigationRender,
+    renderIslandsHtml,
+    serializeServerData,
+    type ResolvedEntry,
+} from "@finesoft/front";
+import { createSSRApp, type Component } from "vue";
 import { renderToString } from "vue/server-renderer";
 import App from "./App.vue";
+import HomeView from "./views/HomeView.vue";
+import DetailView from "./views/DetailView.vue";
+import NotesView from "./views/NotesView.vue";
 import { bootstrap, navigation } from "./bootstrap";
 
+const VIEWS: Record<string, Component> = { home: HomeView, detail: DetailView, notes: NotesView };
+
 /**
- * 結構化導航的 SSR：從 URL 解析初始樹 → 預取所有可見目標 → 注入 HTML。
- * 序列化的導航樹 + 各目標 prefetch 結果經既有 `PrefetchedIntents` 通道注入 HTML，
- * 瀏覽器 hydrate 後由 main.ts 接管交互式導航。
+ * islands 架构 SSR（方案 C）：
+ * - chrome（App.vue，header + tabbar）渲进 `<div data-fs-chrome>`。
+ * - 可见 island 内容由 `renderIslandsHtml` 渲进 sibling `<main data-fs-outlet>`，客户端按 key 收养水合。
  *
- * Islands 架構說明：
- * - SSR 只渲 chrome（header + tab bar + 空的 `<main data-fs-outlet>`）。
- * - 頁面 **內容** 為 client-side islands（首屏 island 複用 SSR prefetch 結果，
- *   直接讀取 PrefetchedIntents，不重複發請求）。
- * - 服務端渲染 island 內容（含水合）列為後續跟進，本阶段不实现。
+ * chrome 水合 props parity：SSR 必须用与客户端 hydrate 时**相同**的初始 state 渲 App，否则
+ * App.vue 的 `v-if="state"`（name label 等）server/client 不一致 → hydration mismatch。
+ * 客户端 hydrate 时 state = { snapshot: null, name: "" }（onNavigationReady / session 恢复都在
+ * 水合**之后**才填）。controller 仅用于事件处理器（`controller?.`），不影响渲染 DOM，SSR 可省。
  */
 export const render = createSSRNavigationRender({
     bootstrap,
     getErrorPage(status, message) {
-        return {
-            id: "error",
-            pageType: "error",
-            title: `Error ${status}`,
-            description: message,
-        };
+        return { id: "error", pageType: "error", title: `Error ${status}`, description: message };
     },
-    async renderApp(page, _framework, _snapshot) {
-        // App.vue 渲 chrome shell（header + outlet）；island 内容在客户端挂载。
-        // page.title 用于 <title> 注入；App 本身不消费 page prop（chrome 无页面内容）。
-        const app = createSSRApp(App);
-        const html = await renderToString(app);
+    async renderApp(page, _framework, snapshot) {
+        const chromeHtml = await renderToString(
+            createSSRApp(App, { state: { snapshot: null, name: "" } }),
+        );
+        const islandsHtml = await renderIslandsHtml(snapshot, (entry: ResolvedEntry) =>
+            renderToString(createSSRApp(VIEWS[entry.intent] ?? HomeView, { page: entry.page })),
+        );
         return {
-            html,
+            html: `<div data-fs-chrome>${chromeHtml}</div><main data-fs-outlet>${islandsHtml}</main>`,
             head: `<title>${page.title}</title>`,
             css: "",
         };

@@ -58,8 +58,5 @@ const name = computed({
         <button v-if="canGoBack" style="margin-bottom: 0.5rem" @click="controller?.pop()">
             ← Back
         </button>
-
-        <!-- islands 内容由框架挂进此 outlet（稳定、空、不加 v-if） -->
-        <main data-fs-outlet></main>
     </div>
 </template>
