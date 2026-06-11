@@ -39,6 +39,7 @@ import {
     type LoggerFactory,
 } from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
+import { createDomRestore } from "./dom-restore";
 import { createIslandOrchestrator, type MountEntry } from "./navigation-islands";
 import { createNavigationBridge, type NavigationHandle } from "./navigation-bridge";
 import { createPrefetchedIntentsFromDom } from "./server-data";
@@ -192,6 +193,13 @@ export interface BrowserAppConfig {
      * 落盘，或在卸载时 `dispose()`。
      */
     onSessionReady?: (handle: SessionHandle) => void | Promise<void>;
+
+    /**
+     * opt-in 重载 DOM 自动恢复（spec §4.5）。仅当同时提供 `navigation.mountEntry`（islands）+
+     * `session` 时生效：标 `data-restore-root` 的容器内表单/滚动/<details> 自动捕获进会话作用域、
+     * 重载后回填。缺省关闭。
+     */
+    domRestore?: boolean;
 }
 
 /**
@@ -304,15 +312,22 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     }
 
     // 6.7 会话恢复（可选）—— 仅当应用提供 session 定义时激活，缺省整段不生效。
+    let sessionHandle: SessionHandle | undefined;
     if (config.session) {
-        const handle = await activateSession({
+        sessionHandle = await activateSession({
             framework,
             session: config.session,
             navigation: activatedNavigation,
             flatNavigation,
             initialUrl,
         });
-        await config.onSessionReady?.(handle);
+        await config.onSessionReady?.(sessionHandle);
+    }
+
+    // 6.8 重载 DOM 自动恢复（opt-in）—— 需 islands outlet + session scope。
+    // attach 在会话已恢复 scope（6.7）之后运行，内部 catch-up 回填 boot DOM。
+    if (config.domRestore && activatedNavigation?.outlet && sessionHandle) {
+        createDomRestore({ scope: sessionHandle.scope }).attach(activatedNavigation.outlet);
     }
 
     // 7. 启动后钩子
@@ -323,6 +338,8 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
 interface ActivatedNavigation {
     readonly handle: NavigationHandle;
     readonly controller: NavigationController;
+    /** islands の outlet（仅 mountEntry 提供时存在，供 domRestore 接线）。 */
+    readonly outlet?: HTMLElement;
 }
 
 /** 装配 NavigationController + NavigationBridge，解析首屏树，返回导航 handle + controller。 */
@@ -376,23 +393,26 @@ async function activateNavigation(args: {
     await controller.resolve();
 
     // opt-in islands：从 outlet 建编排器，首同步 + 订阅后续快照。
+    let outlet: HTMLElement | undefined;
     if (navigation.mountEntry) {
-        const outlet = target.querySelector<HTMLElement>("[data-fs-outlet]");
-        if (!outlet) {
+        const found = target.querySelector<HTMLElement>("[data-fs-outlet]");
+        if (!found) {
             throw new Error(
                 "[startBrowserApp] navigation.mountEntry 已提供，但 mount 渲染的 DOM 里找不到 [data-fs-outlet]。" +
                     "请在 chrome 里放一个稳定、空的 <main data-fs-outlet></main>。",
             );
         }
+        outlet = found;
         const orchestrator = createIslandOrchestrator({
             outlet,
             mountEntry: navigation.mountEntry,
         });
         orchestrator.sync(controller.getSnapshot());
+        // 订阅与 orchestrator 的生命周期绑定到页面（同 NavigationBridge，无需 teardown）。
         controller.subscribe((snapshot) => orchestrator.sync(snapshot));
     }
 
-    return { handle, controller };
+    return { handle, controller, outlet };
 }
 
 /** 扁平导航变更发射器：tee `FlowActionCallbacks.onNavigate` 给会话监听器。 */

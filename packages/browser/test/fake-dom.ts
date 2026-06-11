@@ -137,13 +137,19 @@ export class FakeElement {
         return results;
     }
 
-    addEventListener(type: string, handler: (e: FakeEvent) => void): void {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    addEventListener(type: string, handler: (e: FakeEvent) => void, _useCapture?: boolean): void {
         const list = this._handlers.get(type) ?? [];
         list.push(handler);
         this._handlers.set(type, list);
     }
 
-    removeEventListener(type: string, handler: (e: FakeEvent) => void): void {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    removeEventListener(
+        type: string,
+        handler: (e: FakeEvent) => void,
+        _useCapture?: boolean,
+    ): void {
         const list = this._handlers.get(type);
         if (!list) return;
         this._handlers.set(
@@ -296,8 +302,8 @@ export type FakeDocument = {
     getElementById(id: string): FakeElement | null;
     documentElement: { lang: string; dir: string };
     visibilityState: string;
-    addEventListener(type: string, handler: (e: FakeEvent) => void): void;
-    removeEventListener(type: string, handler: (e: FakeEvent) => void): void;
+    addEventListener(type: string, handler: (e: FakeEvent) => void, useCapture?: boolean): void;
+    removeEventListener(type: string, handler: (e: FakeEvent) => void, useCapture?: boolean): void;
     dispatchEvent(event: FakeEvent): void;
 };
 

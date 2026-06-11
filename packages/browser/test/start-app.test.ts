@@ -12,7 +12,7 @@ vi.mock("../src/action-handlers/register", () => ({
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import { startBrowserApp } from "../src/start-app";
-import { FakeCustomEvent, FakeElement, makeFakeDocumentWithRoot } from "./fake-dom";
+import { FakeCustomEvent, FakeElement, FakeEvent, makeFakeDocumentWithRoot } from "./fake-dom";
 
 describe("startBrowserApp", () => {
     const target = {} as HTMLElement;
@@ -588,6 +588,173 @@ describe("startBrowserApp — islands（navigation.mountEntry）", () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// domRestore integration — opt-in (islands + session)
+// ---------------------------------------------------------------------------
+
+describe("startBrowserApp — domRestore（islands + session）", () => {
+    beforeEach(() => {
+        registerActionHandlers.mockReset();
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        vi.stubGlobal("CustomEvent", FakeCustomEvent);
+        vi.stubGlobal("Event", FakeEvent);
+        // No requestAnimationFrame → sync fallback in createDomRestore engages.
+        vi.stubGlobal("requestAnimationFrame", undefined);
+        vi.stubGlobal("window", {
+            location: {
+                pathname: "/",
+                search: "",
+                origin: "https://example.com",
+                href: "https://example.com/",
+            },
+            history: { state: null, replaceState: vi.fn(), pushState: vi.fn() },
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        });
+    });
+
+    afterEach(() => {
+        globalThis.__FINESOFT_I18N_LOADER__ = undefined;
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    test("opt-in domRestore：boot 时从会话 scope 回填 island 表单值", async () => {
+        const { leaf, stack, BaseController, sessionEntryKey, SESSION_DEFAULT_VERSION } =
+            await import("../../core/src/index.ts");
+
+        // Build seeded core Storage with a SessionSnapshot containing __dom state.
+        const entryKey = sessionEntryKey("home", {});
+        const snapshot = {
+            version: SESSION_DEFAULT_VERSION,
+            // Structured navigation with kind:"leaf" → defaultShouldRestore passes at root "/".
+            navigation: { kind: "leaf", intent: "home", params: {} },
+            slices: {},
+            scoped: { [entryKey]: { __dom: { fields: { note: "restored" } } } },
+            capturedAt: Date.now(),
+        };
+        const storage = makeCoreStorage();
+        storage.set("__finesoft_session__", JSON.stringify(snapshot));
+
+        // Build FakeElement tree: #app → chrome + <main data-fs-outlet>.
+        const appRoot = new FakeElement("div");
+        appRoot.setAttribute("id", "app");
+
+        vi.stubGlobal("document", {
+            ...makeFakeDocumentWithRoot("app", appRoot),
+            visibilityState: "visible",
+        });
+
+        class HomeController extends BaseController<Record<string, never>, { id: string }> {
+            readonly intentId = "home";
+            execute(): { id: string } {
+                return { id: "home", pageType: "home", title: "Home" } as never;
+            }
+        }
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+                framework.registerIntent(new HomeController());
+            },
+            mount(target) {
+                const chrome = document.createElement("header") as unknown as FakeElement;
+                chrome.setAttribute("data-chrome", "");
+                const outlet = document.createElement("main") as unknown as FakeElement;
+                outlet.setAttribute("data-fs-outlet", "");
+                (target as unknown as FakeElement).appendChild(chrome);
+                (target as unknown as FakeElement).appendChild(outlet);
+                return () => undefined;
+            },
+            callbacks: makeCallbacks(),
+            navigation: {
+                initial: stack([leaf("home")]),
+                mountEntry(entry, container) {
+                    // Build <div data-restore-root><input name="note"></div> via DOM API.
+                    const root = document.createElement("div") as unknown as FakeElement;
+                    root.setAttribute("data-restore-root", "");
+                    const input = document.createElement("input") as unknown as FakeElement;
+                    input.setAttribute("name", "note");
+                    root.appendChild(input);
+                    (container as unknown as FakeElement).appendChild(root);
+                    return { unmount() {} };
+                },
+            },
+            session: { storage },
+            domRestore: true,
+        });
+
+        // schedule defaults to sync (rAF undefined) → catch-up restores synchronously inside attach.
+        const outlet = appRoot.querySelector("[data-fs-outlet]");
+        const input = outlet?.querySelector('[name="note"]') as FakeElement | null;
+        expect(input?.value).toBe("restored");
+    });
+
+    test("domRestore:false（缺省）：不恢复，既有路径不受影响", async () => {
+        const { leaf, stack, BaseController, sessionEntryKey, SESSION_DEFAULT_VERSION } =
+            await import("../../core/src/index.ts");
+
+        const entryKey = sessionEntryKey("home", {});
+        const snapshot = {
+            version: SESSION_DEFAULT_VERSION,
+            navigation: { kind: "leaf", intent: "home", params: {} },
+            slices: {},
+            scoped: { [entryKey]: { __dom: { fields: { note: "should-not-restore" } } } },
+            capturedAt: Date.now(),
+        };
+        const storage = makeCoreStorage();
+        storage.set("__finesoft_session__", JSON.stringify(snapshot));
+
+        const appRoot = new FakeElement("div");
+        appRoot.setAttribute("id", "app");
+
+        vi.stubGlobal("document", {
+            ...makeFakeDocumentWithRoot("app", appRoot),
+            visibilityState: "visible",
+        });
+
+        class HomeController extends BaseController<Record<string, never>, { id: string }> {
+            readonly intentId = "home";
+            execute(): { id: string } {
+                return { id: "home" } as never;
+            }
+        }
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+                framework.registerIntent(new HomeController());
+            },
+            mount(target) {
+                const outlet = document.createElement("main") as unknown as FakeElement;
+                outlet.setAttribute("data-fs-outlet", "");
+                (target as unknown as FakeElement).appendChild(outlet);
+                return () => undefined;
+            },
+            callbacks: makeCallbacks(),
+            navigation: {
+                initial: stack([leaf("home")]),
+                mountEntry(_entry, container) {
+                    const root = document.createElement("div") as unknown as FakeElement;
+                    root.setAttribute("data-restore-root", "");
+                    const input = document.createElement("input") as unknown as FakeElement;
+                    input.setAttribute("name", "note");
+                    root.appendChild(input);
+                    (container as unknown as FakeElement).appendChild(root);
+                    return { unmount() {} };
+                },
+            },
+            session: { storage },
+            // domRestore omitted → defaults to false, no restore.
+        });
+
+        const outlet = appRoot.querySelector("[data-fs-outlet]");
+        const input = outlet?.querySelector('[name="note"]') as FakeElement | null;
+        // Value stays at initial empty string — domRestore did not run.
+        expect(input?.value).toBe("");
+    });
+});
+
 function makeCallbacks() {
     return {
         onNavigate: vi.fn(),
@@ -614,4 +781,18 @@ function fakeWebStorage(): Storage {
             return m.size;
         },
     } as Storage;
+}
+
+/**
+ * core `Storage` 替身（get/set/delete 接口），可在测试中预置序列化快照。
+ * 区别于上面的 `fakeWebStorage`（浏览器 Web Storage 接口）：本函数实现 core 的
+ * `Storage` 接口（`get`/`set`/`delete`），直接传给 `BrowserSessionConfig.storage`。
+ */
+function makeCoreStorage(): import("@finesoft/core").Storage {
+    const m = new Map<string, string>();
+    return {
+        get: (k: string) => m.get(k),
+        set: (k: string, v: string) => void m.set(k, v),
+        delete: (k: string) => void m.delete(k),
+    };
 }

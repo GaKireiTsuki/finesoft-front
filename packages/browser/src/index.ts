@@ -45,6 +45,9 @@ export {
 } from "./session-bridge";
 export { createWebStorage, type WebStorageKind } from "./web-storage";
 
+// ===== DOM Restore =====
+export { createDomRestore, type DomRestore, type DomRestoreOptions } from "./dom-restore";
+
 // ===== Browser Utils =====
 export { History } from "./utils/history";
 export { tryScroll } from "./utils/try-scroll";
