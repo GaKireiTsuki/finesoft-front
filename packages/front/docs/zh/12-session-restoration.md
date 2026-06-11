@@ -60,7 +60,7 @@ const bag = store.scope.get(key); // -> { scroll: 240, draft: "..." } | undefine
 - **切 TabView 的 tab** → 其它分支仍在树中 → 其状态保活（与 SwiftUI 让未激活 tab 保持挂载一致）。
 - **跨重载** → `scoped` 随快照序列化；重载后每个仍在树的条目恢复各自作用域，之后 pop 照常丢弃。
 
-`store.scope` 是 store 持有的 `NavigationScopedState` 实例 —— `get` / `set` / `delete` / `keys`，外加框架替你调用的 `prune(presentKeys)`。用高层 `startBrowserApp({ session })` 时无需直接持有 store：`onSessionReady` 交给你的 `SessionHandle` 上的 `handle.scope` 就是同一个实例（restore 重建后仍指向最新），照样 `handle.scope.get(entryKey)` / `set(entryKey, data)`。
+`store.scope` 是 store 持有的 `NavigationScopedState` 实例 —— `get` / `set` / `delete` / `keys`，外加框架替你调用的 `prune(presentKeys)`。用高层 `startBrowserApp({ session })` 时无需直接持有 store：`mount` 回调（context）交给你的 `SessionHandle` 上的 `handle.scope` 就是同一个实例（restore 重建后仍指向最新），照样 `handle.scope.get(entryKey)` / `set(entryKey, data)`。
 
 ### 扁平 vs 结构化：保留语义**本质就是栈**
 
@@ -124,24 +124,23 @@ createWebStorage("local"); // localStorage —— 跨标签、跨重启持久
 
 ```ts
 // src/main.ts
-import { startBrowserApp, type SessionHandle } from "@finesoft/front";
+import { startBrowserApp } from "@finesoft/front";
 import { bootstrap } from "./bootstrap";
-import { mount } from "./lib/mount";
 import { themeSlice, draftSlice } from "./lib/session";
-
-let session: SessionHandle;
 
 startBrowserApp({
     bootstrap,
-    mount,
     callbacks,
     session: {
         providers: [themeSlice, draftSlice],
         // storage 缺省为 createWebStorage("session")
         maxAgeMs: 1000 * 60 * 60 * 24, // 丢弃超过一天的快照（可选）
     },
-    onSessionReady(handle) {
-        session = handle;
+    mount(target, { session, app }) {
+        // session: SessionHandle（save/clear/scope/…）；app：统一的 nav+session 句柄。
+        // 自动捕获/恢复已在跑；用 session.save() / session.clear() 作逃生口。
+        // ... 把 UI 挂载到 target，将 app（或 session）传给组件 ...
+        return () => undefined;
     },
 });
 ```
@@ -159,7 +158,7 @@ startBrowserApp({
 
 ## 句柄：手动 save / clear / dispose
 
-`onSessionReady` 给你一个 `SessionHandle` 作逃生口 —— 自动捕获已在跑，但你可强制落盘、清快照、或整体拆除：
+`SessionHandle`（通过 mount context 交付）给你逃生口 —— 自动捕获已在跑，但你可强制落盘、清快照、或整体拆除。统一的 `app` 句柄把导航命令与 session 的 `save`/`clear`/`scope` 合并，组件拿一个对象即可，免自己拼 controller：
 
 ```ts
 interface SessionHandle {

@@ -97,31 +97,29 @@ export const navigation = defineNavigation({
 
 ### Wiring it into the browser
 
-`startBrowserApp` gains an optional `navigation` field and an `onNavigationReady` callback that hands you a `NavigationHandle`:
+`startBrowserApp` gains an optional `navigation` field; when present, the `NavigationHandle` (and a unified `app` handle) is handed to your `mount` callback in its context, ready to use:
 
 ```ts
 // src/main.ts
-import { startBrowserApp, type NavigationHandle } from "@finesoft/front";
+import { startBrowserApp } from "@finesoft/front";
 import { bootstrap, navigation } from "./bootstrap";
-import { mount } from "./lib/mount";
-
-let handle: NavigationHandle;
 
 startBrowserApp({
     bootstrap,
-    mount,
     callbacks,
     navigation: navigation.toBrowserConfig(),
-    onNavigationReady(h) {
-        handle = h;
-        // Re-render whenever the snapshot changes
-        h.subscribe((snapshot) => mountNavigation(snapshot));
-        mountNavigation(h.getSnapshot());
+    mount(target, { navigation: nav, app }) {
+        // nav/app are ready at mount time (no callback needed).
+        // Re-render whenever the snapshot changes:
+        nav?.subscribe((snapshot) => mountNavigation(snapshot));
+        if (nav) mountNavigation(nav.getSnapshot());
+        // ... mount your UI into `target`, pass `app` to components ...
+        return () => undefined;
     },
 });
 ```
 
-When `navigation` is present, the framework builds a `NavigationController` and a history bridge, resolves the first screen, and gives you the handle. When it's absent, `startBrowserApp` runs the original flat single-page path unchanged.
+When `navigation` is present, the framework builds a `NavigationController` and a history bridge, resolves the first screen, and gives you the handle in the mount context. When it's absent, `startBrowserApp` runs the original flat single-page path unchanged.
 
 ## Driving navigation
 

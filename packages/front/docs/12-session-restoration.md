@@ -60,7 +60,7 @@ Walking through the lifecycle:
 - **switch a TabView tab** → the other branches are still in the tree → their state is kept alive (exactly like SwiftUI keeping inactive tabs mounted).
 - **across a reload** → `scoped` is serialized into the snapshot; after reload, every entry still in the tree gets its scope back, and a later pop discards it as usual.
 
-`store.scope` is the `NavigationScopedState` instance held by the store — `get` / `set` / `delete` / `keys`, plus the `prune(presentKeys)` the framework calls for you. With the high-level `startBrowserApp({ session })` path you don't hold the store directly: the `SessionHandle` handed to `onSessionReady` exposes the same instance as `handle.scope` (still live after a restore rebuilds it), so you `handle.scope.get(entryKey)` / `set(entryKey, data)` the same way.
+`store.scope` is the `NavigationScopedState` instance held by the store — `get` / `set` / `delete` / `keys`, plus the `prune(presentKeys)` the framework calls for you. With the high-level `startBrowserApp({ session })` path you don't hold the store directly: the `SessionHandle` handed to your `mount` callback (context) exposes the same instance as `handle.scope` (still live after a restore rebuilds it), so you `handle.scope.get(entryKey)` / `set(entryKey, data)` the same way.
 
 ### Flat vs structured: retention _is_ a stack
 
@@ -124,24 +124,23 @@ Pass an optional `session` to `startBrowserApp`. When present, the framework bui
 
 ```ts
 // src/main.ts
-import { startBrowserApp, type SessionHandle } from "@finesoft/front";
+import { startBrowserApp } from "@finesoft/front";
 import { bootstrap } from "./bootstrap";
-import { mount } from "./lib/mount";
 import { themeSlice, draftSlice } from "./lib/session";
-
-let session: SessionHandle;
 
 startBrowserApp({
     bootstrap,
-    mount,
     callbacks,
     session: {
         providers: [themeSlice, draftSlice],
         // storage defaults to createWebStorage("session")
         maxAgeMs: 1000 * 60 * 60 * 24, // discard snapshots older than a day (optional)
     },
-    onSessionReady(handle) {
-        session = handle;
+    mount(target, { session, app }) {
+        // session: SessionHandle (save/clear/scope/...); app: unified nav+session handle.
+        // Auto-capture/restore already run; use session.save() / session.clear() as escape hatches.
+        // ... mount your UI; pass `app` (or `session`) to components ...
+        return () => undefined;
     },
 });
 ```
@@ -159,7 +158,7 @@ You only choose the adapter directly if you are assembling the store yourself (e
 
 ## The handle: manual save / clear / dispose
 
-`onSessionReady` gives you a `SessionHandle` for the escape hatches — auto-capture already runs, but you can force a write, clear the snapshot, or tear everything down:
+The `SessionHandle` (delivered in the mount context) gives you the escape hatches — auto-capture already runs, but you can force a write, clear the snapshot, or tear everything down. The unified `app` handle merges navigation commands with session `save`/`clear`/`scope`, so components can hold a single object instead of assembling their own controller:
 
 ```ts
 interface SessionHandle {

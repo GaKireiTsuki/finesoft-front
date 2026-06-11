@@ -97,31 +97,29 @@ export const navigation = defineNavigation({
 
 ### 接入浏览器
 
-`startBrowserApp` 新增一个可选 `navigation` 字段和一个 `onNavigationReady` 回调，把 `NavigationHandle` 交给你：
+`startBrowserApp` 新增一个可选 `navigation` 字段；存在时，`NavigationHandle`（以及统一的 `app` 句柄）会在 `mount` 回调的 context 里交给你，挂载时即可直接使用：
 
 ```ts
 // src/main.ts
-import { startBrowserApp, type NavigationHandle } from "@finesoft/front";
+import { startBrowserApp } from "@finesoft/front";
 import { bootstrap, navigation } from "./bootstrap";
-import { mount } from "./lib/mount";
-
-let handle: NavigationHandle;
 
 startBrowserApp({
     bootstrap,
-    mount,
     callbacks,
     navigation: navigation.toBrowserConfig(),
-    onNavigationReady(h) {
-        handle = h;
-        // 快照变更时重渲染
-        h.subscribe((snapshot) => mountNavigation(snapshot));
-        mountNavigation(h.getSnapshot());
+    mount(target, { navigation: nav, app }) {
+        // nav/app 在 mount 时已就绪，无需等待回调。
+        // 快照变更时重渲染：
+        nav?.subscribe((snapshot) => mountNavigation(snapshot));
+        if (nav) mountNavigation(nav.getSnapshot());
+        // ... 把 UI 挂载到 target，将 app 传给组件 ...
+        return () => undefined;
     },
 });
 ```
 
-提供 `navigation` 时，框架会构建 `NavigationController` 和 history 桥、解析首屏、把 handle 交给你。缺省时 `startBrowserApp` 走原有扁平单页路径，行为不变。
+提供 `navigation` 时，框架会构建 `NavigationController` 和 history 桥、解析首屏，并在 mount context 中把 handle 交给你。缺省时 `startBrowserApp` 走原有扁平单页路径，行为不变。
 
 ## 驱动导航
 
