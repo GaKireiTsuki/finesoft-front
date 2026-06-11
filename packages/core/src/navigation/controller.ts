@@ -39,6 +39,7 @@ import type { Router } from "../router/router";
 import type { RouteParams } from "../router/types";
 import { leaf } from "./nodes";
 import {
+    collectAllLeaves,
     collectVisibleDestinations,
     findNode,
     pop,
@@ -313,8 +314,13 @@ export function createNavigationController(
 
     let tree: NavigationNode = options.initial;
     let snapshot: NavigationSnapshot = { tree, destinations: [] };
-    let resolvedOnce = false;
     const listeners = new Set<(snapshot: NavigationSnapshot) => void>();
+
+    // 按条目身份键缓存已成功解析的目标（ResolvedDestination）。
+    // 复用源 = 此缓存（超集：含上一快照 + 所有仍在树中的已解析条目）。
+    // 每轮提交后写穿（仅 status===undefined 的成功页）并按 collectAllLeaves prune：
+    // 条目离树（pop 掉、tab 分支销毁）→ 其缓存清除（与作用域状态同一生命周期）。
+    const pageCache = new Map<string, ResolvedDestination>();
 
     // 串行化所有异步操作的尾指针：每个 apply/resolve 链到上一个之后再 computeNextTree，
     // 保证「读最新已提交 tree → 解析 → 提交」三步对同一操作原子化，杜绝并发 last-write-wins。
@@ -340,22 +346,15 @@ export function createNavigationController(
     // ---------------------------------------------------------------
 
     /**
-     * 解析 `nextTree` 的全部可见目标，返回新快照（不改 `tree`/`snapshot`，纯计算）。
+     * 解析 `nextTree` 的全部可见目标，返回新快照（纯计算 + 读写 pageCache，不改 `tree`/`snapshot`）。
      *
-     * - 复用未变目标：与 `prevSnapshot` 按 (intent + stable params) 同键的 page 直接复用。
-     * - 复用预取缓存：未变目标命中失败时，新目标也尝试 `prefetched`（经 dispatch 内部消费）。
-     * - 主目标（next 的激活 leaf）跑 before/after 守卫，并处理 rewrite/redirect/deny。
+     * - 复用：可见目标命中 `pageCache` 时，主目标把缓存页喂给 `resolvePrimary`（守卫照常跑、
+     *   跳过 dispatch），次目标直接复用缓存结果。
+     * - 写穿：本轮解析出的**成功**目标（`status===undefined`）写入缓存；失败/deny/redirect
+     *   目标不缓存（并清除其旧缓存），保证下次 reveal 重试 + 不复用错误页。
+     * - prune：按 `collectAllLeaves(nextTree)`（全部存在条目）裁剪，离树条目缓存清除。
      */
-    async function resolveTree(
-        nextTree: NavigationNode,
-        prevSnapshot: NavigationSnapshot,
-    ): Promise<NavigationSnapshot> {
-        // 上一快照的目标按键索引，供复用。
-        const prevByKey = new Map<string, ResolvedDestination>();
-        for (const d of prevSnapshot.destinations) {
-            prevByKey.set(destinationKey(d.intent, d.params), d);
-        }
-
+    async function resolveTree(nextTree: NavigationNode): Promise<NavigationSnapshot> {
         const visible = collectVisibleDestinations(nextTree);
 
         // 主目标 = 激活路径末端的 leaf（与现有 runner 的「单页」对齐）。
@@ -369,18 +368,34 @@ export function createNavigationController(
         for (const dest of visible) {
             const key = destinationKey(dest.intent, dest.params);
             const isPrimary = primaryKey !== undefined && key === primaryKey;
-            const reused = prevByKey.get(key);
+            const cached = pageCache.get(key);
 
             if (isPrimary) {
-                // 主目标始终跑守卫（与现有 runner：每次导航都跑守卫一致）；未变时复用 page。
-                destinations.push(await resolvePrimary(dest, reused?.page));
-            } else if (reused !== undefined) {
-                // 非主、未变目标：直接复用上一快照的 page（不 dispatch、不跑守卫）。
-                destinations.push(reused);
+                // 主目标始终跑守卫；命中缓存时把缓存页喂入 → 跳过 dispatch（不重 fetch）。
+                destinations.push(await resolvePrimary(dest, cached?.page));
+            } else if (cached !== undefined) {
+                // 非主、已缓存：直接复用（不 dispatch、不跑守卫）。
+                destinations.push(cached);
             } else {
-                // 非主、新目标：仅 dispatch（含 prefetched 复用），无守卫。
+                // 非主、未缓存：仅 dispatch（含 prefetched 复用），无守卫。
                 destinations.push(await resolveSecondary(dest));
             }
+        }
+
+        // 写穿 + prune。
+        for (const d of destinations) {
+            const k = destinationKey(d.intent, d.params);
+            if (d.status === undefined) {
+                pageCache.set(k, d);
+            } else {
+                pageCache.delete(k); // 失败/deny/redirect 不缓存，清旧缓存避免复用错误页。
+            }
+        }
+        const presentKeys = new Set(
+            collectAllLeaves(nextTree).map((l) => destinationKey(l.intent, l.params)),
+        );
+        for (const k of pageCache.keys()) {
+            if (!presentKeys.has(k)) pageCache.delete(k);
         }
 
         return { tree: nextTree, destinations };
@@ -536,7 +551,6 @@ export function createNavigationController(
     function commit(next: NavigationSnapshot): NavigationSnapshot {
         tree = next.tree;
         snapshot = next;
-        resolvedOnce = true;
         for (const listener of listeners) {
             listener(snapshot);
         }
@@ -580,10 +594,9 @@ export function createNavigationController(
     // ---------------------------------------------------------------
 
     function apply(op: NavigationOperation): Promise<NavigationSnapshot> {
-        // 串行化：computeNextTree 在前一操作提交后才读 `tree`/`snapshot`，杜绝并发竞态。
         return enqueue(async () => {
             const nextTree = computeNextTree(op);
-            const next = await resolveTree(nextTree, snapshot);
+            const next = await resolveTree(nextTree);
             return commit(next);
         });
     }
@@ -638,13 +651,10 @@ export function createNavigationController(
             };
         },
         resolve() {
-            // resolve() 对当前树做首屏解析；首次以空快照为基线（无可复用页）。
+            // resolve() 对当前树做解析；缓存为空时全部 dispatch，非空时复用仍在树中的条目。
             // 与 apply 共用串行队列，避免 resolve 与并发 apply 互相覆盖。
             return enqueue(async () => {
-                const base: NavigationSnapshot = resolvedOnce
-                    ? snapshot
-                    : { tree, destinations: [] };
-                const next = await resolveTree(tree, base);
+                const next = await resolveTree(tree);
                 return commit(next);
             });
         },

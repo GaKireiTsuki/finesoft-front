@@ -17,6 +17,7 @@ import {
     type NavigationControllerOptions,
     type NavigationDispatchContext,
 } from "../../src/navigation/controller";
+import { sessionEntryKey } from "../../src/session/scoped-state";
 import { leaf, split, stack, tabs } from "../../src/navigation/nodes";
 import { SPLIT_VISIBILITIES, type NavigationNode } from "../../src/navigation/types";
 
@@ -157,17 +158,16 @@ describe("stack operations", () => {
         expect(snap.tree).toEqual(stack([leaf("root"), leaf("detail", { id: 7 })]));
     });
 
-    test("pop drops the top entry; the now-visible root is newly-visible → re-dispatched", async () => {
+    test("pop reveals the still-present root from cache without re-dispatching", async () => {
         const calls: string[] = [];
         const controller = stackController(calls);
         await controller.resolve();
-        await controller.push("detail"); // prev snapshot's only visible dest = detail
+        await controller.push("detail");
 
         const snap = await controller.pop();
 
-        // root 不在「上一」快照（只有 detail）→ 重新可见 → 重新 dispatch
-        // （跨 history 的页复用是 bridge 的职责，非 controller）
-        expect(calls).toEqual(["root", "detail", "root"]);
+        // root 自始至终在树中（stack 底）→ 首屏已 dispatch 并缓存 → pop 复用、不重 fetch。
+        expect(calls).toEqual(["root", "detail"]);
         expect(snap.destinations).toHaveLength(1);
         expect(snap.destinations[0].intent).toBe("root");
         expect(snap.tree).toEqual(stack([leaf("root")]));
@@ -249,6 +249,51 @@ describe("stack operations", () => {
         expect(snap.destinations[0].intent).toBe("a");
         expect(calls).toEqual(["c", "a"]);
     });
+
+    test("revealing a cached entry re-runs guards but does NOT re-dispatch", async () => {
+        const dispatchCalls: string[] = [];
+        const guardCalls: string[] = [];
+        const guard: BeforeLoadGuard = (ctx: NavigationContext) => {
+            guardCalls.push(ctx.intent.id);
+            return next();
+        };
+        const dispatcher = makeDispatcher(
+            { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
+            dispatchCalls,
+        );
+        const controller = createNavigationController(
+            makeOptions({
+                intentDispatcher: dispatcher,
+                initial: stack(leaf("root")),
+                beforeLoad: [guard],
+            }),
+        );
+        await controller.resolve(); // dispatch root；guard[root]
+        await controller.push("detail"); // dispatch detail；guard[detail]
+        dispatchCalls.length = 0;
+        guardCalls.length = 0;
+
+        await controller.pop(); // 揭示 root
+
+        expect(guardCalls).toEqual(["root"]); // 守卫照常跑（安全语义不变）
+        expect(dispatchCalls).toEqual([]); // 但不重 fetch（复用缓存页）
+    });
+
+    test("an entry removed from the tree then re-added is re-dispatched (cache pruned on leave)", async () => {
+        const calls: string[] = [];
+        const dispatcher = makeDispatcher(
+            { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
+            calls,
+        );
+        const controller = createNavigationController(
+            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("home")) }),
+        );
+        await controller.resolve(); // [home]
+        await controller.replaceTop("other"); // home 离树 → 缓存 prune；[other]
+        await controller.replaceTop("home"); // home 重新入树、未缓存 → 重新 dispatch
+
+        expect(calls).toEqual(["home", "other", "home"]);
+    });
 });
 
 // =====================================================================
@@ -301,9 +346,9 @@ describe("tabs", () => {
         expect(calls).toEqual(["home", "profile"]);
         expect(snap.destinations[0].intent).toBe("profile");
 
-        // 切回 home：home 不在「上一」快照（只有 profile）→ 重新可见 → 重新 dispatch
+        // 切回 home：home 分支自始至终在 tabs 树中 → 缓存复用、不重 dispatch。
         const back = await controller.selectTab("home");
-        expect(calls).toEqual(["home", "profile", "home"]);
+        expect(calls).toEqual(["home", "profile"]);
         expect(back.destinations[0].intent).toBe("home");
     });
 });
@@ -738,7 +783,7 @@ describe("prefetched reuse", () => {
         expect(snap.destinations.map((d) => d.page.title)).toEqual(["L", "D"]);
     });
 
-    test("prefetched is one-shot: a second resolve of a changed-back destination re-dispatches", async () => {
+    test("a popped-back present entry reuses its cached page (prefetched result included), no re-dispatch", async () => {
         const calls: string[] = [];
         const dispatcher = makeDispatcher(
             { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
@@ -755,13 +800,13 @@ describe("prefetched reuse", () => {
             }),
         );
 
-        await controller.resolve(); // home from prefetch (consumed), calls=[]
-        await controller.push("other"); // calls=[other]; home no longer visible
-        // pop back to home: prefetch already consumed AND home not in prev snapshot → must dispatch
-        const snap = await controller.pop();
+        await controller.resolve(); // home 来自预取（消费 + 缓存），calls=[]
+        await controller.push("other"); // calls=[other]；home 仍在树（栈底）
+        const snap = await controller.pop(); // 揭示 home：复用缓存、不重 dispatch
 
-        expect(calls).toEqual(["other", "home"]);
+        expect(calls).toEqual(["other"]);
         expect(snap.destinations[0].intent).toBe("home");
+        expect(snap.destinations[0].page.title).toBe("S"); // 复用的是 SSR 预取页
     });
 });
 
