@@ -37,10 +37,10 @@ export type {
     MountEntry,
     NavigationBridgeDependencies,
     NavigationHandle,
-    ResolvedEntry,
     SessionBridgeOptions,
     SessionHandle,
 } from "@finesoft/browser";
+// 注：ResolvedEntry 已移入 @finesoft/core，经上面的 `export * from "@finesoft/core"` 透出。
 
 // ===== SSR (unique exports only) =====
 export {
@@ -51,6 +51,7 @@ export {
     injectCSRShell,
     injectSSRContent,
     NAVIGATION_TREE_INTENT_ID,
+    renderIslandsHtml,
     serializeServerData,
     ssrRender,
     ssrRenderNavigation,
@@ -58,6 +59,7 @@ export {
 } from "@finesoft/ssr";
 export type {
     InjectSSROptions,
+    RenderEntry,
     SerializedNavigationTreePayload,
     SerializeServerDataOptions,
     SSRContext,
