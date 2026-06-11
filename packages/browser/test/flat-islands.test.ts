@@ -194,7 +194,11 @@ afterEach(() => {
 // Shared test setup factory
 // ---------------------------------------------------------------------------
 
-async function buildApp(opts: { initialPath?: string } = {}) {
+import type { FlowActionCallbacks } from "../src/action-handlers/register";
+
+async function buildApp(
+    opts: { initialPath?: string; callbacks?: Partial<FlowActionCallbacks> } = {},
+) {
     const path = opts.initialPath ?? "/a";
     vi.stubGlobal("window", {
         location: { pathname: path, search: "", origin: "https://example.com" },
@@ -232,7 +236,7 @@ async function buildApp(opts: { initialPath?: string } = {}) {
             (target as unknown as FakeElement).appendChild(outlet as unknown as FakeElement);
             return () => undefined;
         },
-        callbacks: { onNavigate() {}, onModal() {} },
+        callbacks: { onNavigate() {}, onModal() {}, ...opts.callbacks },
         mountEntry: (entry, container) => {
             mountCalls.push(entry.entryKey);
             container.textContent = entry.page.title ?? "";
@@ -317,21 +321,23 @@ describe("flat islands（顶层 mountEntry，无 navigation）", () => {
     });
 
     test("modal FlowAction 仍由扁平 handler 处理（不经过 controller.push）", async () => {
-        const { mountCalls } = await buildApp();
         const onModalSpy = vi.fn();
 
-        // Re-build with a modal spy in callbacks — easier to just call perform directly
-        // since the framework is already set up; we can peek at the modal callback
-        // by verifying mountCalls doesn't grow.
-        const initialCount = mountCalls.length;
+        const { mountCalls, framework } = await buildApp({
+            callbacks: { onModal: onModalSpy },
+        });
 
-        // We can't easily intercept onModal on the already-started app.
-        // Instead verify the island stack is unchanged after a modal FlowAction.
-        // The modal path goes through the flat handler (onForward is not called for modal).
-        // Since callbacks.onModal is a no-op in buildApp(), the test verifies:
-        // - mountCalls length is unchanged (no new island push)
-        expect(mountCalls.length).toBe(initialCount);
+        // After startup only /a is in the stack
+        expect(mountCalls).toEqual([KEY("a")]);
 
-        void onModalSpy; // suppress unused warning
+        // Perform a modal FlowAction — presentationContext: "modal" causes the flat
+        // FLOW handler to call callbacks.onModal (not onForward), so the island stack
+        // must not change (controller.push is never called).
+        await framework.perform(makeFlowAction("/b", "modal"));
+
+        // (a) onModal callback fired
+        expect(onModalSpy).toHaveBeenCalledOnce();
+        // (b) island stack unchanged — /b was NOT pushed
+        expect(mountCalls).toEqual([KEY("a")]);
     });
 });

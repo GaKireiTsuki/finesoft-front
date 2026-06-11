@@ -62,6 +62,15 @@ export async function activateFlatIslands(args: FlatIslandsArgs): Promise<Activa
 
     // ── 1. 路由初始 URL → 合成首屏单叶栈 ─────────────────────────────────────
     const initialMatch = await framework.routeUrl(initialUrl);
+    // warn-not-throw：抛出异常会在用户手打深链时崩溃整个应用，且与扁平基线路径
+    // （updateApp({page: Promise.reject})）的优雅 404 行为不一致。
+    // 保留兜底 leaf，让 controller dispatch 失败时走 fallback() 渲染错误页 island。
+    if (initialMatch === null) {
+        log.warn(
+            `[flat-islands] initialUrl "${initialUrl}" matched no route; mounting a fallback. ` +
+                "Check defineRoutes / base path.",
+        );
+    }
     const initial =
         initialMatch !== null
             ? stack([

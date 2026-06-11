@@ -306,10 +306,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         // 否则两套 History 争抢 window.history.state。
         manageHistory: !(config.navigation || config.mountEntry),
         // flat-islands：正向 FlowAction 路由到隐式单栈 controller.push（bypass navigateTo）。
-        onForward:
-            config.mountEntry && !config.navigation
-                ? (url) => flatPush?.(url) ?? Promise.resolve()
-                : undefined,
+        onForward: config.mountEntry && !config.navigation ? (url) => flatPush?.(url) : undefined,
     });
 
     // 5.5 flat-islands 激活（可选）—— 合成隐式单栈 + 编排器 + 首屏 island。
