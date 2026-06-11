@@ -185,6 +185,36 @@ function collectInto(node: NavigationNode, out: LeafNode[]): void {
 }
 
 /**
+ * 收集树中**全部存在**的叶子（含不可见：栈非顶 entry、未激活 tab 分支、所有非空 split 列）。
+ * 区别于 `collectVisibleDestinations`（只沿可见分支）—— 保活 / 缓存 prune / 作用域保留需要
+ * 全部 present 条目。顺序：栈按序、tabs 按 `Object.values(branches)` 序、split 按列序。
+ */
+export function collectAllLeaves(tree: NavigationNode): readonly LeafNode[] {
+    const out: LeafNode[] = [];
+    collectAllInto(tree, out);
+    return out;
+}
+
+function collectAllInto(node: NavigationNode, out: LeafNode[]): void {
+    switch (node.kind) {
+        case NAVIGATION_NODE_KINDS.LEAF:
+            out.push(node);
+            return;
+        case NAVIGATION_NODE_KINDS.STACK:
+            for (const entry of node.entries) collectAllInto(entry, out);
+            return;
+        case NAVIGATION_NODE_KINDS.TABS:
+            for (const branch of Object.values(node.branches)) collectAllInto(branch, out);
+            return;
+        case NAVIGATION_NODE_KINDS.SPLIT:
+            for (const col of node.columns) {
+                if (col.content !== undefined) collectAllInto(col.content, out);
+            }
+            return;
+    }
+}
+
+/**
  * 按 `visibility` 求出一个 split 节点当前**可见**的列（不裁剪空内容列——空 content 由调用方处理）。
  *
  * - `automatic`（缺省）/ `all`：全部列。

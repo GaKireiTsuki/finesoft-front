@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { leaf, split, stack, tabs } from "../../src/navigation/nodes";
 import {
+    collectAllLeaves,
     collectVisibleDestinations,
     findNearestStack,
     findNode,
@@ -636,5 +637,47 @@ describe("setVisibility", () => {
         const withVis = setVisibility(tree, SPLIT_VISIBILITIES.DOUBLE_COLUMN);
         const afterSelect = selectColumn(withVis, "detail", leaf("c")) as SplitNode;
         expect(afterSelect.visibility).toBe("doubleColumn");
+    });
+});
+
+// =====================================================================
+// collectAllLeaves（全部存在，非仅可见）
+// =====================================================================
+
+describe("collectAllLeaves", () => {
+    test("leaf → [leaf]", () => {
+        expect(collectAllLeaves(leaf("home"))).toEqual([leaf("home")]);
+    });
+
+    test("stack → ALL entries（含非顶，区别于 collectVisibleDestinations）", () => {
+        const tree = stack([leaf("root"), leaf("top")]);
+        expect(collectAllLeaves(tree)).toEqual([leaf("root"), leaf("top")]);
+        // 对照：可见只取栈顶
+        expect(collectVisibleDestinations(tree)).toEqual([leaf("top")]);
+    });
+
+    test("tabs → ALL branches（含未激活），按 Object.values 序", () => {
+        const tree = tabs({ active: "a", branches: { a: leaf("a"), b: leaf("b") } });
+        expect(collectAllLeaves(tree)).toEqual([leaf("a"), leaf("b")]);
+    });
+
+    test("split → 全部非空列；空列跳过", () => {
+        const tree = split([{ id: "list", content: leaf("list") }, { id: "detail" }]);
+        expect(collectAllLeaves(tree)).toEqual([leaf("list")]);
+    });
+
+    test("嵌套：收集隐藏栈底 + 未激活分支的全部叶子", () => {
+        const tree = tabs({
+            active: "home",
+            branches: {
+                home: stack([leaf("home"), leaf("detail", { id: 2 })]),
+                notes: stack([leaf("notes")]),
+            },
+        });
+        expect(collectAllLeaves(tree)).toEqual([
+            leaf("home"),
+            leaf("detail", { id: 2 }),
+            leaf("notes"),
+        ]);
     });
 });

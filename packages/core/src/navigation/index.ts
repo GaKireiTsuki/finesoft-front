@@ -38,6 +38,7 @@ export {
 
 // ===== Operations（纯函数）=====
 export {
+    collectAllLeaves,
     collectVisibleDestinations,
     findNearestStack,
     findNode,
