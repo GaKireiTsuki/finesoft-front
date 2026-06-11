@@ -11,7 +11,12 @@ export {
 export { registerActionHandlers, type ActionHandlerDependencies } from "./action-handlers/register";
 
 // ===== Browser App =====
-export { startBrowserApp, type BrowserAppConfig, type BrowserNavigationConfig } from "./start-app";
+export {
+    startBrowserApp,
+    type BrowserAppConfig,
+    type BrowserNavigationConfig,
+    type BrowserSessionConfig,
+} from "./start-app";
 
 // ===== Navigation Bridge =====
 export {
@@ -19,6 +24,16 @@ export {
     type NavigationBridgeDependencies,
     type NavigationHandle,
 } from "./navigation-bridge";
+
+// ===== Session =====
+export {
+    createSessionBridge,
+    defaultShouldRestore,
+    SESSION_DEFAULT_DEBOUNCE_MS,
+    type SessionBridgeOptions,
+    type SessionHandle,
+} from "./session-bridge";
+export { createWebStorage, type WebStorageKind } from "./web-storage";
 
 // ===== Browser Utils =====
 export { History } from "./utils/history";

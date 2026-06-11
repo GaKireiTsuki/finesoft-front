@@ -17,13 +17,20 @@ import type {
     Logger,
     MessagesLoader,
     NavigationCodec,
+    NavigationController,
     NavigationNode,
+    SessionSnapshot,
+    SessionStateProvider,
+    Storage,
     TranslationMessages,
 } from "@finesoft/core";
 import {
     createActiveLeafCodec,
     createBrowserContext,
     createNavigationController,
+    createNavigationSessionAdapter,
+    createSessionStore,
+    createUrlSessionAdapter,
     DEP_KEYS,
     Framework,
     makeFlowAction,
@@ -34,6 +41,8 @@ import {
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
 import { createNavigationBridge, type NavigationHandle } from "./navigation-bridge";
 import { createPrefetchedIntentsFromDom } from "./server-data";
+import { createSessionBridge, type SessionHandle } from "./session-bridge";
+import { createWebStorage } from "./web-storage";
 
 interface InternalBrowserFrameworkConfig extends FrameworkConfig {
     _resolvedMessages?: TranslationMessages;
@@ -60,6 +69,32 @@ export interface BrowserNavigationConfig {
     readonly afterLoad?: readonly AfterLoadGuard[];
     /** dispatch 失败 / deny 时的兜底错误页工厂。 */
     readonly getErrorPage?: (status: number, message: string) => BasePage;
+}
+
+/**
+ * 会话恢复定义（可选）。
+ *
+ * 仅当该字段出现时会话能力才激活；缺省时 `startBrowserApp` 启动路径字节级不变。提供后：
+ * - 构建 `SessionStore`（导航适配器：有 `navigation` 配置 → 结构化
+ *   `createNavigationSessionAdapter(controller)`；否则 → 扁平 `createUrlSessionAdapter`
+ *   接 `framework.perform(makeFlowAction(url))`）；
+ * - 注册 `providers` 为全局切片来源；
+ * - 装配 `SessionBridge`（导航变更防抖落盘 + `pagehide` / `visibilitychange` 即时落盘 + scoped prune）；
+ * - 首次导航后 `restore(initialUrl)` 完成 boot 恢复，并把 handle 交给 `onSessionReady`。
+ */
+export interface BrowserSessionConfig {
+    /** 全局状态切片 provider；启动时全部注册。 */
+    readonly providers?: readonly SessionStateProvider[];
+    /** 快照存储；缺省 `createWebStorage("session")`（标签级，关闭即清）。 */
+    readonly storage?: Storage;
+    /** 快照版本；缺省 `SESSION_DEFAULT_VERSION`，不符即整份丢弃。 */
+    readonly version?: number;
+    /** 快照最大存活时长（ms）；省略 = 不过期。 */
+    readonly maxAgeMs?: number;
+    /** 导航变更自动落盘防抖窗口（ms）；缺省 `SESSION_DEFAULT_DEBOUNCE_MS`。 */
+    readonly debounceMs?: number;
+    /** 恢复门控；缺省 `defaultShouldRestore`（显式深链优先）。 */
+    readonly shouldRestore?: (snapshot: SessionSnapshot, currentUrl: string) => boolean;
 }
 
 export interface BrowserAppConfig {
@@ -134,6 +169,23 @@ export interface BrowserAppConfig {
      * （push/pop/selectTab…）并订阅快照渲染 UI。
      */
     onNavigationReady?: (handle: NavigationHandle) => void | Promise<void>;
+
+    /**
+     * 会话恢复定义（可选）。
+     *
+     * 提供后，`startBrowserApp` 在首次导航后装配 `SessionStore` + `SessionBridge`，
+     * 完成 boot 恢复，并通过 `onSessionReady` 把会话 handle 交给应用。缺省时整段不生效，
+     * 启动路径字节级不变。
+     */
+    session?: BrowserSessionConfig;
+
+    /**
+     * 会话就绪回调 —— bridge 装配并完成 boot 恢复后调用。
+     *
+     * 仅当提供了 `session` 时触发。应用拿到 handle 后可用 `save()` / `clear()` 手动控制
+     * 落盘，或在卸载时 `dispose()`。
+     */
+    onSessionReady?: (handle: SessionHandle) => void | Promise<void>;
 }
 
 /**
@@ -206,10 +258,15 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     const updateApp = mount(target, { framework });
 
     // 5. 注册 Action Handlers
+    //    扁平会话（有 session、无 navigation）需要一个导航变更信号驱动自动落盘 + scoped prune。
+    //    唯一的扁平导航信号是 FlowAction handler 提交后调用的 `callbacks.onNavigate`，故把它 tee
+    //    给会话监听器。仅在该场景包装 callbacks；其余情形透传原对象，启动路径字节级不变。
+    const flatNavigation =
+        config.session && !config.navigation ? createNavigationEmitter() : undefined;
     registerActionHandlers({
         framework,
         log,
-        callbacks,
+        callbacks: flatNavigation ? flatNavigation.wrap(callbacks) : callbacks,
         updateApp,
         getScrollablePageElement: config.getScrollablePageElement,
         // 结构化导航下 history 由 NavigationBridge 独占；否则两套 History 争抢 window.history.state。
@@ -228,27 +285,46 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
 
     // 6.5 结构化导航（可选）—— 仅当应用提供 navigation 定义时激活，
     // 否则上面的扁平单页路径已是全部行为。
+    let activatedNavigation: ActivatedNavigation | undefined;
     if (config.navigation) {
-        const handle = await activateNavigation({
+        activatedNavigation = await activateNavigation({
             framework,
             navigation: config.navigation,
             log,
             getScrollablePageElement: config.getScrollablePageElement,
         });
-        await config.onNavigationReady?.(handle);
+        await config.onNavigationReady?.(activatedNavigation.handle);
+    }
+
+    // 6.7 会话恢复（可选）—— 仅当应用提供 session 定义时激活，缺省整段不生效。
+    if (config.session) {
+        const handle = await activateSession({
+            framework,
+            session: config.session,
+            navigation: activatedNavigation,
+            flatNavigation,
+            initialUrl,
+        });
+        await config.onSessionReady?.(handle);
     }
 
     // 7. 启动后钩子
     await onAfterStart?.(framework);
 }
 
-/** 装配 NavigationController + NavigationBridge，解析首屏树，返回导航 handle。 */
+/** 已激活的结构化导航：对外 handle + 内部 controller（供会话结构化适配器引用）。 */
+interface ActivatedNavigation {
+    readonly handle: NavigationHandle;
+    readonly controller: NavigationController;
+}
+
+/** 装配 NavigationController + NavigationBridge，解析首屏树，返回导航 handle + controller。 */
 async function activateNavigation(args: {
     framework: Framework;
     navigation: BrowserNavigationConfig;
     log: Logger;
     getScrollablePageElement?: () => HTMLElement | null;
-}): Promise<NavigationHandle> {
+}): Promise<ActivatedNavigation> {
     const { framework, navigation, log, getScrollablePageElement } = args;
     const codec = navigation.codec ?? createActiveLeafCodec();
 
@@ -291,7 +367,98 @@ async function activateNavigation(args: {
     // 首屏解析：提交首个快照（bridge 用 replaceState 写入 history，不污染历史栈）。
     await controller.resolve();
 
-    return handle;
+    return { handle, controller };
+}
+
+/** 扁平导航变更发射器：tee `FlowActionCallbacks.onNavigate` 给会话监听器。 */
+interface FlatNavigationEmitter {
+    /** 包装一份 callbacks：`onNavigate` 先调原回调，再广播给监听器。 */
+    wrap(callbacks: FlowActionCallbacks): FlowActionCallbacks;
+    /** 订阅导航变更；返回反订阅函数（形态对齐 `SessionBridgeOptions.subscribeNavigation`）。 */
+    subscribe(onChange: () => void): () => void;
+}
+
+/**
+ * 创建扁平导航变更发射器。
+ *
+ * 扁平单页没有 NavigationController，唯一可观测的「导航已提交」信号是 FlowAction handler
+ * 在落 history 后调用的 `callbacks.onNavigate(pathname)`。会话需要这个信号来防抖落盘并 prune
+ * 离屏作用域，故把它 tee 出来：`wrap` 出的 callbacks 透明转发原回调，额外广播给监听器。
+ */
+function createNavigationEmitter(): FlatNavigationEmitter {
+    const listeners = new Set<() => void>();
+    return {
+        wrap(callbacks: FlowActionCallbacks): FlowActionCallbacks {
+            return {
+                ...callbacks,
+                onNavigate(pathname: string): void {
+                    callbacks.onNavigate(pathname);
+                    for (const listener of listeners) listener();
+                },
+            };
+        },
+        subscribe(onChange: () => void): () => void {
+            listeners.add(onChange);
+            return () => {
+                listeners.delete(onChange);
+            };
+        },
+    };
+}
+
+/**
+ * 装配 SessionStore + SessionBridge，注册 providers，完成 boot 恢复，返回会话 handle。
+ *
+ * 导航适配器二选一：结构化（有 `navigation` 激活）→ `createNavigationSessionAdapter(controller)`，
+ * 导航变更经 `handle.subscribe` 订阅；扁平 → `createUrlSessionAdapter`，`apply` 走
+ * `framework.perform(makeFlowAction(url))`，导航变更经 `flatNavigation.subscribe`（tee 自
+ * `callbacks.onNavigate`）订阅。
+ */
+async function activateSession(args: {
+    framework: Framework;
+    session: BrowserSessionConfig;
+    navigation: ActivatedNavigation | undefined;
+    flatNavigation: FlatNavigationEmitter | undefined;
+    initialUrl: string;
+}): Promise<SessionHandle> {
+    const { framework, session, navigation, flatNavigation, initialUrl } = args;
+
+    const adapter = navigation
+        ? createNavigationSessionAdapter(navigation.controller)
+        : createUrlSessionAdapter({
+              currentUrl: () => window.location.pathname + window.location.search,
+              navigate: (url) => framework.perform(makeFlowAction(url)),
+          });
+
+    const subscribeNavigation = navigation
+        ? (onChange: () => void): (() => void) => navigation.handle.subscribe(() => onChange())
+        : flatNavigation
+          ? (onChange: () => void): (() => void) => flatNavigation.subscribe(onChange)
+          : undefined;
+
+    const store = createSessionStore({
+        storage: session.storage ?? createWebStorage("session"),
+        navigation: adapter,
+        version: session.version,
+        maxAgeMs: session.maxAgeMs,
+    });
+
+    for (const provider of session.providers ?? []) {
+        store.register(provider);
+    }
+
+    const bridge = createSessionBridge({
+        store,
+        adapter,
+        subscribeNavigation,
+        debounceMs: session.debounceMs,
+        shouldRestore: session.shouldRestore,
+    });
+
+    // boot 恢复：首次导航已在上面完成，此处读快照并按门控整体应用（nav + slices）。
+    await bridge.restore(initialUrl);
+
+    return bridge;
 }
 
 function resolveBrowserLocale(locale?: string): string | undefined {

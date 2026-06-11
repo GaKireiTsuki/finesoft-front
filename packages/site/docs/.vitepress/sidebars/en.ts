@@ -15,6 +15,7 @@ export const sidebarEn: DefaultTheme.SidebarItem[] = [
             { text: "Server & deployment", link: "/09-server-and-deployment" },
             { text: "Features, platform, PWA", link: "/10-features-platform-pwa" },
             { text: "Navigation", link: "/11-navigation" },
+            { text: "Session restoration", link: "/12-session-restoration" },
         ],
     },
     {

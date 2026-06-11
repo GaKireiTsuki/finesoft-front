@@ -41,6 +41,8 @@ describe("startBrowserApp", () => {
                 dir: "",
             },
             getElementById: vi.fn((id: string) => (id === "app" ? target : null)),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
         });
     });
 
@@ -325,6 +327,104 @@ describe("startBrowserApp", () => {
         expect(onNavigationReady).not.toHaveBeenCalled();
     });
 
+    test("does not activate session when no session config is provided", async () => {
+        const onSessionReady = vi.fn();
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+            },
+            mount() {
+                return vi.fn();
+            },
+            callbacks: makeCallbacks(),
+            onSessionReady,
+        });
+
+        // 无 session 定义 → 不触发 onSessionReady，启动路径字节级不变。
+        expect(onSessionReady).not.toHaveBeenCalled();
+    });
+
+    test("restores a pre-seeded sessionStorage snapshot through a flat provider on boot", async () => {
+        // 在根 URL (`/`) 上 boot：defaultShouldRestore 对扁平快照放行（atRoot 或同 URL）。
+        const sessionStorage = fakeWebStorage();
+        sessionStorage.setItem(
+            "__finesoft_session__",
+            JSON.stringify({
+                version: 1,
+                navigation: { url: "/" },
+                slices: { draft: "half-typed" },
+                scoped: {},
+                capturedAt: 1,
+            }),
+        );
+        vi.stubGlobal("window", {
+            location: { pathname: "/", search: "", origin: "https://example.com" },
+            sessionStorage,
+            localStorage: fakeWebStorage(),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        });
+
+        const restored: unknown[] = [];
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+            },
+            mount() {
+                return vi.fn();
+            },
+            callbacks: makeCallbacks(),
+            session: {
+                providers: [
+                    {
+                        key: "draft",
+                        capture: () => "",
+                        restore: (data) => {
+                            restored.push(data);
+                        },
+                    },
+                ],
+            },
+        });
+
+        // boot 恢复：持久化的 draft 切片派回 provider。
+        expect(restored).toEqual(["half-typed"]);
+    });
+
+    test("hands a session handle to onSessionReady", async () => {
+        vi.stubGlobal("window", {
+            location: { pathname: "/", search: "", origin: "https://example.com" },
+            sessionStorage: fakeWebStorage(),
+            localStorage: fakeWebStorage(),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        });
+
+        let handle: import("../src/session-bridge").SessionHandle | undefined;
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+            },
+            mount() {
+                return vi.fn();
+            },
+            callbacks: makeCallbacks(),
+            session: {},
+            onSessionReady(received) {
+                handle = received;
+            },
+        });
+
+        expect(handle).toBeDefined();
+        expect(typeof handle?.save).toBe("function");
+        expect(typeof handle?.clear).toBe("function");
+        expect(typeof handle?.restore).toBe("function");
+        expect(typeof handle?.dispose).toBe("function");
+    });
+
     test("rejects when the configured mount target does not exist", async () => {
         vi.stubGlobal("document", {
             documentElement: {
@@ -357,4 +457,21 @@ function makeCallbacks() {
 
 function getDocumentElement(): { lang: string; dir: string } {
     return (document as { documentElement: { lang: string; dir: string } }).documentElement;
+}
+
+/** 最小内存 Web Storage 伪实现，覆盖 createWebStorage 实际触达的成员。 */
+function fakeWebStorage(): Storage {
+    const m = new Map<string, string>();
+    return {
+        getItem: (k) => (m.has(k) ? (m.get(k) as string) : null),
+        setItem: (k, v) => void m.set(k, String(v)),
+        removeItem: (k) => void m.delete(k),
+        clear: () => {
+            m.clear();
+        },
+        key: (i) => Array.from(m.keys())[i] ?? null,
+        get length() {
+            return m.size;
+        },
+    } as Storage;
 }

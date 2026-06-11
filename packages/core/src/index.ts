@@ -203,6 +203,33 @@ export type {
     TabsNode,
 } from "./navigation";
 
+// ===== Session =====
+export {
+    collectLeafKeys,
+    createNavigationScopedState,
+    createNavigationSessionAdapter,
+    createSessionStore,
+    createUrlSessionAdapter,
+    decodeSnapshot,
+    encodeSnapshot,
+    isUrlLocation,
+    SESSION_DEFAULT_KEY,
+    SESSION_DEFAULT_VERSION,
+    SessionError,
+    sessionEntryKey,
+} from "./session";
+export type {
+    NavigationScopedState,
+    SessionErrorContext,
+    SessionNavigationAdapter,
+    SessionSnapshot,
+    SessionStateProvider,
+    SessionStore,
+    SessionStoreOptions,
+    SessionUrlLocation,
+    UrlAdapterOptions,
+} from "./session";
+
 // ===== Utils =====
 export { LruMap } from "./utils/lru-map";
 export { isNone, isSome, type None, type Optional } from "./utils/optional";

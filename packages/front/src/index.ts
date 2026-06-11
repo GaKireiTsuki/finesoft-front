@@ -6,8 +6,12 @@ export * from "@finesoft/core";
 // ===== Browser (unique exports only) =====
 export {
     History,
+    SESSION_DEFAULT_DEBOUNCE_MS,
     createNavigationBridge,
     createPrefetchedIntentsFromDom,
+    createSessionBridge,
+    createWebStorage,
+    defaultShouldRestore,
     deserializeServerData,
     registerActionHandlers,
     registerExternalUrlHandler,
@@ -19,11 +23,14 @@ export type {
     ActionHandlerDependencies,
     BrowserAppConfig,
     BrowserNavigationConfig,
+    BrowserSessionConfig,
     ExternalUrlDependencies,
     FlowActionCallbacks,
     FlowActionDependencies,
     NavigationBridgeDependencies,
     NavigationHandle,
+    SessionBridgeOptions,
+    SessionHandle,
 } from "@finesoft/browser";
 
 // ===== SSR (unique exports only) =====

@@ -15,6 +15,7 @@ export const sidebarZh: DefaultTheme.SidebarItem[] = [
             { text: "服务器与部署", link: "/zh/09-server-and-deployment" },
             { text: "Feature flags、平台、PWA", link: "/zh/10-features-platform-pwa" },
             { text: "导航", link: "/zh/11-navigation" },
+            { text: "会话恢复", link: "/zh/12-session-restoration" },
         ],
     },
     {
