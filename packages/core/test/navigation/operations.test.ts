@@ -680,4 +680,9 @@ describe("collectAllLeaves", () => {
             leaf("notes"),
         ]);
     });
+
+    test("空栈 / 空 split 列 → 无叶子（不抛）", () => {
+        expect(collectAllLeaves(stack([]))).toEqual([]);
+        expect(collectAllLeaves(split([{ id: "detail" }]))).toEqual([]);
+    });
 });

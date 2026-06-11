@@ -204,6 +204,8 @@ function collectAllInto(node: NavigationNode, out: LeafNode[]): void {
             for (const entry of node.entries) collectAllInto(entry, out);
             return;
         case NAVIGATION_NODE_KINDS.TABS:
+            // 用 Object.values 而非 node.order：本函数喂的是 prune 用的 key 集合，完整性 > 顺序。
+            // tabs() 允许显式 order 不覆盖全部 branch（见 nodes.ts），改用 node.order 会漏分支 → 误 prune。
             for (const branch of Object.values(node.branches)) collectAllInto(branch, out);
             return;
         case NAVIGATION_NODE_KINDS.SPLIT:
