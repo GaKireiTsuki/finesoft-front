@@ -49,6 +49,8 @@ class FakeElement {
     private _parent: FakeElement | null = null;
     private _handlers: Map<string, ((e: FakeCustomEvent) => void)[]> = new Map();
     textContent = "";
+    scrollTop = 0;
+    scrollLeft = 0;
 
     constructor(tag: string) {
         this.tagName = tag.toUpperCase();
@@ -84,6 +86,12 @@ class FakeElement {
 
     remove(): void {
         this._parent?.removeChild(this);
+    }
+
+    /** Returns the first element matching the selector, or null. */
+    querySelector(selector: string): FakeElement | null {
+        const results = this.querySelectorAll(selector);
+        return results[0] ?? null;
     }
 
     /** Supports exact-attribute-match selectors: [attr] and [attr="value"]. */
@@ -353,5 +361,54 @@ describe("island orchestrator — fs:* 生命周期事件", () => {
         expect(log).toContain(`fs:enter:${KEY("detail")}`);
         expect(log).toContain(`fs:reveal:${KEY("home")}`);
         expect(log).toContain(`fs:exit:${KEY("detail")}`); // detail 离树
+    });
+
+    test("dispose：已挂载 island 派发 fs:exit", () => {
+        const outlet = document.createElement("div") as unknown as HTMLElement;
+        const log: string[] = [];
+        listen(outlet, log);
+        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry([]) });
+        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+        log.length = 0;
+
+        o.dispose();
+
+        expect(log).toContain(`fs:exit:${KEY("home")}`);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Task 3: 滚动 conceal/reveal 往返
+// ---------------------------------------------------------------------------
+
+describe("island orchestrator — 滚动 conceal/reveal 往返", () => {
+    test("conceal 记录 scrollTop，reveal 重放", () => {
+        const outlet = document.createElement("div") as unknown as HTMLElement;
+        // mountEntry 在 container 内放一个带 data-fs-scroll 的可滚动元素
+        const mountEntry: MountEntry = (_entry, container) => {
+            const scroller = document.createElement("div") as unknown as HTMLElement;
+            (scroller as unknown as FakeElement).setAttribute("data-fs-scroll", "");
+            (container as unknown as FakeElement).appendChild(scroller as unknown as FakeElement);
+            return { unmount() {} };
+        };
+        // 注入同步 scheduler（替代 rAF）便于断言
+        const o = createIslandOrchestrator({ outlet, mountEntry, schedule: (cb) => cb() });
+
+        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+
+        // 找到 outlet 里的 data-fs-scroll 元素，设置 scrollTop
+        const scroller = (outlet as unknown as FakeElement).querySelector(
+            "[data-fs-scroll]",
+        ) as unknown as FakeElement;
+        scroller.scrollTop = 120;
+
+        // push detail → home conceal（记录 120）
+        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] });
+        // 模拟 detach 期间 scrollTop 归零（真实浏览器行为；jsdom 需手动置 0 验证重放）
+        scroller.scrollTop = 0;
+        // pop → home reveal → 重放 120
+        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
+
+        expect(scroller.scrollTop).toBe(120);
     });
 });

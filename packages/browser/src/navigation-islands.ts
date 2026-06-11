@@ -43,6 +43,8 @@ export interface IslandOrchestratorOptions {
     readonly outlet: HTMLElement;
     /** 应用提供的挂载原语。 */
     readonly mountEntry: MountEntry;
+    /** 重放调度（默认 requestAnimationFrame；测试可注入同步执行）。 */
+    readonly schedule?: (cb: () => void) => void;
 }
 
 /** 编排器对外接口。 */
@@ -59,8 +61,10 @@ interface MountedIsland {
     readonly handle: IslandHandle;
     /** 当前是否 attached（在 document 里 = 可见）。 */
     attached: boolean;
-    /** 本次 sync 中是否是新建的（尚未派发 fs:enter）。 */
-    justCreated: boolean;
+    /** fs:enter 是否已派发（挂载时置 false，首次 attach 后置 true）。 */
+    entered: boolean;
+    /** conceal 时记录的滚动位置（按可滚动元素序）。 */
+    scroll?: { top: number; left: number }[];
 }
 
 /** 在 container 上派发生命周期 CustomEvent（bubbles: true，会冒泡到 outlet）。 */
@@ -75,24 +79,59 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
     const { outlet, mountEntry } = options;
     const mounted = new Map<string, MountedIsland>();
 
+    const schedule =
+        options.schedule ??
+        ((cb: () => void) => {
+            if (typeof requestAnimationFrame === "function") requestAnimationFrame(cb);
+            else cb();
+        });
+
+    /** 容器内全部可滚动元素（含容器自身），按文档序。 */
+    function scrollables(container: HTMLElement): HTMLElement[] {
+        const list: HTMLElement[] = [container];
+        for (const el of container.querySelectorAll<HTMLElement>("[data-fs-scroll]")) list.push(el);
+        return list;
+    }
+
+    function captureScroll(island: MountedIsland): void {
+        island.scroll = scrollables(island.container).map((el) => ({
+            top: el.scrollTop,
+            left: el.scrollLeft,
+        }));
+    }
+
+    function restoreScroll(island: MountedIsland): void {
+        const saved = island.scroll;
+        if (saved === undefined) return;
+        schedule(() => {
+            const els = scrollables(island.container);
+            saved.forEach((pos, i) => {
+                const el = els[i];
+                if (el !== undefined) {
+                    el.scrollTop = pos.top;
+                    el.scrollLeft = pos.left;
+                }
+            });
+        });
+    }
+
     function conceal(island: MountedIsland): void {
         if (!island.attached) return;
+        captureScroll(island);
         emit(island.container, "fs:conceal");
         island.container.remove(); // 出 document（保活，实例不销毁）
         island.attached = false;
     }
 
     function teardown(key: string, island: MountedIsland): void {
-        // Emit fs:exit while the container is still in the outlet (if attached) so the event
-        // can bubble to outlet-level listeners. Semantics: fs:exit means "being destroyed",
-        // distinct from fs:conceal ("going to background, staying alive").
-        // If already detached, fs:exit fires on the orphaned container only (no bubbling to outlet).
+        // Emit fs:exit unconditionally (before remove if attached, or on the orphaned container if
+        // already detached). Attached path bubbles to outlet-level listeners; detached path fires
+        // only on the container itself. Semantics: fs:exit = "being destroyed", distinct from
+        // fs:conceal = "going to background, staying alive".
+        emit(island.container, "fs:exit");
         if (island.attached) {
-            emit(island.container, "fs:exit");
             island.container.remove();
             island.attached = false;
-        } else {
-            emit(island.container, "fs:exit");
         }
         island.handle.unmount();
         mounted.delete(key);
@@ -125,7 +164,7 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
                     page: d.page,
                 };
                 const handle = mountEntry(entry, container);
-                mounted.set(key, { container, handle, attached: false, justCreated: true });
+                mounted.set(key, { container, handle, attached: false, entered: false });
             }
         }
 
@@ -136,18 +175,21 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
         }
 
         // 4) 按 destinations 顺序 attach/reorder 可见 island（appendChild 已在则移动 → 重排）。
-        //    派发顺序：新建的先 fs:enter（已在 outlet 内，可冒泡），再 fs:reveal；已有的只 fs:reveal。
+        //    派发顺序：首次 attach 前先 fs:enter（entered=false），再 fs:reveal；已有的只 fs:reveal。
         for (const key of visibleKeys) {
             const island = mounted.get(key);
             if (island === undefined) continue;
             const wasAttached = island.attached;
             outlet.appendChild(island.container);
             island.attached = true;
-            if (island.justCreated) {
-                island.justCreated = false;
+            if (!island.entered) {
+                island.entered = true;
                 emit(island.container, "fs:enter");
             }
-            if (!wasAttached) emit(island.container, "fs:reveal");
+            if (!wasAttached) {
+                emit(island.container, "fs:reveal");
+                restoreScroll(island);
+            }
         }
     }
 
