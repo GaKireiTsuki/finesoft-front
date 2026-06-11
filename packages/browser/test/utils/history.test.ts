@@ -239,6 +239,45 @@ describe("History", () => {
             page: "home-updated",
         });
     });
+
+    test("persistInHistoryState embeds state in window.history.state for reload survival", () => {
+        const log = makeLogger();
+        generateUuid.mockReturnValue("nav-1");
+        const history = new History<HistoryState>(log, {
+            getScrollablePageElement: () => scrollableElement as HTMLElement,
+            persistInHistoryState: true,
+        });
+        history.pushState({ page: "detail" }, "/item/2");
+        // state 随 window.history.state 一并写入（而非仅 {id}）→ 整页刷新后仍保留。
+        expect(historyState).toEqual({ id: "nav-1", state: { page: "detail" } });
+    });
+
+    test("persistInHistoryState recovers state from event.state on popstate after a reload (empty LRU)", () => {
+        const log = makeLogger();
+        // 模拟整页刷新后的全新实例：LRU 为空。
+        const fresh = new History<HistoryState>(log, {
+            getScrollablePageElement: () => scrollableElement as HTMLElement,
+            persistInHistoryState: true,
+        });
+        const received: Array<HistoryState | undefined> = [];
+        fresh.onPopState((_url, state) => {
+            received.push(state);
+        });
+        // popstate 的 event.state 带刷新前嵌入的 state；LRU 未命中 → 回退到它。
+        triggerPopState(
+            { id: "before-reload", state: { page: "home" } } as never,
+            "https://example.com/",
+        );
+        expect(received).toEqual([{ page: "home" }]);
+    });
+
+    test("default (no persist) keeps window.history.state as {id} only", () => {
+        const log = makeLogger();
+        generateUuid.mockReturnValue("flat-1");
+        const history = createHistory(log);
+        history.pushState({ page: "big" }, "/x");
+        expect(historyState).toEqual({ id: "flat-1" });
+    });
 });
 
 function createHistory(log: Logger, sizeLimit?: number): History<HistoryState> {

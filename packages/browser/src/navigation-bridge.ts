@@ -112,6 +112,8 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
 
     const history = new History<NavigationHistoryState>(log, {
         getScrollablePageElement: deps.getScrollablePageElement ?? defaultGetScrollable,
+        // 导航树小且可结构化克隆：写进 window.history.state，使 back/forward 在整页刷新后仍能还原。
+        persistInHistoryState: true,
     });
 
     // 闸门：来自 history（popstate）的提交不可回写 history。
