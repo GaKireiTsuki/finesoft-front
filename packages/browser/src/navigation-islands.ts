@@ -188,7 +188,8 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
         }
 
         // 4) 按 destinations 顺序 attach/reorder 可见 island（appendChild 已在则移动 → 重排）。
-        //    派发顺序：首次 attach 前先 fs:enter（entered=false），再 fs:reveal；已有的只 fs:reveal。
+        //    事件须在 appendChild **之后**派发：在已分离的节点上 fs:* 冒泡不到 outlet，outlet 委托监听就收不到。
+        //    首次 fs:enter（entered 守卫，每实例一次），再对「本次由 detach 转 attach」者派发 fs:reveal。
         for (const key of visibleKeys) {
             const island = mounted.get(key);
             if (island === undefined) continue;
