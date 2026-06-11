@@ -36,6 +36,14 @@ export interface SessionSnapshot {
     readonly version: number;
     /** 导航位置：结构化 → `SerializedNavigation`；扁平 → `SessionUrlLocation`；缺省 → 不恢复导航。 */
     readonly navigation?: SerializedNavigation | SessionUrlLocation;
+    /**
+     * 该快照导航位置的可比 URL（捕获时刻与 history 同步的浏览器 URL），供恢复门控做精确匹配。
+     *
+     * 扁平与结构化适配器均可在 `capture` 时记录（见 `SessionNavigationAdapter.captureUrl`）。
+     * 缺省时（旧快照 / 适配器不提供）门控回退到旧策略：扁平比 `nav.url`、结构化只在根放行。
+     * 它让结构化导航也能像扁平一样「重载同深链即恢复、改去别的深链则跳过」（对称）。
+     */
+    readonly url?: string;
     /** 全局切片（app-wide）：`provider.key` → 该 provider `capture()` 的 JSON 值。 */
     readonly slices: Readonly<Record<string, unknown>>;
     /** 导航作用域状态：`entryKey` → 该导航条目的状态袋；条目离树即被 prune 丢弃。 */
@@ -100,6 +108,13 @@ export interface SessionNavigationAdapter {
     capture(): SessionSnapshot["navigation"] | undefined;
     /** 应用恢复的导航位置。 */
     apply(navigation: SessionSnapshot["navigation"]): void | Promise<void>;
+    /**
+     * 可选：计算当前导航位置的可比 URL，写入 `SessionSnapshot.url` 供恢复门控精确匹配。
+     *
+     * 浏览器侧适配器返回当时的 `location`（pushState 后与导航树同步）；返回 `undefined`
+     * 或不实现 = 快照不带 `url`，门控回退旧策略（见 `defaultShouldRestore`）。
+     */
+    captureUrl?(): string | undefined;
     /** 树中**存在**的全部条目身份键（用于 scoped prune；「存在」非「可见」）。 */
     presentKeys(): Iterable<string>;
 }

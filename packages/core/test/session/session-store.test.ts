@@ -43,6 +43,27 @@ describe("SessionStore", () => {
         });
     });
 
+    test("capture records the comparable url from adapter.captureUrl", () => {
+        const store = createSessionStore({
+            storage: fakeStorage(),
+            now: () => 5,
+            navigation: {
+                ...fakeNav({ kind: "leaf", intent: "detail", params: { id: "1" } }),
+                captureUrl: () => "/item/1",
+            },
+        });
+        expect(store.capture().url).toBe("/item/1");
+    });
+
+    test("capture omits url when the adapter has no captureUrl", () => {
+        const store = createSessionStore({
+            storage: fakeStorage(),
+            now: () => 5,
+            navigation: fakeNav({ url: "/a" }),
+        });
+        expect(store.capture().url).toBeUndefined();
+    });
+
     test("persist → load round-trip", () => {
         const storage = fakeStorage();
         const store = createSessionStore({ storage, now: () => 1 });

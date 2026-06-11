@@ -337,6 +337,28 @@ describe("createSessionBridge — restore gate", () => {
         bridge.dispose();
     });
 
+    test("structured snapshot with url: same deep link → restored", () => {
+        const s = snap({
+            navigation: { kind: "leaf", intent: "detail", params: { id: "1" } },
+            url: "/item/1",
+        });
+        const { store, bridge } = bridgeWith(s);
+        void bridge.restore("/item/1");
+        expect(store.restore).toHaveBeenCalledWith(s);
+        bridge.dispose();
+    });
+
+    test("structured snapshot with url: different deep link → NOT restored", () => {
+        const s = snap({
+            navigation: { kind: "leaf", intent: "detail", params: { id: "1" } },
+            url: "/item/1",
+        });
+        const { store, bridge } = bridgeWith(s);
+        void bridge.restore("/item/2");
+        expect(store.restore).not.toHaveBeenCalled();
+        bridge.dispose();
+    });
+
     test("slices-only snapshot (no navigation) → restored regardless of url", () => {
         const s = snap({ slices: { theme: "dark" } });
         const { store, bridge } = bridgeWith(s);
@@ -451,10 +473,28 @@ describe("defaultShouldRestore", () => {
         expect(defaultShouldRestore(s, "/?q=1#h")).toBe(true); // 根判定剥离 query/hash
     });
 
-    test("structured: root true, non-root false", () => {
+    test("structured (no url): root true, non-root false（旧快照回退策略）", () => {
         const s = snap({ navigation: { kind: "leaf", intent: "home", params: {} } });
         expect(defaultShouldRestore(s, "/")).toBe(true);
         expect(defaultShouldRestore(s, "/x")).toBe(false);
+    });
+
+    test("structured with comparable url: same true, different false, root true（与扁平对称）", () => {
+        const s = snap({
+            navigation: { kind: "leaf", intent: "detail", params: { id: "1" } },
+            url: "/item/1",
+        });
+        expect(defaultShouldRestore(s, "/item/1")).toBe(true); // 重载同深链 → 恢复
+        expect(defaultShouldRestore(s, "/item/2")).toBe(false); // 改去别的深链 → 跳过
+        expect(defaultShouldRestore(s, "/")).toBe(true); // 根入口 → 恢复
+        expect(defaultShouldRestore(s, "/?q=1#h")).toBe(true); // 根判定剥离 query/hash
+    });
+
+    test("snapshot.url 优先于 nav.url（带 url 字段时以它为准）", () => {
+        // url 与 nav.url 不一致时，门控以 snapshot.url 为准（它是 capture 时刻的真实位置）。
+        const s = snap({ navigation: { url: "/stale" }, url: "/item/9" });
+        expect(defaultShouldRestore(s, "/item/9")).toBe(true);
+        expect(defaultShouldRestore(s, "/stale")).toBe(false);
     });
 
     test("no navigation: always true", () => {

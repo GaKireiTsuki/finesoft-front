@@ -71,11 +71,12 @@ function pathOf(url: string): string {
 /**
  * 默认恢复门控策略（精确、无歧义，遵循「显式深链优先」）。
  *
- * - **扁平**（`navigation` 为 `SessionUrlLocation`）：当且仅当 `currentUrl` 全等快照 URL，
- *   **或** `currentUrl` 路径为根 `/`（重载同页 / 全新进入 → 恢复；不同深链 → 跳过，
- *   显式深链不被旧会话覆盖）。
- * - **结构化**（`navigation` 为 `SerializedNavigation`）：当且仅当 `currentUrl` 路径为根 `/`
- *   （树无单一可比 URL，门设在「入口」；要更细由应用覆盖 predicate）。
+ * - **带可比 URL**（快照含 `url` —— 扁平天然有，结构化由适配器在 capture 时记录浏览器
+ *   `location`）：当且仅当 `currentUrl` 全等 `snapshot.url`，**或** `currentUrl` 路径为根 `/`
+ *   （重载同深链 / 全新进入 → 恢复；改去别的深链 → 跳过，显式深链不被旧会话覆盖）。
+ *   这让结构化导航与扁平**对称**：重载 `/item/1` 即恢复其作用域状态。
+ * - **回退（无 `url`）**：旧快照 / 适配器不提供 URL 时 —— 扁平比 `nav.url`，结构化只在根 `/`
+ *   放行（树无单一可比 URL，门设在「入口」；要更细由应用覆盖 predicate）。
  * - **无 `navigation`**（仅切片）：总恢复（与 URL 无关）。
  *
  * 「根」判定为路径 `=== "/"`（剥离 query/hash）；带 base path 的应用应覆盖 `shouldRestore`。
@@ -84,6 +85,9 @@ export function defaultShouldRestore(snapshot: SessionSnapshot, currentUrl: stri
     const nav = snapshot.navigation;
     if (nav === undefined) return true;
     const atRoot = pathOf(currentUrl) === "/";
+    // 可比 URL 优先（capture 时刻的真实位置）：扁平/结构化经此走对称逻辑。
+    if (snapshot.url !== undefined) return currentUrl === snapshot.url || atRoot;
+    // 回退：旧快照无 url 字段 —— 扁平用 nav.url，结构化只在根放行。
     if (isUrlLocation(nav)) return currentUrl === nav.url || atRoot;
     return atRoot;
 }

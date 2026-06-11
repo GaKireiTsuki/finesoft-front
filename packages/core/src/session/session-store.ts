@@ -79,6 +79,9 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
         return {
             version,
             navigation: navigation?.capture(),
+            // 可比 URL（适配器在浏览器侧记录当时的 location）——供恢复门控精确匹配；
+            // 适配器不提供时为 undefined，门控回退旧策略（见 defaultShouldRestore）。
+            url: navigation?.captureUrl?.(),
             slices: captureSlices(),
             scoped: scopedSnapshot(),
             capturedAt: now(),

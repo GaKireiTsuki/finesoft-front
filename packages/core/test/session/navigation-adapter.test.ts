@@ -58,6 +58,18 @@ describe("createNavigationSessionAdapter (structured)", () => {
         expect(hydrated).toHaveLength(0);
     });
 
+    test("captureUrl returns the current browser url when provided", () => {
+        const { controller } = fakeController(leaf("home"));
+        const adapter = createNavigationSessionAdapter(controller, () => "/item/1");
+        expect(adapter.captureUrl?.()).toBe("/item/1");
+    });
+
+    test("captureUrl yields undefined when no currentUrl source is provided", () => {
+        const { controller } = fakeController(leaf("home"));
+        const adapter = createNavigationSessionAdapter(controller);
+        expect(adapter.captureUrl?.()).toBeUndefined();
+    });
+
     test("presentKeys collects every leaf in the tree (all present, not just visible)", () => {
         const tree = tabs({
             active: "x",
@@ -117,5 +129,13 @@ describe("createUrlSessionAdapter (flat)", () => {
             navigate: () => {},
         });
         expect([...adapter.presentKeys()]).toEqual(["/posts/7"]);
+    });
+
+    test("captureUrl returns the current url (so flat snapshots carry a comparable url)", () => {
+        const adapter = createUrlSessionAdapter({
+            currentUrl: () => "/posts/7",
+            navigate: () => {},
+        });
+        expect(adapter.captureUrl?.()).toBe("/posts/7");
     });
 });

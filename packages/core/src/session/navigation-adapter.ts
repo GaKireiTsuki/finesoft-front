@@ -28,9 +28,14 @@ import type { SessionNavigationAdapter, SessionSnapshot } from "./types";
  *
  * `apply` 仅处理 `SerializedNavigation`；`SessionUrlLocation` 与 `undefined` 一律 no-op
  * （结构化应用始终捕获一棵树，不会落到 URL 形态）。
+ *
+ * `currentUrl`（可选）：捕获时刻读取的浏览器 URL（pushState 后与导航树同步），写入快照
+ * `url` 字段供恢复门控精确匹配 —— 让结构化导航也能像扁平一样「重载同深链即恢复、改去别的
+ * 深链则跳过」。省略时快照不带 `url`，门控回退到「只在根放行」的旧策略。
  */
 export function createNavigationSessionAdapter(
     controller: NavigationController,
+    currentUrl?: () => string,
 ): SessionNavigationAdapter {
     return {
         capture(): SessionSnapshot["navigation"] {
@@ -39,6 +44,9 @@ export function createNavigationSessionAdapter(
         apply(navigation: SessionSnapshot["navigation"]): void | Promise<void> {
             if (navigation === undefined || isUrlLocation(navigation)) return undefined;
             return controller.hydrate(deserializeNavigation(navigation)).then(() => undefined);
+        },
+        captureUrl(): string | undefined {
+            return currentUrl?.();
         },
         presentKeys(): Iterable<string> {
             return collectLeafKeys(controller.getTree());
@@ -71,6 +79,9 @@ export function createUrlSessionAdapter(opts: UrlAdapterOptions): SessionNavigat
         apply(navigation: SessionSnapshot["navigation"]): void | Promise<void> {
             if (!isUrlLocation(navigation)) return undefined;
             return opts.navigate(navigation.url);
+        },
+        captureUrl(): string | undefined {
+            return opts.currentUrl();
         },
         presentKeys(): Iterable<string> {
             if (opts.currentIntent) {

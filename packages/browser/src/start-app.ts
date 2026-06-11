@@ -515,10 +515,11 @@ async function activateSession(args: {
 }): Promise<SessionHandle> {
     const { framework, session, navigation, flatNavigation, initialUrl } = args;
 
+    const currentUrl = (): string => window.location.pathname + window.location.search;
     const adapter = navigation
-        ? createNavigationSessionAdapter(navigation.controller)
+        ? createNavigationSessionAdapter(navigation.controller, currentUrl)
         : createUrlSessionAdapter({
-              currentUrl: () => window.location.pathname + window.location.search,
+              currentUrl,
               navigate: (url) => framework.perform(makeFlowAction(url)),
           });
 
