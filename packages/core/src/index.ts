@@ -127,6 +127,7 @@ export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstr
 export {
     collectAllLeaves,
     collectVisibleDestinations,
+    islandContainerAttributes,
     createActiveLeafCodec,
     createFlatStackCodec,
     createFullStateCodec,
@@ -187,6 +188,7 @@ export type {
     PushOptions,
     ReplaceTopOperation,
     ResolvedDestination,
+    ResolvedEntry,
     SelectColumnOperation,
     SelectTabOperation,
     SerializedLeaf,

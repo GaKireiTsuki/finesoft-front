@@ -20,6 +20,8 @@ export {
 export { ssrRender, type SSRContext, type SSRRenderOptions, type SSRRenderResult } from "./render";
 export { serializeServerData, type SerializeServerDataOptions } from "./server-data";
 
+export { renderIslandsHtml, type RenderEntry } from "./islands";
+
 // ===== Re-exports from @finesoft/core (convenience) =====
 export { Framework } from "@finesoft/core";
 export type { BasePage } from "@finesoft/core";
