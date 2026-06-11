@@ -755,6 +755,113 @@ describe("startBrowserApp — domRestore（islands + session）", () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// flat-islands + session — 隐式单栈也要给会话喂导航变更信号（item 1）
+// ---------------------------------------------------------------------------
+
+describe("startBrowserApp — flat-islands + session", () => {
+    beforeEach(() => {
+        registerActionHandlers.mockReset();
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        vi.stubGlobal("CustomEvent", FakeCustomEvent);
+        vi.stubGlobal("window", {
+            location: {
+                pathname: "/",
+                search: "",
+                origin: "https://example.com",
+                href: "https://example.com/",
+            },
+            history: {
+                state: null as { id?: string } | null,
+                replaceState: vi.fn(),
+                pushState: vi.fn(),
+            },
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        });
+    });
+
+    afterEach(() => {
+        globalThis.__FINESOFT_I18N_LOADER__ = undefined;
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    async function bootFlatIslandsSession(): Promise<{
+        handle: import("../src/session-bridge").SessionHandle;
+        storage: import("@finesoft/core").Storage;
+        callbacks: ReturnType<typeof makeCallbacks>;
+    }> {
+        const { leaf, BaseController } = await import("../../core/src/index.ts");
+        void leaf;
+        const appRoot = new FakeElement("div");
+        appRoot.setAttribute("id", "app");
+        vi.stubGlobal("document", {
+            ...makeFakeDocumentWithRoot("app", appRoot),
+            visibilityState: "visible",
+        });
+
+        class HomeController extends BaseController<Record<string, never>, { id: string }> {
+            readonly intentId = "home";
+            execute(): { id: string } {
+                return { id: "home" } as never;
+            }
+        }
+
+        const storage = makeCoreStorage();
+        const callbacks = makeCallbacks();
+        let handle: import("../src/session-bridge").SessionHandle | undefined;
+
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+                framework.registerIntent(new HomeController());
+            },
+            mount(target) {
+                const outlet = document.createElement("main") as unknown as FakeElement;
+                outlet.setAttribute("data-fs-outlet", "");
+                (target as unknown as FakeElement).appendChild(outlet);
+                return () => undefined;
+            },
+            callbacks,
+            // flat-islands：顶层 mountEntry、无 navigation。
+            mountEntry(_entry, container) {
+                (container as unknown as FakeElement).textContent = "home-island";
+                return { unmount() {} };
+            },
+            session: { storage },
+            onSessionReady(received) {
+                handle = received;
+            },
+        });
+
+        if (!handle) throw new Error("onSessionReady 未触发");
+        return { handle, storage, callbacks };
+    }
+
+    test("不为 flat-islands 创建 flatNavigation 发射器：callbacks 原样透传（不包装 onNavigate）", async () => {
+        const { callbacks } = await bootFlatIslandsSession();
+        // flat-islands 的正向导航 bypass callbacks.onNavigate，故 flatNavigation tee 是错误信号、不应创建。
+        expect(registerActionHandlers).toHaveBeenCalledTimes(1);
+        expect(registerActionHandlers.mock.calls[0][0].callbacks).toBe(callbacks);
+    });
+
+    test("会话用结构化适配器捕获隐式单栈（snapshot.navigation 是 stack 树，不是扁平 {url}）", async () => {
+        const { handle, storage } = await bootFlatIslandsSession();
+        handle.save();
+        const raw = storage.get("__finesoft_session__");
+        expect(raw).toBeDefined();
+        const snapshot = JSON.parse(raw as string) as {
+            navigation?: { kind?: string; url?: string };
+            url?: string;
+        };
+        // 结构化适配器 → 捕获整棵树（kind:"stack"）；URL 适配器会捕成 {url}（无 kind）。
+        expect(snapshot.navigation?.kind).toBe("stack");
+        // capture 时刻的可比 URL 也应记录（供 defaultShouldRestore 精确匹配）。
+        expect(snapshot.url).toBe("/");
+    });
+});
+
 function makeCallbacks() {
     return {
         onNavigate: vi.fn(),

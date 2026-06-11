@@ -284,11 +284,16 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     const updateApp = mount(target, { framework });
 
     // 5. 注册 Action Handlers
-    //    扁平会话（有 session、无 navigation）需要一个导航变更信号驱动自动落盘 + scoped prune。
-    //    唯一的扁平导航信号是 FlowAction handler 提交后调用的 `callbacks.onNavigate`，故把它 tee
-    //    给会话监听器。仅在该场景包装 callbacks；其余情形透传原对象，启动路径字节级不变。
+    //    「真扁平」会话（有 session、无 navigation、无 mountEntry）需要一个导航变更信号驱动自动落盘
+    //    + scoped prune。唯一的扁平导航信号是 FlowAction handler 提交后调用的 `callbacks.onNavigate`，
+    //    故把它 tee 给会话监听器。仅在该场景包装 callbacks；其余情形透传原对象，启动路径字节级不变。
+    //    flat-islands（有 mountEntry）的正向导航 **bypass** callbacks.onNavigate（走隐式单栈
+    //    controller.push），onNavigate tee 收不到信号；故 flat-islands 不创建 flatNavigation，
+    //    会话改订阅 islands controller 的快照（见 activateSession）。
     const flatNavigation =
-        config.session && !config.navigation ? createNavigationEmitter() : undefined;
+        config.session && !config.navigation && !config.mountEntry
+            ? createNavigationEmitter()
+            : undefined;
 
     // flat-islands：deferred-ref，由下方 activateFlatIslands 填充后供 onForward 使用。
     // onForward 本身在 registerActionHandlers 调用时就已绑定（闭包捕获 ref），
@@ -363,6 +368,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
             framework,
             session: config.session,
             navigation: activatedNavigation,
+            flatIslands: activatedFlatIslands,
             flatNavigation,
             initialUrl,
         });
@@ -501,30 +507,40 @@ function createNavigationEmitter(): FlatNavigationEmitter {
 /**
  * 装配 SessionStore + SessionBridge，注册 providers，完成 boot 恢复，返回会话 handle。
  *
- * 导航适配器二选一：结构化（有 `navigation` 激活）→ `createNavigationSessionAdapter(controller)`，
- * 导航变更经 `handle.subscribe` 订阅；扁平 → `createUrlSessionAdapter`，`apply` 走
- * `framework.perform(makeFlowAction(url))`，导航变更经 `flatNavigation.subscribe`（tee 自
- * `callbacks.onNavigate`）订阅。
+ * 导航适配器二选一：
+ * - **有 NavigationController**（结构化 `navigation` 或 flat-islands `flatIslands`）→
+ *   `createNavigationSessionAdapter(controller)`：捕获整棵树、`presentKeys` 收全部 leaf（含
+ *   保活的栈底）供 scoped prune；导航变更经该 controller 的 `handle.subscribe` 订阅。
+ * - **真扁平**（无 controller）→ `createUrlSessionAdapter`：`apply` 走
+ *   `framework.perform(makeFlowAction(url))`，导航变更经 `flatNavigation.subscribe`
+ *   （tee 自 `callbacks.onNavigate`）订阅。
+ *
+ * flat-islands 走第一条：它的正向导航 bypass `callbacks.onNavigate`，URL 适配器的单条目
+ * `presentKeys` 也会误 prune 掉保活的栈内条目，故必须用结构化适配器 + controller 快照信号。
  */
 async function activateSession(args: {
     framework: Framework;
     session: BrowserSessionConfig;
     navigation: ActivatedNavigation | undefined;
+    flatIslands: ActivatedFlatIslands | undefined;
     flatNavigation: FlatNavigationEmitter | undefined;
     initialUrl: string;
 }): Promise<SessionHandle> {
-    const { framework, session, navigation, flatNavigation, initialUrl } = args;
+    const { framework, session, navigation, flatIslands, flatNavigation, initialUrl } = args;
 
     const currentUrl = (): string => window.location.pathname + window.location.search;
-    const adapter = navigation
-        ? createNavigationSessionAdapter(navigation.controller, currentUrl)
+    // 结构化导航与 flat-islands 都持有一个真实 NavigationController + 订阅式 handle，走同一条路径。
+    const navController = navigation?.controller ?? flatIslands?.controller;
+    const navHandle = navigation?.handle ?? flatIslands?.handle;
+    const adapter = navController
+        ? createNavigationSessionAdapter(navController, currentUrl)
         : createUrlSessionAdapter({
               currentUrl,
               navigate: (url) => framework.perform(makeFlowAction(url)),
           });
 
-    const subscribeNavigation = navigation
-        ? (onChange: () => void): (() => void) => navigation.handle.subscribe(() => onChange())
+    const subscribeNavigation = navHandle
+        ? (onChange: () => void): (() => void) => navHandle.subscribe(() => onChange())
         : flatNavigation
           ? (onChange: () => void): (() => void) => flatNavigation.subscribe(onChange)
           : undefined;
