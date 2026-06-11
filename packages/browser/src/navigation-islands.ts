@@ -14,19 +14,14 @@
 
 import {
     collectAllLeaves,
+    islandContainerAttributes,
     sessionEntryKey,
     type BasePage,
     type NavigationSnapshot,
-    type RouteParams,
+    type ResolvedEntry,
 } from "@finesoft/core";
 
-/** 交给 `mountEntry` 的单条目解析结果。 */
-export interface ResolvedEntry {
-    readonly intent: string;
-    readonly params: RouteParams;
-    readonly entryKey: string;
-    readonly page: BasePage;
-}
+export type { ResolvedEntry } from "@finesoft/core";
 
 /** `mountEntry` 返回的 island 句柄。 */
 export interface IslandHandle {
@@ -80,6 +75,17 @@ function emit(
 export function createIslandOrchestrator(options: IslandOrchestratorOptions): IslandOrchestrator {
     const { outlet, mountEntry } = options;
     const mounted = new Map<string, MountedIsland>();
+    let booted = false; // 仅首次 sync 收养 SSR 标记
+
+    /** 收集 outlet 内既有 SSR island 容器（按 data-fs-key）。 */
+    function collectSsrContainers(): Map<string, HTMLElement> {
+        const map = new Map<string, HTMLElement>();
+        for (const el of outlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) {
+            const key = el.getAttribute("data-fs-key");
+            if (key !== null) map.set(key, el);
+        }
+        return map;
+    }
 
     const schedule =
         options.schedule ??
@@ -152,6 +158,8 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
     }
 
     function sync(snapshot: NavigationSnapshot): void {
+        const ssr = booted ? null : collectSsrContainers(); // 仅首次
+
         const presentKeys = new Set(
             collectAllLeaves(snapshot.tree).map((l) => sessionEntryKey(l.intent, l.params)),
         );
@@ -161,8 +169,7 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
             if (!presentKeys.has(key)) teardown(key, island);
         }
 
-        // 2) 确保每个可见目标已挂载（首次可见才挂），并按序 attach。
-        //    若 page 引用变化（controller.refresh 产出新 page），先 teardown 再重挂。
+        // 2) 确保每个可见目标已挂载（命中 SSR 容器则收养水合，否则新建）。
         const visibleKeys: string[] = [];
         for (const d of snapshot.destinations) {
             const key = sessionEntryKey(d.intent, d.params);
@@ -172,26 +179,35 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
                 teardown(key, existing); // page 变了（refresh）→ 重挂拿新 page
             }
             if (!mounted.has(key)) {
-                const container = document.createElement("div");
-                container.setAttribute("data-fs-entry", "");
-                container.setAttribute("data-fs-intent", d.intent);
-                container.setAttribute("data-fs-key", key);
+                const adopted = ssr?.get(key);
+                const container = adopted ?? document.createElement("div");
+                if (adopted === undefined) {
+                    for (const [k, v] of Object.entries(islandContainerAttributes(d.intent, key))) {
+                        container.setAttribute(k, v);
+                    }
+                } else {
+                    ssr?.delete(key); // 已收养，移出待清理集
+                }
                 const entry: ResolvedEntry = {
                     intent: d.intent,
                     params: d.params,
                     entryKey: key,
                     page: d.page,
+                    hydrate: adopted !== undefined,
                 };
                 const handle = mountEntry(entry, container);
                 mounted.set(key, {
                     container,
                     handle,
-                    attached: false,
+                    attached: adopted !== undefined, // 收养的容器已在 outlet
                     entered: false,
                     page: d.page,
                 });
             }
         }
+
+        // 2.5) 首次：移除未收养的孤儿 SSR 容器（不属于任何可见目标）。
+        if (ssr) for (const el of ssr.values()) el.remove();
 
         // 3) detach 掉 present-但-不可见的 island（保活）。
         const visibleSet = new Set(visibleKeys);
@@ -199,9 +215,7 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
             if (!visibleSet.has(key)) conceal(island);
         }
 
-        // 4) 按 destinations 顺序 attach/reorder 可见 island（appendChild 已在则移动 → 重排）。
-        //    事件须在 appendChild **之后**派发：在已分离的节点上 fs:* 冒泡不到 outlet，outlet 委托监听就收不到。
-        //    首次 fs:enter（entered 守卫，每实例一次），再对「本次由 detach 转 attach」者派发 fs:reveal。
+        // 4) 按 destinations 顺序 attach/reorder 可见 island。
         for (const key of visibleKeys) {
             const island = mounted.get(key);
             if (island === undefined) continue;
@@ -217,6 +231,8 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
                 restoreScroll(island);
             }
         }
+
+        booted = true;
     }
 
     function dispose(): void {

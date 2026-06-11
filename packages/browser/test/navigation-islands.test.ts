@@ -273,6 +273,81 @@ describe("island orchestrator — page 变化 remount", () => {
 // Task 3: 滚动 conceal/reveal 往返
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Task 4 (SSR 收养): orchestrator 首次 sync 收养 SSR island 容器
+// ---------------------------------------------------------------------------
+
+describe("createIslandOrchestrator — SSR 收养水合（首次 sync）", () => {
+    function destSnapshot(intent: string, params: Record<string, unknown>, page: unknown) {
+        return {
+            tree: { kind: "leaf", intent, params },
+            destinations: [{ intent, params, page }],
+        } as never;
+    }
+
+    test("命中既有 SSR 容器 → 收养（hydrate:true、复用容器、不新建）", () => {
+        const outlet = new FakeElement("main");
+        const key = sessionEntryKey("home", {});
+        const ssrDiv = new FakeElement("div");
+        ssrDiv.setAttribute("data-fs-entry", "");
+        ssrDiv.setAttribute("data-fs-intent", "home");
+        ssrDiv.setAttribute("data-fs-key", key);
+        outlet.appendChild(ssrDiv);
+
+        const seen: Array<{ container: unknown; hydrate?: boolean }> = [];
+        const orch = createIslandOrchestrator({
+            outlet: outlet as never,
+            mountEntry: (entry, container) => {
+                seen.push({ container, hydrate: entry.hydrate });
+                return { unmount() {} };
+            },
+            schedule: (cb) => cb(),
+        });
+        orch.sync(destSnapshot("home", {}, { id: "home" }));
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0].hydrate).toBe(true);
+        expect(seen[0].container).toBe(ssrDiv); // 复用 SSR 容器
+        expect(outlet.querySelectorAll("[data-fs-entry]")).toHaveLength(1); // 未新建额外容器
+    });
+
+    test("无 SSR 标记 → 回退新建（hydrate falsy、新容器）", () => {
+        const outlet = new FakeElement("main");
+        const seen: Array<{ hydrate?: boolean }> = [];
+        const orch = createIslandOrchestrator({
+            outlet: outlet as never,
+            mountEntry: (entry) => {
+                seen.push({ hydrate: entry.hydrate });
+                return { unmount() {} };
+            },
+            schedule: (cb) => cb(),
+        });
+        orch.sync(destSnapshot("home", {}, { id: "home" }));
+        expect(seen[0].hydrate).toBeFalsy();
+        expect(outlet.querySelectorAll("[data-fs-entry]")).toHaveLength(1);
+    });
+
+    test("孤儿 SSR 容器（不在可见集）→ 首次 sync 丢弃", () => {
+        const outlet = new FakeElement("main");
+        const stale = new FakeElement("div");
+        stale.setAttribute("data-fs-entry", "");
+        stale.setAttribute("data-fs-intent", "old");
+        stale.setAttribute("data-fs-key", sessionEntryKey("old", {}));
+        outlet.appendChild(stale);
+
+        const orch = createIslandOrchestrator({
+            outlet: outlet as never,
+            mountEntry: () => ({ unmount() {} }),
+            schedule: (cb) => cb(),
+        });
+        orch.sync(destSnapshot("home", {}, { id: "home" }));
+        const keys = outlet
+            .querySelectorAll("[data-fs-entry]")
+            .map((el: FakeElement) => el.getAttribute("data-fs-key"));
+        expect(keys).toEqual([sessionEntryKey("home", {})]);
+    });
+});
+
 describe("island orchestrator — 滚动 conceal/reveal 往返", () => {
     test("conceal 记录 scrollTop，reveal 重放", () => {
         const outlet = document.createElement("div") as unknown as HTMLElement;
