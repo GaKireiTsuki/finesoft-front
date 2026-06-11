@@ -115,6 +115,8 @@ git checkout templates/vue-minimal/src/ssr.ts templates/vue-minimal/src/main.ts
 
 > **Gate:** 若 spike 发现 Vue 水合有意外（mismatch、节点被清），先在此就地调整方案（不影响 core/ssr/browser 的 UI 无关契约），再进入 Task 2。
 
+> **Spike 结论（2026-06-11 已执行）：** ✅ 方案 C 结构成立（chrome 挂 sibling `[data-fs-chrome]`、outlet 为兄弟、二者同 `#app` 下）；✅ **Vue island `createSSRApp(view).mount(ssrDiv)` 水合干净**（island 内容首屏在、input 可交互、`entryCount=1`、**无 island 失配警告**）。⚠️ **发现：chrome 真水合时 App.vue 有 props parity 失配** —— `<label v-if="state">` 在 SSR（`createSSRApp(App)` 不传 props → state undefined）与客户端（传 state、truthy）不一致。当前 demo 用 `createApp().mount()`（客户端重渲、丢 SSR 标记）掩盖了它；方案 C 要真水合 chrome → **Task 6 须让 SSR 用与客户端 hydrate 时相同的初始 state 渲 App**（见 Task 6 Step 2）。框架层（Task 2-5）不受影响。
+
 ---
 
 ### Task 2: core —— `ResolvedEntry`（移入 + `hydrate?`）+ `islandContainerAttributes`
@@ -656,7 +658,14 @@ export const render = createSSRNavigationRender({
         return { id: "error", pageType: "error", title: `Error ${status}`, description: message };
     },
     async renderApp(page, _framework, snapshot) {
-        const chromeHtml = await renderToString(createSSRApp(App));
+        // chrome 水合 props parity（spike 发现）：SSR 必须用与客户端 hydrate 时**相同**的初始 state
+        // 渲 App，否则 App.vue 的 `v-if="state"`（name label 等）server/client 不一致 → hydration
+        // mismatch。客户端 hydrate 时 state = { snapshot: null, name: "" }（onNavigationReady /
+        // session 恢复都在水合**之后**才填），故 SSR 传同形初始值。controller 仅用于事件处理器
+        // （`controller?.`），不影响渲染 DOM，SSR 可省。
+        const chromeHtml = await renderToString(
+            createSSRApp(App, { state: { snapshot: null, name: "" } }),
+        );
         const islandsHtml = await renderIslandsHtml(snapshot, (entry: ResolvedEntry) =>
             renderToString(createSSRApp(VIEWS[entry.intent] ?? HomeView, { page: entry.page })),
         );
