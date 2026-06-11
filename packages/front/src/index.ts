@@ -1,46 +1,9 @@
 /// <reference types="./shims/server-peer-modules.d.ts" />
 
-// ===== Core =====
-export * from "@finesoft/core";
-
-// ===== Browser (unique exports only) =====
-export {
-    History,
-    SESSION_DEFAULT_DEBOUNCE_MS,
-    createDomRestore,
-    createIslandOrchestrator,
-    createNavigationBridge,
-    createPrefetchedIntentsFromDom,
-    createSessionBridge,
-    createWebStorage,
-    defaultShouldRestore,
-    deserializeServerData,
-    registerActionHandlers,
-    registerExternalUrlHandler,
-    registerFlowActionHandler,
-    startBrowserApp,
-    tryScroll,
-} from "@finesoft/browser";
-export type {
-    ActionHandlerDependencies,
-    BrowserAppConfig,
-    BrowserNavigationConfig,
-    BrowserSessionConfig,
-    DomRestore,
-    DomRestoreOptions,
-    ExternalUrlDependencies,
-    FlowActionCallbacks,
-    FlowActionDependencies,
-    IslandHandle,
-    IslandOrchestrator,
-    IslandOrchestratorOptions,
-    MountEntry,
-    NavigationBridgeDependencies,
-    NavigationHandle,
-    SessionBridgeOptions,
-    SessionHandle,
-} from "@finesoft/browser";
-// 注：ResolvedEntry 已移入 @finesoft/core，经上面的 `export * from "@finesoft/core"` 透出。
+// ===== Core + Browser =====
+// 复用 browser-only 入口（src/browser.ts），避免两个入口重复维护同一份 core+browser 导出清单。
+// index 在其之上再叠加 SSR + Server；browser 入口刻意排除 server 代码（见 src/browser.ts）。
+export * from "./browser";
 
 // ===== SSR (unique exports only) =====
 export {

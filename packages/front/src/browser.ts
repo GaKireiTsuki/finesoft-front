@@ -38,7 +38,7 @@ export type {
     MountEntry,
     NavigationBridgeDependencies,
     NavigationHandle,
-    ResolvedEntry,
     SessionBridgeOptions,
     SessionHandle,
 } from "@finesoft/browser";
+// ResolvedEntry 已移入 @finesoft/core，经上面的 `export * from "@finesoft/core"` 透出（勿在此重复列）。
