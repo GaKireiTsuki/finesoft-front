@@ -8,6 +8,7 @@ export * from "@finesoft/core";
 export {
     History,
     SESSION_DEFAULT_DEBOUNCE_MS,
+    createIslandOrchestrator,
     createNavigationBridge,
     createPrefetchedIntentsFromDom,
     createSessionBridge,
@@ -28,8 +29,13 @@ export type {
     ExternalUrlDependencies,
     FlowActionCallbacks,
     FlowActionDependencies,
+    IslandHandle,
+    IslandOrchestrator,
+    IslandOrchestratorOptions,
+    MountEntry,
     NavigationBridgeDependencies,
     NavigationHandle,
+    ResolvedEntry,
     SessionBridgeOptions,
     SessionHandle,
 } from "@finesoft/browser";
