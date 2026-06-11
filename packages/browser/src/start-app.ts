@@ -40,6 +40,7 @@ import {
 } from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
 import { createDomRestore } from "./dom-restore";
+import { activateFlatIslands, type ActivatedFlatIslands } from "./flat-islands";
 import { createIslandOrchestrator, type MountEntry } from "./navigation-islands";
 import { createNavigationBridge, type NavigationHandle } from "./navigation-bridge";
 import { createPrefetchedIntentsFromDom } from "./server-data";
@@ -200,6 +201,17 @@ export interface BrowserAppConfig {
      * 重载后回填。缺省关闭。
      */
     domRestore?: boolean;
+
+    /**
+     * 顶层 islands 挂载原语（flat-islands opt-in，Phase 4）。
+     *
+     * 提供此字段且**未提供** `navigation` 时，框架合成一个隐式单栈 `NavigationController`，
+     * 把 `FlowAction` 正向导航路由为 `controller.push`，`popstate` 路由为 `hydrate`，
+     * island 实例在 back/forward 时保活不重挂。
+     *
+     * 提供了 `navigation` 时请使用 `navigation.mountEntry`，顶层该字段被忽略。
+     */
+    mountEntry?: MountEntry;
 }
 
 /**
@@ -277,24 +289,60 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     //    给会话监听器。仅在该场景包装 callbacks；其余情形透传原对象，启动路径字节级不变。
     const flatNavigation =
         config.session && !config.navigation ? createNavigationEmitter() : undefined;
+
+    // flat-islands：deferred-ref，由下方 activateFlatIslands 填充后供 onForward 使用。
+    // onForward 本身在 registerActionHandlers 调用时就已绑定（闭包捕获 ref），
+    // 而 flatPush 在 activateFlatIslands 完成后才非 undefined——这是正确的：
+    // onForward 只会在用户触发 FlowAction 时调用，彼时启动流程早已完成。
+    let flatPush: ((url: string) => Promise<void>) | undefined;
+
     registerActionHandlers({
         framework,
         log,
         callbacks: flatNavigation ? flatNavigation.wrap(callbacks) : callbacks,
         updateApp,
         getScrollablePageElement: config.getScrollablePageElement,
-        // 结构化导航下 history 由 NavigationBridge 独占；否则两套 History 争抢 window.history.state。
-        manageHistory: !config.navigation,
+        // 结构化导航 + flat-islands 下 history 由 NavigationBridge 独占；
+        // 否则两套 History 争抢 window.history.state。
+        manageHistory: !(config.navigation || config.mountEntry),
+        // flat-islands：正向 FlowAction 路由到隐式单栈 controller.push（bypass navigateTo）。
+        onForward:
+            config.mountEntry && !config.navigation
+                ? (url) => flatPush?.(url) ?? Promise.resolve()
+                : undefined,
     });
 
-    // 6. 触发初始页面
-    if (initialAction) {
-        await framework.perform(initialAction.action);
-    } else {
-        updateApp({
-            page: Promise.reject(new Error("404")),
-            isFirstPage: true,
+    // 5.5 flat-islands 激活（可选）—— 合成隐式单栈 + 编排器 + 首屏 island。
+    //     必须在 registerActionHandlers 之后（handler 已注册，action 可 dispatch），
+    //     在 step-6 perform 之前（避免双重渲染）。
+    let activatedFlatIslands: ActivatedFlatIslands | undefined;
+    if (config.mountEntry && !config.navigation) {
+        activatedFlatIslands = await activateFlatIslands({
+            framework,
+            initialUrl,
+            mountEntry: config.mountEntry,
+            target,
+            log,
+            getScrollablePageElement: config.getScrollablePageElement,
         });
+        // 用实际的 pushUrl 填充 deferred-ref，之后 onForward 就能用了。
+        flatPush = activatedFlatIslands.pushUrl;
+    }
+
+    // 6. 触发初始页面
+    //    flat-islands 下首屏已由 activateFlatIslands 内的 controller.resolve() 完成；
+    //    跳过 framework.perform 避免双重渲染。
+    //    结构化导航（config.navigation）不跳过：step-6 仍需驱动 updateApp 初始渲染（flat UI
+    //    side），activateNavigation 的 resolve() 是独立的 islands 通道，两者互不干扰。
+    if (!activatedFlatIslands) {
+        if (initialAction) {
+            await framework.perform(initialAction.action);
+        } else {
+            updateApp({
+                page: Promise.reject(new Error("404")),
+                isFirstPage: true,
+            });
+        }
     }
 
     // 6.5 结构化导航（可选）—— 仅当应用提供 navigation 定义时激活，
@@ -326,8 +374,10 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
 
     // 6.8 重载 DOM 自动恢复（opt-in）—— 需 islands outlet + session scope。
     // attach 在会话已恢复 scope（6.7）之后运行，内部 catch-up 回填 boot DOM。
-    if (config.domRestore && activatedNavigation?.outlet && sessionHandle) {
-        createDomRestore({ scope: sessionHandle.scope }).attach(activatedNavigation.outlet);
+    // 支持结构化导航（activatedNavigation.outlet）和 flat-islands（activatedFlatIslands.outlet）。
+    const islandsOutlet = activatedNavigation?.outlet ?? activatedFlatIslands?.outlet;
+    if (config.domRestore && islandsOutlet && sessionHandle) {
+        createDomRestore({ scope: sessionHandle.scope }).attach(islandsOutlet);
     }
 
     // 7. 启动后钩子

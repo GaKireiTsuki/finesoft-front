@@ -17,6 +17,8 @@ export interface ActionHandlerDependencies {
     getScrollablePageElement?: () => HTMLElement | null;
     /** 是否由 FlowAction handler 管理 history；结构化导航下传 `false`（见 registerFlowActionHandler）。 */
     manageHistory?: boolean;
+    /** flat-islands 正向导航钩子（透传给 registerFlowActionHandler）。 */
+    onForward?: (url: string) => void | Promise<void>;
 }
 
 export function registerActionHandlers(deps: ActionHandlerDependencies): void {
@@ -29,6 +31,7 @@ export function registerActionHandlers(deps: ActionHandlerDependencies): void {
         updateApp,
         getScrollablePageElement: deps.getScrollablePageElement,
         manageHistory: deps.manageHistory,
+        onForward: deps.onForward,
     });
 
     registerExternalUrlHandler({ framework, log });
