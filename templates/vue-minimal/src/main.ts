@@ -1,12 +1,16 @@
 import {
     startBrowserApp,
+    type MountEntry,
     type NavigationHandle,
     type NavigationSnapshot,
     type SessionHandle,
     type SessionStateProvider,
 } from "@finesoft/front";
-import { createApp, markRaw, reactive } from "vue";
+import { createApp, markRaw, reactive, type Component } from "vue";
 import App from "./App.vue";
+import HomeView from "./views/HomeView.vue";
+import DetailView from "./views/DetailView.vue";
+import NotesView from "./views/NotesView.vue";
 import { bootstrap, navigation } from "./bootstrap";
 
 /** 只把要渲染的数据放进 reactive；handle 是带闭包的复杂对象，留在模块作用域不被代理。 */
@@ -37,28 +41,37 @@ function makeController() {
             void navHandle?.push(intent, params),
         pop: () => void navHandle?.pop(),
         selectTab: (key: string) => void navHandle?.selectTab(key),
-        /** 导航作用域状态读写（每屏 per-entry）。 */
-        getScoped: (entryKey: string): unknown => sessionHandle?.scope.get(entryKey),
-        setScoped: (entryKey: string, data: unknown) => sessionHandle?.scope.set(entryKey, data),
         /** 手动落盘（全局切片改动后调；nav 变更已自动落盘）。 */
         save: () => void sessionHandle?.save(),
     });
 }
 const controller = makeController();
 
+/** intent → 视图组件。islands 按 entry 挂为独立 Vue app。 */
+const VIEWS: Record<string, Component> = { home: HomeView, detail: DetailView, notes: NotesView };
+
+const mountEntry: MountEntry = (entry, container) => {
+    const view = VIEWS[entry.intent] ?? HomeView;
+    const app = createApp(view, { page: entry.page, controller });
+    app.mount(container);
+    return { unmount: () => app.unmount() };
+};
+
 void startBrowserApp({
     bootstrap,
     mount(target: HTMLElement) {
         createApp(App, { state, controller }).mount(target);
-        // 结构化导航由下面的 snapshot 订阅驱动渲染，扁平 updateApp 在本模版不使用。
+        // chrome 由 snapshot 订阅驱动更新；islands 内容由 outlet 驱动，不需要 updateApp。
         return () => undefined;
     },
     callbacks: {
         onNavigate() {},
         onModal() {},
     },
-    // 结构化导航：TabView of NavigationStacks。
-    navigation: navigation.toBrowserConfig(),
+    // 结构化导航 + islands：每屏 per-entry 挂为独立 root、保活。
+    navigation: { ...navigation.toBrowserConfig(), mountEntry },
+    // 重载 DOM 自动恢复：data-restore-root 内字段/滚动自动捕获回填。
+    domRestore: true,
     onNavigationReady(handle) {
         navHandle = handle;
         state.snapshot = handle.getSnapshot();

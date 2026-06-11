@@ -1,28 +1,11 @@
 <script setup lang="ts">
-import { type BasePage, isStackNode, isTabsNode, sessionEntryKey } from "@finesoft/front";
-import { computed, ref, watch } from "vue";
+import { isStackNode, isTabsNode } from "@finesoft/front";
+import { computed } from "vue";
 import type { AppController, AppState } from "./main";
-import type { FeedPage } from "./lib/controllers/home";
 
-const {
-    state,
-    controller,
-    page: ssrPage,
-} = defineProps<{
-    state?: AppState;
-    controller?: AppController;
-    page?: BasePage; // SSR：主目标页面
-}>();
+const { state, controller } = defineProps<{ state?: AppState; controller?: AppController }>();
 
-const snapshot = computed(() => state?.snapshot ?? null);
-const tree = computed(() => snapshot.value?.tree ?? null);
-
-/** 当前可见目标（激活叶子）= snapshot.destinations[0]；SSR 回退到 page prop。 */
-const destination = computed(() => snapshot.value?.destinations[0] ?? null);
-const page = computed<BasePage | null>(
-    () => (destination.value?.page as BasePage) ?? ssrPage ?? null,
-);
-const feed = computed(() => (page.value?.pageType === "home" ? (page.value as FeedPage) : null));
+const tree = computed(() => state?.snapshot?.tree ?? null);
 
 /** Tab bar（tree 为 tabs 节点时）。 */
 const tabs = computed(() => {
@@ -39,29 +22,13 @@ const canGoBack = computed(() => {
     return !!branch && isStackNode(branch) && branch.entries.length > 1;
 });
 
-// ---- 全局切片：名字（跨 tab / 跨重载）----
+/** 全局切片：名字（跨 tab / 跨重载）。 */
 const name = computed({
     get: () => state?.name ?? "",
     set: (v) => {
         if (state) state.name = v;
     },
 });
-
-// ---- 导航作用域状态：每屏一份，pop 即丢、push 保留底层屏 ----
-const entryKey = computed(() =>
-    destination.value ? sessionEntryKey(destination.value.intent, destination.value.params) : null,
-);
-const scopedNote = ref("");
-watch(
-    entryKey,
-    (key) => {
-        scopedNote.value = (key ? (controller?.getScoped(key) as string | undefined) : "") ?? "";
-    },
-    { immediate: true },
-);
-function onScopedInput(): void {
-    if (entryKey.value) controller?.setScoped(entryKey.value, scopedNote.value);
-}
 </script>
 
 <template>
@@ -88,35 +55,11 @@ function onScopedInput(): void {
             </button>
         </nav>
 
-        <main v-if="page">
-            <button v-if="canGoBack" style="margin-bottom: 0.5rem" @click="controller?.pop()">
-                ← Back
-            </button>
-            <h1 style="margin: 0 0 0.25rem">{{ page.title }}</h1>
-            <p style="color: #666; margin: 0 0 1rem">{{ page.description }}</p>
+        <button v-if="canGoBack" style="margin-bottom: 0.5rem" @click="controller?.pop()">
+            ← Back
+        </button>
 
-            <!-- NavigationStack push：feed 列表 -->
-            <ul v-if="feed" style="list-style: none; padding: 0; display: grid; gap: 0.5rem">
-                <li v-for="item in feed.items" :key="item.id">
-                    <button
-                        style="width: 100%; text-align: left"
-                        @click="controller?.push('detail', { id: item.id })"
-                    >
-                        {{ item.title }} →
-                    </button>
-                </li>
-            </ul>
-
-            <!-- 导航作用域输入：每屏一份，随屏保留 / 丢弃 -->
-            <label v-if="controller" style="display: block; margin-top: 1rem">
-                Scoped note for this screen:
-                <input
-                    v-model="scopedNote"
-                    placeholder="kept while this screen stays in the stack"
-                    style="width: 100%"
-                    @input="onScopedInput"
-                />
-            </label>
-        </main>
+        <!-- islands 内容由框架挂进此 outlet（稳定、空、不加 v-if） -->
+        <main data-fs-outlet></main>
     </div>
 </template>
