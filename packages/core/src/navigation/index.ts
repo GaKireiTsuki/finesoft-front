@@ -73,6 +73,7 @@ export {
 // ===== Codec（URL 编解码）=====
 export {
     createActiveLeafCodec,
+    createFlatStackCodec,
     createFullStateCodec,
     decodeNavigationTreeParam,
     DEFAULT_NAV_PARAM,

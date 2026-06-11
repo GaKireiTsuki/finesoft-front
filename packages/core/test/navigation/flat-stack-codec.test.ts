@@ -1,8 +1,7 @@
-import { Router, leaf, stack } from "@finesoft/core";
-import { describe, expect, test, vi } from "vite-plus/test";
-import { createFlatStackCodec } from "../src/flat-stack-codec";
-
-vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
+import { describe, expect, test } from "vite-plus/test";
+import { createFlatStackCodec } from "../../src/navigation/codec";
+import { leaf, stack } from "../../src/navigation/nodes";
+import { Router } from "../../src/router/router";
 
 describe("flat stack codec", () => {
     test("decode：可路由 URL → 单叶栈", () => {

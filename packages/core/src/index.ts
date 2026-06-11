@@ -128,6 +128,7 @@ export {
     collectAllLeaves,
     collectVisibleDestinations,
     createActiveLeafCodec,
+    createFlatStackCodec,
     createFullStateCodec,
     createNavigationController,
     decodeNavigationTreeParam,

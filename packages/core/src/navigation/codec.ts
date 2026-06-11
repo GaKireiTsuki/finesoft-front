@@ -23,7 +23,7 @@
 
 import { stableStringify } from "../prefetched-intents/stable-stringify";
 import type { RouteParams } from "../router/types";
-import { isLeafNode } from "./nodes";
+import { isLeafNode, leaf, stack } from "./nodes";
 import { findNode, resolveActivePath } from "./operations";
 import { deserializeNavigation, serializeNavigation } from "./serialization";
 import { NavigationError, type NavigationNode } from "./types";
@@ -383,6 +383,93 @@ export function createFullStateCodec(options: FullStateCodecOptions = {}): Navig
             const encoded = query.get(param);
             if (encoded === null || encoded === "") return undefined;
             return decodeNavigationTreeParam(encoded);
+        },
+    };
+}
+
+// =====================================================================
+// createFlatStackCodec（扁平栈）
+// =====================================================================
+
+/**
+ * 从 pattern 字符串重建正则 + 参数名列表，用于 decode 侧的同步 URL 匹配。
+ *
+ * 注意：分段正则 `/(\/:[\w]+\??)/` 与 `substitutePattern`（encode 侧）完全一致，
+ * 保证 `:param` / `:param?` 语法在 encode 与 decode 之间共享同一套解释——两者均基于此分割。
+ */
+function compilePattern(pattern: string): { regex: RegExp; paramNames: string[] } {
+    const paramNames: string[] = [];
+    const regexStr = pattern
+        .split(/(\/:[\w]+\??)/)
+        .map((segment) => {
+            const m = segment.match(/^\/:(\w+)(\?)?$/);
+            if (m) {
+                paramNames.push(m[1]);
+                return m[2] ? "(?:/([^/]+))?" : "/([^/]+)";
+            }
+            return segment.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+        })
+        .join("");
+    return { regex: new RegExp(`^${regexStr}/?$`), paramNames };
+}
+
+interface CompiledRoute extends ParsedRoute {
+    readonly regex: RegExp;
+    readonly paramNames: string[];
+}
+
+function compileRoutes(router: NavigationRouterLike): CompiledRoute[] {
+    return parseRouteSummaries(router).map((r) => {
+        const { regex, paramNames } = compilePattern(r.pattern);
+        return { ...r, regex, paramNames };
+    });
+}
+
+/**
+ * 同步 URL → { intentId, params }，使用 `parseUrlParts` 拆分 path+query（复用现有工具）。
+ * flat-islands 的合法 URL 不含自定义 paramCodec，所以字符串提取即可，不需要异步校验。
+ */
+function syncMatch(
+    url: string,
+    routes: CompiledRoute[],
+): { intentId: string; params: Record<string, string> } | undefined {
+    const { path, query } = parseUrlParts(url);
+    const queryParams = Object.fromEntries(query);
+    for (const route of routes) {
+        const m = path.match(route.regex);
+        if (!m) continue;
+        const params: Record<string, string> = Object.assign(Object.create(null), queryParams);
+        for (let i = 0; i < route.paramNames.length; i++) {
+            const raw = m[i + 1];
+            if (raw !== undefined) params[route.paramNames[i]] = raw;
+        }
+        return { intentId: route.intentId, params };
+    }
+    return undefined;
+}
+
+/**
+ * 扁平栈 codec —— flat-islands 用：URL ↔ 单叶栈。
+ *
+ * - `decode(url, router)`：同步把 URL 匹配成单叶意图，返回 `stack([leaf(intent, params)])`；
+ *   不可路由时返回 `undefined`（调用方保留当前树，与 createActiveLeafCodec 约定一致）。
+ * - `encode(tree, router)`：取激活叶子（activeLeaf）的 intent + params 反查 URL；
+ *   无对应路由时回退 `"/"`。
+ *
+ * 全部复用本模块已有 helper：`parseRouteSummaries`、`parseUrlParts`、`reverseUrl`、`activeLeaf`。
+ */
+export function createFlatStackCodec(): NavigationCodec {
+    return {
+        decode(url, router) {
+            const routes = compileRoutes(router);
+            const match = syncMatch(url, routes);
+            if (!match) return undefined;
+            return stack([leaf(match.intentId, match.params)]);
+        },
+        encode(tree, router) {
+            const target = activeLeaf(tree);
+            if (target === undefined) return "/";
+            return reverseUrl(router, target.intent, target.params) ?? "/";
         },
     };
 }
