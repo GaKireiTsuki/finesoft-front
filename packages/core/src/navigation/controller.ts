@@ -264,6 +264,13 @@ export interface NavigationController {
     ): Promise<NavigationSnapshot>;
     /** 用外部树替换当前树并重解析（history/URL 还原）。 */
     hydrate(tree: NavigationNode): Promise<NavigationSnapshot>;
+    /**
+     * 清除页面缓存：给 `entryKey`（= `sessionEntryKey(intent, params)`）清单个，
+     * 不传清全部。仅清缓存、不触发重解析——该条目下次被解析时重新 dispatch。
+     */
+    invalidate(entryKey?: string): void;
+    /** 清当前激活叶子的缓存并重解析当前树（「下拉刷新」式：守卫跑、数据重 fetch）。 */
+    refresh(): Promise<NavigationSnapshot>;
     /** 订阅快照变更；返回取消订阅函数。 */
     subscribe(listener: (snapshot: NavigationSnapshot) => void): () => void;
     /** 解析当前树（首屏 SSR/CSR），提交并返回快照。 */
@@ -281,7 +288,7 @@ export interface PushOptions {
 
 /** 可见目标的稳定身份键：intent + 稳定序列化的 params。 */
 function destinationKey(intent: string, params: RouteParams): string {
-    return `${intent} ${stableStringify(params)}`;
+    return `${intent} ${stableStringify(params)}`;
 }
 
 /** 默认兜底错误页（应用未提供 getErrorPage 时）。 */
@@ -382,6 +389,8 @@ export function createNavigationController(
             }
         }
 
+        // 注意：若 beforeLoad 改写了 intent/params，这里按解析后键写入，可能与树键（仍是改写前的 leaf）
+        // 不同 → 会被下面的 prune 即时清除。这是有意的：改写后的页面不缓存、不复用。
         // 写穿 + prune。
         for (const d of destinations) {
             const k = destinationKey(d.intent, d.params);
@@ -643,6 +652,23 @@ export function createNavigationController(
         },
         hydrate(nextTree) {
             return apply({ kind: NAVIGATION_OP_KINDS.HYDRATE, tree: nextTree });
+        },
+        invalidate(entryKey) {
+            if (entryKey === undefined) {
+                pageCache.clear();
+            } else {
+                pageCache.delete(entryKey);
+            }
+        },
+        refresh() {
+            return enqueue(async () => {
+                const active = findActiveLeaf(tree);
+                if (active) {
+                    pageCache.delete(destinationKey(active.intent, active.params));
+                }
+                const next = await resolveTree(tree);
+                return commit(next);
+            });
         },
         subscribe(listener) {
             listeners.add(listener);

@@ -1212,3 +1212,59 @@ describe("setVisibility 影响可见集与派发", () => {
         expect(snap.destinations.map((d) => d.intent)).toEqual(["message"]);
     });
 });
+
+// =====================================================================
+// invalidate / refresh：opt-in 取新鲜数据
+// =====================================================================
+
+describe("invalidate / refresh", () => {
+    test("refresh 重新 dispatch 当前激活叶子（清其缓存 + 重解析）", async () => {
+        const calls: string[] = [];
+        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) }, calls);
+        const controller = createNavigationController(
+            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("home")) }),
+        );
+        await controller.resolve(); // [home]
+
+        const snap = await controller.refresh();
+
+        expect(calls).toEqual(["home", "home"]); // active leaf 重新 dispatch
+        expect(snap.destinations[0].intent).toBe("home");
+    });
+
+    test("invalidate(entryKey) 使该条目下次 reveal 时重新 dispatch", async () => {
+        const calls: string[] = [];
+        const dispatcher = makeDispatcher(
+            { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
+            calls,
+        );
+        const controller = createNavigationController(
+            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+        );
+        await controller.resolve();
+        await controller.push("detail");
+
+        controller.invalidate(sessionEntryKey("root", {})); // 清 root 缓存
+        await controller.pop(); // root 被 invalidate → 重新 dispatch（而非复用）
+
+        expect(calls).toEqual(["root", "detail", "root"]);
+    });
+
+    test("invalidate() 无参清空整个缓存", async () => {
+        const calls: string[] = [];
+        const dispatcher = makeDispatcher(
+            { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
+            calls,
+        );
+        const controller = createNavigationController(
+            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+        );
+        await controller.resolve();
+        await controller.push("detail");
+
+        controller.invalidate(); // 清全部
+        await controller.pop();
+
+        expect(calls).toEqual(["root", "detail", "root"]);
+    });
+});
