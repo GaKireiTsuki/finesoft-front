@@ -2,28 +2,35 @@
  * Minimal headless DOM stubs for browser package tests.
  *
  * The project has no jsdom / happy-dom. These classes replicate just enough of
- * the HTMLElement / CustomEvent / document surface that `navigation-islands.ts`
- * and `start-app.ts` (islands path) need.
+ * the HTMLElement / CustomEvent / Event / document surface that
+ * `navigation-islands.ts`, `dom-restore.ts`, and `start-app.ts` (islands path)
+ * need.
  *
  * Usage:
  *   import { FakeElement, FakeCustomEvent, makeFakeDocument, stubDomGlobals } from "./fake-dom";
  *   // in test file top-level (before imports that need the globals):
- *   stubDomGlobals(); // registers vi.stubGlobal for CustomEvent + document
+ *   stubDomGlobals(); // registers vi.stubGlobal for CustomEvent + Event + document
  */
 
 import { vi } from "vite-plus/test";
 
 // ---------------------------------------------------------------------------
-// CustomEvent stub
+// Event stubs (base Event + CustomEvent)
 // ---------------------------------------------------------------------------
 
-export class FakeCustomEvent {
+export class FakeEvent {
     readonly type: string;
     readonly bubbles: boolean;
     target: FakeElement | null = null;
     constructor(type: string, init?: { bubbles?: boolean }) {
         this.type = type;
         this.bubbles = init?.bubbles ?? false;
+    }
+}
+
+export class FakeCustomEvent extends FakeEvent {
+    constructor(type: string, init?: { bubbles?: boolean }) {
+        super(type, init);
     }
 }
 
@@ -35,18 +42,44 @@ export class FakeElement {
     readonly tagName: string;
     private _attrs: Map<string, string> = new Map();
     private _children: FakeElement[] = [];
-    private _parent: FakeElement | null = null;
-    private _handlers: Map<string, ((e: FakeCustomEvent) => void)[]> = new Map();
+    _parent: FakeElement | null = null;
+    private _handlers: Map<string, ((e: FakeEvent) => void)[]> = new Map();
     textContent = "";
     scrollTop = 0;
     scrollLeft = 0;
+
+    /** Form / input properties */
+    value = "";
+    checked = false;
+    open = false; // <details>
 
     constructor(tag: string) {
         this.tagName = tag.toUpperCase();
     }
 
+    /** `type` attribute (input[type=...]); defaults to "text". */
+    get type(): string {
+        return this._attrs.get("type") ?? "text";
+    }
+
+    /** `id` attribute. */
+    get id(): string {
+        return this._attrs.get("id") ?? "";
+    }
+
+    /** `name` attribute. */
+    get name(): string {
+        return this._attrs.get("name") ?? "";
+    }
+
     setAttribute(name: string, value: string): void {
         this._attrs.set(name, value);
+        // Keep `value`/`checked`/`open` props in sync with attribute setting (initial set).
+        // Real DOM: setting value/checked props does NOT write back to attr, but setAttribute
+        // DOES set the *default* value. We mirror that for initial construction.
+        if (name === "value") this.value = value;
+        if (name === "checked") this.checked = true; // presence = checked
+        if (name === "open") this.open = true; // presence = open
     }
 
     getAttribute(name: string): string | null {
@@ -77,28 +110,46 @@ export class FakeElement {
         this._parent?.removeChild(this);
     }
 
-    /** Returns the first element matching the selector, or null. */
+    /** Returns the first element matching the selector in BFS document order, or null. */
     querySelector(selector: string): FakeElement | null {
-        const results = this.querySelectorAll(selector);
-        return results[0] ?? null;
+        return this.querySelectorAll(selector)[0] ?? null;
     }
 
-    /** Supports exact-attribute-match selectors: [attr] and [attr="value"]. */
+    /**
+     * BFS traversal in document order.
+     * Supported selector syntax:
+     *   - bare tag:               "input", "details"
+     *   - attribute presence:     "[data-foo]"
+     *   - attribute value:        "[data-foo="bar"]"
+     *   - tag + attribute:        "input[name="x"]", "details[data-restore-key="k"]"
+     *   - comma-OR list:          "input, textarea, select"
+     *   - combined attr selectors: `[data-restore-key="x"], [name="x"]`
+     */
     querySelectorAll(selector: string): FakeElement[] {
         const results: FakeElement[] = [];
+        // BFS queue — shift() keeps document order
         const queue: FakeElement[] = [...this._children];
         while (queue.length > 0) {
-            const el = queue.pop()!;
-            if (matchesSelector(el, selector)) results.unshift(el);
+            const el = queue.shift()!;
+            if (matchesSelector(el, selector)) results.push(el);
             queue.push(...el._children);
         }
         return results;
     }
 
-    addEventListener(type: string, handler: (e: FakeCustomEvent) => void): void {
+    addEventListener(type: string, handler: (e: FakeEvent) => void): void {
         const list = this._handlers.get(type) ?? [];
         list.push(handler);
         this._handlers.set(type, list);
+    }
+
+    removeEventListener(type: string, handler: (e: FakeEvent) => void): void {
+        const list = this._handlers.get(type);
+        if (!list) return;
+        this._handlers.set(
+            type,
+            list.filter((h) => h !== handler),
+        );
     }
 
     /**
@@ -106,7 +157,7 @@ export class FakeElement {
      * Faithfully models { bubbles: true } — event.target is set to the
      * originating element (the container the orchestrator dispatches on).
      */
-    dispatchEvent(event: FakeCustomEvent): void {
+    dispatchEvent(event: FakeEvent): void {
         event.target = this;
         // Walk from dispatch target up through ancestors, invoking handlers.
         // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -118,6 +169,20 @@ export class FakeElement {
             }
             current = event.bubbles ? current._parent : null;
         }
+    }
+
+    /**
+     * Walk self → ancestors returning the first element that matches `selector`.
+     * Returns null if no ancestor matches.
+     */
+    closest(selector: string): FakeElement | null {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        let el: FakeElement | null = this;
+        while (el !== null) {
+            if (matchesSelector(el, selector)) return el;
+            el = el._parent;
+        }
+        return null;
     }
 
     get children(): FakeElement[] {
@@ -133,35 +198,46 @@ export class FakeElement {
 // Selector matching helpers
 // ---------------------------------------------------------------------------
 
-/** Match a single CSS selector token against a FakeElement (supports [attr] and [attr="val"]). */
+/**
+ * Match a selector string (possibly comma-separated) against a FakeElement.
+ * Returns true if ANY comma-part matches.
+ */
 function matchesSelector(el: FakeElement, selector: string): boolean {
-    // handle comma-joined selectors by splitting and OR-ing
     for (const part of selector.split(",").map((s) => s.trim())) {
         if (matchesSingleSelector(el, part)) return true;
     }
     return false;
 }
 
+/**
+ * Match a single (no comma) CSS selector token:
+ *   - tag only:        "input"   → el.tagName === "INPUT"
+ *   - attr only:       "[data-foo]" / `[data-foo="bar"]`
+ *   - tag + attr(s):   "input[type="checkbox"]"
+ *
+ * A tag prefix is the leading identifier before the first `[`.
+ * All `[attr]` / `[attr="val"]` tokens must match (AND logic).
+ */
 function matchesSingleSelector(el: FakeElement, selector: string): boolean {
-    // strip tag prefix if present (e.g. "div[attr]")
+    // Extract optional tag prefix (everything before the first "[" or end of string)
+    const tagMatch = /^([a-zA-Z][a-zA-Z0-9]*)/.exec(selector);
+    const tag = tagMatch?.[1];
+
+    // If a tag is specified it must match (case-insensitive)
+    if (tag && el.tagName !== tag.toUpperCase()) return false;
+
+    // Check every [attr] / [attr="val"] token
     const attrRe = /\[([^\]=]+)(?:="([^"]*)")?\]/g;
     let match: RegExpExecArray | null;
-    let matched = true;
     while ((match = attrRe.exec(selector)) !== null) {
         const [, name, value] = match;
         if (value === undefined) {
-            if (!el.hasAttribute(name!)) {
-                matched = false;
-                break;
-            }
+            if (!el.hasAttribute(name!)) return false;
         } else {
-            if (el.getAttribute(name!) !== value) {
-                matched = false;
-                break;
-            }
+            if (el.getAttribute(name!) !== value) return false;
         }
     }
-    return matched;
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +251,7 @@ export function makeFakeDocument(): {
     documentElement: { lang: string; dir: string };
     addEventListener: ReturnType<typeof vi.fn>;
     removeEventListener: ReturnType<typeof vi.fn>;
+    visibilityState: string;
 } {
     const registry = new Map<string, FakeElement>();
     return {
@@ -187,6 +264,7 @@ export function makeFakeDocument(): {
         documentElement: { lang: "", dir: "" },
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
+        visibilityState: "visible",
         /** Register an element so getElementById can find it. */
         // Note: tests that need getElementById to return a specific FakeElement
         // should use stubDocumentElement below instead.
@@ -211,10 +289,11 @@ export function makeFakeDocumentWithRoot(
 }
 
 /**
- * Register vi.stubGlobal for CustomEvent + document (basic, createElement-only).
+ * Register vi.stubGlobal for Event + CustomEvent + document (basic, createElement-only).
  * Call at test file top level (before any imports that trigger document.createElement).
  */
 export function stubDomGlobals(): void {
+    vi.stubGlobal("Event", FakeEvent);
     vi.stubGlobal("CustomEvent", FakeCustomEvent);
     vi.stubGlobal("document", makeFakeDocument());
 }
