@@ -14,7 +14,7 @@
  */
 
 import { stableStringify } from "../prefetched-intents/stable-stringify";
-import { isLeafNode, isSplitNode, isStackNode, isTabsNode } from "../navigation/nodes";
+import { collectAllLeaves } from "../navigation/operations";
 import type { NavigationNode } from "../navigation";
 import type { RouteParams } from "../router/types";
 import type { NavigationScopedState } from "./types";
@@ -31,26 +31,11 @@ export function sessionEntryKey(intent: string, params: RouteParams): string {
 
 /**
  * 收集导航树中**全部 leaf** 的身份键（含不可见 / 未激活分支 / 各 split 列）。
- *
- * 递归：leaf → `[key]`；stack → flatMap(entries)；tabs → flatMap(全部 branches)；
- * split → flatMap(有内容的列)。「全部存在」而非「可见」，用于 scoped 保留。
+ * 委派给 `collectAllLeaves`（同一「全部存在」遍历），映射成 entryKey。
+ * 「全部存在」而非「可见」，用于 scoped 状态保留。
  */
 export function collectLeafKeys(tree: NavigationNode): string[] {
-    if (isLeafNode(tree)) {
-        return [sessionEntryKey(tree.intent, tree.params)];
-    }
-    if (isStackNode(tree)) {
-        return tree.entries.flatMap(collectLeafKeys);
-    }
-    if (isTabsNode(tree)) {
-        return Object.values(tree.branches).flatMap(collectLeafKeys);
-    }
-    if (isSplitNode(tree)) {
-        return tree.columns.flatMap((column) =>
-            column.content === undefined ? [] : collectLeafKeys(column.content),
-        );
-    }
-    return [];
+    return collectAllLeaves(tree).map((l) => sessionEntryKey(l.intent, l.params));
 }
 
 /**
