@@ -37,8 +37,12 @@ export default defineConfig({
         // packages/site/.vitepress/cache 是 vitepress 自动生成的依赖缓存，跟 .vitepress-cache
         // 配置无关，每次 dev/build 重新生成；.playwright-mcp 是 playwright 验证 demo 时
         // 的临时截图。两者都不入库，也不参与格式化。
+        // **/CHANGELOG.md 由 changeset (`changeset version`) 生成，每次 release 重写且不带
+        // oxfmt 格式化（.md 不在 pre-commit lint-staged glob 内），否则 CI 的 bare `vp check`
+        // 每次发布后必然在 CHANGELOG fmt 处失败。生成物不该被格式化门控。
         ignorePatterns: [
             "AGENTS.md",
+            "**/CHANGELOG.md",
             "**/.vitepress/cache/**",
             "**/.vitepress/dist/**",
             ".playwright-mcp/**",
