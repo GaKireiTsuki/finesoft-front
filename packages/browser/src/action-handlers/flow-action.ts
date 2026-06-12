@@ -31,10 +31,19 @@ export interface FlowActionDependencies {
     updateApp: (props: { page: Promise<BasePage> | BasePage; isFirstPage?: boolean }) => void;
     /** 获取可滚动页面元素，用于滚动位置保存/恢复 */
     getScrollablePageElement?: () => HTMLElement | null;
+    /**
+     * 是否由本 handler 管理浏览器 history（pushState / popstate）。缺省 `true`。
+     * 结构化导航（`startBrowserApp({ navigation })`）下应传 `false`：history 由
+     * NavigationBridge 独占，否则两套 `History` 实例会争抢同一个 `window.history.state`、
+     * 各自注册 popstate 互相 clobber，导致 back/forward 行为错乱。传 `false` 时本 handler
+     * 仍负责 dispatch + updateApp（初始渲染 / redirect / modal），只是不碰 history。
+     */
+    manageHistory?: boolean;
 }
 
 export function registerFlowActionHandler(deps: FlowActionDependencies): void {
     const { framework, log, callbacks, updateApp } = deps;
+    const manageHistory = deps.manageHistory ?? true;
     let isFirstPage = true;
     let navigationId = 0;
 
@@ -46,9 +55,12 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
         document.getElementById("scrollable-page") ||
         document.documentElement;
 
-    const history = new History<FlowState>(log, {
-        getScrollablePageElement: deps.getScrollablePageElement ?? defaultGetScrollable,
-    });
+    // nav 配置下 history 由 NavigationBridge 独占；本 handler 不建 History、不监听 popstate。
+    const history = manageHistory
+        ? new History<FlowState>(log, {
+              getScrollablePageElement: deps.getScrollablePageElement ?? defaultGetScrollable,
+          })
+        : undefined;
 
     /**
      * 核心导航逻辑（支持递归重定向）
@@ -104,7 +116,7 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
             return;
         }
 
-        history.beforeTransition();
+        history?.beforeTransition();
 
         updateApp({
             page: pagePromise.then(
@@ -141,9 +153,9 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
                     }
 
                     if (shouldReplace) {
-                        history.replaceState({ page }, canonicalURL);
+                        history?.replaceState({ page }, canonicalURL);
                     } else {
-                        history.pushState({ page }, canonicalURL);
+                        history?.pushState({ page }, canonicalURL);
                     }
 
                     callbacks.onNavigate(new URL(canonicalURL, window.location.origin).pathname);
@@ -156,9 +168,9 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
                     if (thisNav === navigationId) {
                         const canonicalURL = url;
                         if (shouldReplace) {
-                            history.replaceUrl(canonicalURL);
+                            history?.replaceUrl(canonicalURL);
                         } else {
-                            history.pushUrl(canonicalURL);
+                            history?.pushUrl(canonicalURL);
                         }
                         callbacks.onNavigate(
                             new URL(canonicalURL, window.location.origin).pathname,
@@ -194,7 +206,8 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
     });
 
     // ===== popstate handler =====
-    history.onPopState(async (url, cachedState) => {
+    // history 为 undefined（nav 配置）时不注册：popstate 由 NavigationBridge 独占处理。
+    history?.onPopState(async (url, cachedState) => {
         log.debug(`popstate → ${url}, cached=${!!cachedState}`);
 
         callbacks.onNavigate(new URL(url).pathname);

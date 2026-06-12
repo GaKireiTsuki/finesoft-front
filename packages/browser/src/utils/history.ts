@@ -15,24 +15,40 @@ interface HistoryEntry<State> {
 
 interface HistoryOptions {
     getScrollablePageElement: () => HTMLElement | null;
+    /**
+     * 是否把 `state` 一并写入 `window.history.state`（而非仅 `{ id }` + 内存 LruMap）。缺省 `false`。
+     *
+     * 内存 LruMap 在整页刷新后丢失；若 state 小且可结构化克隆（如导航树 `{ tree }`），开启此项
+     * 可让 state 随 `window.history.state` **跨刷新按 entry 保留**，刷新后 back/forward 仍能从
+     * history.state 还原（onPopState 在 LruMap 未命中时回退到 `event.state.state`）。
+     * 大状态（如整页 `{ page }`）不应开启，避免撑爆 history.state。
+     */
+    persistInHistoryState?: boolean;
 }
 
 export class History<State> {
     private readonly entries: LruMap<string, HistoryEntry<State>>;
     private readonly log: Logger;
     private readonly getScrollablePageElement: () => HTMLElement | null;
+    private readonly persistInHistoryState: boolean;
     private currentStateId: string | undefined;
 
     constructor(log: Logger, options: HistoryOptions, sizeLimit = HISTORY_SIZE_LIMIT) {
         this.entries = new LruMap(sizeLimit);
         this.log = log;
         this.getScrollablePageElement = options.getScrollablePageElement;
+        this.persistInHistoryState = options.persistInHistoryState ?? false;
+    }
+
+    /** 写入 window.history.state 的载荷：persist 时连 state 一起带（跨刷新保留）。 */
+    private historyState(id: string, state: State): { id: string; state?: State } {
+        return this.persistInHistoryState ? { id, state } : { id };
     }
 
     replaceState(state: State, url: string): void {
         cancelTryScroll();
         const id = generateUuid();
-        window.history.replaceState({ id }, "", url);
+        window.history.replaceState(this.historyState(id, state), "", url);
         this.currentStateId = id;
         this.entries.set(id, { state, scrollY: 0 });
         this.scrollTop = 0;
@@ -42,7 +58,7 @@ export class History<State> {
     pushState(state: State, url: string): void {
         cancelTryScroll();
         const id = generateUuid();
-        window.history.pushState({ id }, "", url);
+        window.history.pushState(this.historyState(id, state), "", url);
         this.currentStateId = id;
         this.entries.set(id, { state, scrollY: 0 });
         this.scrollTop = 0;
@@ -80,8 +96,13 @@ export class History<State> {
             this.log.info("popstate", this.entries, this.currentStateId);
 
             const entry = this.currentStateId ? this.entries.get(this.currentStateId) : undefined;
+            // LruMap 未命中（如整页刷新后）时，回退到嵌入 window.history.state 的 state（persist 模式）。
+            const embedded = this.persistInHistoryState
+                ? (event.state as { state?: State } | null)?.state
+                : undefined;
+            const cachedState = entry?.state ?? embedded;
 
-            void Promise.resolve(listener(window.location.href, entry?.state)).catch(
+            void Promise.resolve(listener(window.location.href, cachedState)).catch(
                 (error: unknown) => {
                     this.log.error("onPopState listener error:", error);
                 },

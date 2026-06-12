@@ -33,6 +33,7 @@ export { defineRequestScopedKey, type RequestScopedKey } from "./dependencies/re
 // ===== Router =====
 export { Router } from "./router/router";
 export type { RouteAddOptions, RouteMatch } from "./router/router";
+export type { RouteParams } from "./router/types";
 
 // ===== Route Params (typed validation) =====
 export {
@@ -111,8 +112,96 @@ export { mapEach, pipe, pipeAsync } from "./data/mapper";
 export type { AsyncMapper, Mapper } from "./data/mapper";
 
 // ===== Bootstrap =====
+export { defineNavigation } from "./bootstrap/define-navigation";
+export type {
+    DefineNavigationOptions,
+    NavigationBrowserConfig,
+    NavigationDefinition,
+    NavigationInitial,
+    NavigationSSRDefinition,
+} from "./bootstrap/define-navigation";
 export { defineRoutes, route } from "./bootstrap/define-routes";
 export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstrap/define-routes";
+
+// ===== Navigation =====
+export {
+    collectVisibleDestinations,
+    createActiveLeafCodec,
+    createFullStateCodec,
+    createNavigationController,
+    decodeNavigationTreeParam,
+    DEFAULT_NAV_PARAM,
+    deserializeNavigation,
+    encodeNavigationTreeParam,
+    findNearestStack,
+    findNode,
+    isLeafNode,
+    isSplitNode,
+    isStackNode,
+    isTabsNode,
+    leaf,
+    NAVIGATION_NODE_KINDS,
+    NAVIGATION_OP_KINDS,
+    NavigationError,
+    pop,
+    popTo,
+    popToRoot,
+    push,
+    replaceTop,
+    resolveActivePath,
+    selectColumn,
+    selectTab,
+    serializeNavigation,
+    serializeNavigationStable,
+    setVisibility,
+    split,
+    SPLIT_VISIBILITIES,
+    stack,
+    tabs,
+    visibleSplitColumns,
+} from "./navigation";
+export type {
+    FullStateCodecOptions,
+    HydrateOperation,
+    LeafNode,
+    NavigationCodec,
+    NavigationContextInput,
+    NavigationController,
+    NavigationControllerOptions,
+    NavigationDispatchContext,
+    NavigationNode,
+    NavigationNodeKind,
+    NavigationOpKind,
+    NavigationOperation,
+    NavigationPath,
+    NavigationPathStep,
+    NavigationRouterLike,
+    NavigationSnapshot,
+    Page,
+    PopOperation,
+    PopToOperation,
+    PopToRootOperation,
+    PushOperation,
+    PushOptions,
+    ReplaceTopOperation,
+    ResolvedDestination,
+    SelectColumnOperation,
+    SelectTabOperation,
+    SerializedLeaf,
+    SerializedNavigation,
+    SerializedSplit,
+    SerializedSplitColumn,
+    SerializedStack,
+    SerializedTabs,
+    SetVisibilityOperation,
+    SplitColumn,
+    SplitColumnInit,
+    SplitNode,
+    SplitVisibility,
+    StackNode,
+    TabsInit,
+    TabsNode,
+} from "./navigation";
 
 // ===== Utils =====
 export { LruMap } from "./utils/lru-map";

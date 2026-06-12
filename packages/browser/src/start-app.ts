@@ -10,24 +10,56 @@
  */
 
 import type {
+    AfterLoadGuard,
     BasePage,
+    BeforeLoadGuard,
     FrameworkConfig,
     Logger,
     MessagesLoader,
+    NavigationCodec,
+    NavigationNode,
     TranslationMessages,
 } from "@finesoft/core";
 import {
+    createActiveLeafCodec,
+    createBrowserContext,
+    createNavigationController,
     DEP_KEYS,
     Framework,
+    makeFlowAction,
     resolveConfiguredMessages,
     setHtmlLocaleAttributes,
     type LoggerFactory,
 } from "@finesoft/core";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
+import { createNavigationBridge, type NavigationHandle } from "./navigation-bridge";
 import { createPrefetchedIntentsFromDom } from "./server-data";
 
 interface InternalBrowserFrameworkConfig extends FrameworkConfig {
     _resolvedMessages?: TranslationMessages;
+}
+
+/**
+ * 结构化导航定义 —— 由应用通过 `defineNavigation(...)` 或手写提供。
+ *
+ * 仅当该字段出现时 bridge 才激活；缺省时 `startBrowserApp` 走原有扁平单页路径，行为不变。
+ * 提供后：
+ * - 用 `initial` 树构建 `NavigationController`（守卫上下文走 `createBrowserContext`，
+ *   预取缓存复用 `framework.prefetchedIntents`）；
+ * - 装配 `NavigationBridge`（snapshot → history/URL，popstate → hydrate）；
+ * - 解析首屏树（一次 `resolve()`），通过 `onNavigationReady` 把 handle 交给应用。
+ */
+export interface BrowserNavigationConfig {
+    /** 初始导航树（单 LeafNode = 今天的扁平单页）。 */
+    readonly initial: NavigationNode;
+    /** URL 编解码器；缺省 `createActiveLeafCodec()`。 */
+    readonly codec?: NavigationCodec;
+    /** 导航级 beforeLoad 守卫（对主目标执行）。 */
+    readonly beforeLoad?: readonly BeforeLoadGuard[];
+    /** 导航级 afterLoad 守卫。 */
+    readonly afterLoad?: readonly AfterLoadGuard[];
+    /** dispatch 失败 / deny 时的兜底错误页工厂。 */
+    readonly getErrorPage?: (status: number, message: string) => BasePage;
 }
 
 export interface BrowserAppConfig {
@@ -85,6 +117,23 @@ export interface BrowserAppConfig {
      * 显式传入时会覆盖 bootstrap / Vite 自动生成的 loader。
      */
     loadMessages?: MessagesLoader;
+
+    /**
+     * 结构化导航定义（可选）。
+     *
+     * 提供后，`startBrowserApp` 在挂载后构建 NavigationController + NavigationBridge，
+     * 解析首屏树，并通过 `onNavigationReady` 把导航 handle 交给应用。缺省时走原有
+     * 扁平单页路径（FlowAction handler），行为完全不变。
+     */
+    navigation?: BrowserNavigationConfig;
+
+    /**
+     * 导航就绪回调 —— bridge 装配并完成首屏 `resolve()` 后调用。
+     *
+     * 仅当提供了 `navigation` 时触发。应用拿到 handle 后用它驱动导航
+     * （push/pop/selectTab…）并订阅快照渲染 UI。
+     */
+    onNavigationReady?: (handle: NavigationHandle) => void | Promise<void>;
 }
 
 /**
@@ -163,6 +212,8 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         callbacks,
         updateApp,
         getScrollablePageElement: config.getScrollablePageElement,
+        // 结构化导航下 history 由 NavigationBridge 独占；否则两套 History 争抢 window.history.state。
+        manageHistory: !config.navigation,
     });
 
     // 6. 触发初始页面
@@ -175,8 +226,72 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         });
     }
 
+    // 6.5 结构化导航（可选）—— 仅当应用提供 navigation 定义时激活，
+    // 否则上面的扁平单页路径已是全部行为。
+    if (config.navigation) {
+        const handle = await activateNavigation({
+            framework,
+            navigation: config.navigation,
+            log,
+            getScrollablePageElement: config.getScrollablePageElement,
+        });
+        await config.onNavigationReady?.(handle);
+    }
+
     // 7. 启动后钩子
     await onAfterStart?.(framework);
+}
+
+/** 装配 NavigationController + NavigationBridge，解析首屏树，返回导航 handle。 */
+async function activateNavigation(args: {
+    framework: Framework;
+    navigation: BrowserNavigationConfig;
+    log: Logger;
+    getScrollablePageElement?: () => HTMLElement | null;
+}): Promise<NavigationHandle> {
+    const { framework, navigation, log, getScrollablePageElement } = args;
+    const codec = navigation.codec ?? createActiveLeafCodec();
+
+    const controller = createNavigationController({
+        intentDispatcher: framework.intentDispatcher,
+        router: framework.router,
+        initial: navigation.initial,
+        // 守卫上下文走 createBrowserContext（与 FlowAction handler 一致：读 document.cookie）。
+        createContext: ({ intent, params }) => {
+            const url = codec.encode({ kind: "leaf", intent, params }, framework.router);
+            return {
+                container: framework.container,
+                navigation: createBrowserContext({
+                    url,
+                    intent: { id: intent, params },
+                    container: framework.container,
+                }),
+                url,
+            };
+        },
+        beforeLoad: navigation.beforeLoad,
+        afterLoad: navigation.afterLoad,
+        // 浏览器 hydration：复用 SSR 预取的可见目标结果。
+        prefetched: framework.prefetchedIntents,
+        getErrorPage: navigation.getErrorPage,
+        // redirect → SPA 内跳，复用现有 FlowAction 管线。
+        onRedirect: ({ url }) => {
+            void framework.perform(makeFlowAction(url));
+        },
+    });
+
+    const handle = createNavigationBridge({
+        controller,
+        codec,
+        router: framework.router,
+        log,
+        getScrollablePageElement,
+    });
+
+    // 首屏解析：提交首个快照（bridge 用 replaceState 写入 history，不污染历史栈）。
+    await controller.resolve();
+
+    return handle;
 }
 
 function resolveBrowserLocale(locale?: string): string | undefined {

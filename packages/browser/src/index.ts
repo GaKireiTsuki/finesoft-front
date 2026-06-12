@@ -11,7 +11,14 @@ export {
 export { registerActionHandlers, type ActionHandlerDependencies } from "./action-handlers/register";
 
 // ===== Browser App =====
-export { startBrowserApp, type BrowserAppConfig } from "./start-app";
+export { startBrowserApp, type BrowserAppConfig, type BrowserNavigationConfig } from "./start-app";
+
+// ===== Navigation Bridge =====
+export {
+    createNavigationBridge,
+    type NavigationBridgeDependencies,
+    type NavigationHandle,
+} from "./navigation-bridge";
 
 // ===== Browser Utils =====
 export { History } from "./utils/history";

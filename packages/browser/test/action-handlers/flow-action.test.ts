@@ -772,6 +772,45 @@ describe("registerFlowActionHandler", () => {
         expect(callbacks.onNavigate).toHaveBeenCalledWith("/fresh");
         expect(log.error).toHaveBeenCalledWith("didEnterPage error:", enterError);
     });
+
+    test("default manages history (creates a History instance + popstate)", () => {
+        const { framework } = makeFramework({
+            routeUrl: vi.fn(() => makeMatch("home")),
+            dispatch: vi.fn(async () => makePage("home")),
+        });
+        registerFlowActionHandler({
+            framework: framework as never,
+            log: makeLogger(),
+            callbacks: makeCallbacks(),
+            updateApp: vi.fn(),
+        });
+        expect(HistoryMock.instances).toHaveLength(1);
+        expect(HistoryMock.latest().onPopState).toHaveBeenCalledTimes(1);
+    });
+
+    test("manageHistory:false skips history (nav bridge owns it) but still dispatches + renders", async () => {
+        const page = makePage("home");
+        const { framework, getHandler } = makeFramework({
+            routeUrl: vi.fn(() => makeMatch("home")),
+            dispatch: vi.fn(async () => page),
+        });
+        const updateApp = vi.fn();
+        registerFlowActionHandler({
+            framework: framework as never,
+            log: makeLogger(),
+            callbacks: makeCallbacks(),
+            updateApp,
+            manageHistory: false,
+        });
+
+        // 不建 History 实例 → 不注册 popstate、不 pushState（避免与 NavigationBridge 争抢 window.history.state）。
+        expect(HistoryMock.instances).toHaveLength(0);
+
+        // handler 仍工作：FlowAction 照常 dispatch + updateApp（初始渲染 / redirect）。
+        await getHandler()({ kind: ACTION_KINDS.FLOW, url: "/home" });
+        expect(updateApp).toHaveBeenCalled();
+        expect(HistoryMock.instances).toHaveLength(0);
+    });
 });
 
 function makeFramework(overrides: Partial<Record<string, unknown>> = {}) {

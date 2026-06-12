@@ -7,6 +7,7 @@ export * from "@finesoft/core";
 // ===== Browser =====
 export {
     History,
+    createNavigationBridge,
     createPrefetchedIntentsFromDom,
     deserializeServerData,
     registerActionHandlers,
@@ -18,7 +19,10 @@ export {
 export type {
     ActionHandlerDependencies,
     BrowserAppConfig,
+    BrowserNavigationConfig,
     ExternalUrlDependencies,
     FlowActionCallbacks,
     FlowActionDependencies,
+    NavigationBridgeDependencies,
+    NavigationHandle,
 } from "@finesoft/browser";
