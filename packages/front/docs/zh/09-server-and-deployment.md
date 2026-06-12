@@ -55,20 +55,20 @@ Build：
 
 ## `createServer` —— 独立 Hono 服务器
 
-Node 部署和测试时，框架导出一个函数给你一个开箱即用的 Hono app：
+Node 部署和测试时，框架导出一个 async 工厂。它加载 `.env`、检测运行时、构建 Hono app、注册 proxies + 你的 `setup` 路由、挂 SSR catch-all，并**启动监听**（端口取自配置或 `PORT`，默认 `3000`）—— 然后返回 `{ app, vite, runtime }`：
 
 ```ts
 import { createServer } from "@finesoft/front";
 
-const app = createServer({
-    ssrEntry: "./dist/server/ssr.js",
+const { app } = await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" }, // dev 用 ssrEntryPath
     proxies: [{ prefix: "/api", target: "https://upstream.example" }],
-    staticDir: "./dist/client",
+    port: 3000,
 });
 
-// app 是 Hono 实例 —— 按你的运行时方式挂载
-import { serve } from "@hono/node-server";
-serve({ fetch: app.fetch, port: 3000 });
+// `app` 是已启动的 Hono 实例 —— 导出给 adapter 导入 fetch handler 的 serverless 运行时
+// （Vercel / Cloudflare / Netlify）。
+export { app };
 ```
 
 ### 包含什么
@@ -186,19 +186,20 @@ finesoftFrontViteConfig({
 
 ## 自定义 Hono 中间件
 
-如果你需要 proxy 和 SSR 之外的服务端逻辑（如 webhook、健康检查），挂到同一个 Hono app 上：
+如果你需要 proxy 和 SSR 之外的服务端逻辑（如 webhook、健康检查），通过 `setup` 钩子注册 —— 它在 proxies 之后、SSR catch-all **之前**跑，所以你的路由优先：
 
 ```ts
-const app = createServer({ ssrEntry: "./dist/server/ssr.js" });
-
-app.get("/health", (c) => c.json({ status: "ok" }));
-app.post("/webhook", async (c) => {
-    const body = await c.req.json();
-    await handleWebhook(body);
-    return c.json({ ok: true });
+await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" },
+    setup: (app) => {
+        app.get("/health", (c) => c.json({ status: "ok" }));
+        app.post("/webhook", async (c) => {
+            const body = await c.req.json();
+            await handleWebhook(body);
+            return c.json({ ok: true });
+        });
+    },
 });
-
-// SSR catch-all 由 createServer 最后注册 —— 你的路由优先。
 ```
 
 ## 环境变量
@@ -223,25 +224,16 @@ framework.container.register("config", () => ({
 负载均衡器后的 Node 部署：
 
 ```ts
-import { serve } from "@hono/node-server";
-
-const app = createServer({
-    /* ... */
+await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" },
+    setup: (app) => app.get("/health", (c) => c.json({ ok: true })),
 });
-app.get("/health", (c) => c.json({ ok: true }));
 
-const server = serve({ fetch: app.fetch, port: 3000 });
-
-process.on("SIGTERM", () => {
-    server.close(() => {
-        // 如果你拿着 Framework 引用，dispose 它
-        framework.dispose();
-        process.exit(0);
-    });
-});
+// createServer 自身启动监听 —— 不需要再手动 serve()。
+process.on("SIGTERM", () => process.exit(0));
 ```
 
-`framework.dispose()` 递归 dispose 容器、对注册的 recorder/logger 调 `destroy()`、注销所有路由。
+`createServer` 不返回底层 `http.Server`，因此没有内建的 `server.close()` 连接 drain。若你需要优雅 drain —— 或需要句柄在关闭时调 `framework.dispose()`（递归 dispose 容器、对 recorder/logger 调 `destroy()`、注销路由）—— 改用更底层的搭建：自己建 Hono app 和 framework 并 `serve()`，从而同时握住两个句柄。
 
 ## 下一步
 

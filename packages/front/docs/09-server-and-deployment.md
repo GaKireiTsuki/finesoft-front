@@ -55,20 +55,20 @@ In build:
 
 ## `createServer` — the standalone Hono server
 
-For Node deployments and tests, the framework exports a function that gives you a ready-to-run Hono app:
+For Node deployments and tests, the framework exports an async factory. It loads `.env`, detects the runtime, builds the Hono app, registers proxies + your `setup` routes, mounts the SSR catch-all, and **starts listening** (port from config or `PORT`, default `3000`) — then returns `{ app, vite, runtime }`:
 
 ```ts
 import { createServer } from "@finesoft/front";
 
-const app = createServer({
-    ssrEntry: "./dist/server/ssr.js",
+const { app } = await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" }, // or ssrEntryPath in dev
     proxies: [{ prefix: "/api", target: "https://upstream.example" }],
-    staticDir: "./dist/client",
+    port: 3000,
 });
 
-// app is a Hono instance — mount it however your runtime expects
-import { serve } from "@hono/node-server";
-serve({ fetch: app.fetch, port: 3000 });
+// `app` is the started Hono instance — export it for serverless runtimes whose
+// adapter imports the fetch handler (Vercel / Cloudflare / Netlify).
+export { app };
 ```
 
 ### What it includes
@@ -186,19 +186,20 @@ There is no programmatic invalidation API. To force a refresh:
 
 ## Custom Hono middleware
 
-If you need server logic outside the proxy and SSR (e.g., a webhook endpoint, a health check), mount it on the same Hono app:
+If you need server logic outside the proxy and SSR (e.g., a webhook endpoint, a health check), register it via the `setup` hook — it runs after proxies but **before** the SSR catch-all, so your routes win:
 
 ```ts
-const app = createServer({ ssrEntry: "./dist/server/ssr.js" });
-
-app.get("/health", (c) => c.json({ status: "ok" }));
-app.post("/webhook", async (c) => {
-    const body = await c.req.json();
-    await handleWebhook(body);
-    return c.json({ ok: true });
+await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" },
+    setup: (app) => {
+        app.get("/health", (c) => c.json({ status: "ok" }));
+        app.post("/webhook", async (c) => {
+            const body = await c.req.json();
+            await handleWebhook(body);
+            return c.json({ ok: true });
+        });
+    },
 });
-
-// SSR catch-all is registered last by createServer — your routes win.
 ```
 
 ## Environment variables
@@ -223,25 +224,16 @@ framework.container.register("config", () => ({
 For Node deployments behind a load balancer:
 
 ```ts
-import { serve } from "@hono/node-server";
-
-const app = createServer({
-    /* ... */
+await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" },
+    setup: (app) => app.get("/health", (c) => c.json({ ok: true })),
 });
-app.get("/health", (c) => c.json({ ok: true }));
 
-const server = serve({ fetch: app.fetch, port: 3000 });
-
-process.on("SIGTERM", () => {
-    server.close(() => {
-        // dispose Framework if you held a reference
-        framework.dispose();
-        process.exit(0);
-    });
-});
+// createServer starts the listener itself — no manual serve() needed.
+process.on("SIGTERM", () => process.exit(0));
 ```
 
-`framework.dispose()` recursively disposes the container, calls `destroy()` on registered recorders/loggers, and unregisters all routes.
+`createServer` does not return the underlying `http.Server`, so there's no built-in `server.close()` connection-drain. If you need graceful draining — or a handle to call `framework.dispose()` (recursively disposes the container, calls `destroy()` on recorders/loggers, unregisters routes) on shutdown — compose the lower level instead: build the Hono app and own framework yourself and `serve()` it so you keep both handles.
 
 ## Next
 
