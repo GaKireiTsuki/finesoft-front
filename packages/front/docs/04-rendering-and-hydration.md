@@ -193,21 +193,18 @@ The adapter serves these static files directly. No controller runs at request ti
 
 ### Incremental Static Regeneration (ISR)
 
-The bundled server (`createServer`) and the preview server (`vp preview`) support cached on-demand regeneration. Configure via `finesoftFrontViteConfig`:
+The bundled server (`createServer`) and the preview server (`vp preview`) also cache `prerender` routes at runtime: a route is rendered on its **first** request and the HTML kept in an in-memory LRU (`ISR_CACHE_MAX = 1000` entries, evicted least-recently-used). Subsequent requests serve the cached HTML without re-running the controller.
+
+Mark routes `prerender` per route (`renderMode: "prerender"`) or per glob via the Vite plugin (config-level wins over route-level):
 
 ```ts
 finesoftFrontViteConfig({
     ssr: { entry: "src/ssr.ts" },
-    isr: {
-        // routes that should regenerate on demand
-        routes: ["/blog/*"],
-        // cache TTL in seconds
-        ttl: 300,
-    },
+    renderModes: { "/blog/*": "prerender" },
 });
 ```
 
-The first request after expiry triggers a fresh render; concurrent requests get the stale version until the regeneration completes. See [server & deployment](./09-server-and-deployment.md#isr) for details.
+The runtime cache has **no TTL and no background regeneration** — entries live until LRU-evicted or the process restarts. Time-based stale-while-revalidate is delegated to the CDN by the platform adapters (Netlify emits a real `stale-while-revalidate` header; Cloudflare a plain `max-age`; node/Vercel none). See [server & deployment](./09-server-and-deployment.md#isr-incremental-static-regeneration) for the full picture.
 
 ## `PrefetchedIntents` — the SSR → CSR bridge
 

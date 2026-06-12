@@ -22,7 +22,7 @@ export default defineConfig({
             i18n: { messagesDir: "src/locales" },
             proxies: [{ prefix: "/api", target: "https://upstream.example" }],
             adapter: "auto",
-            isr: { routes: ["/blog/*"], ttl: 300 },
+            renderModes: { "/blog/*": "prerender" },
         }),
     ],
 });
@@ -30,13 +30,13 @@ export default defineConfig({
 
 ### Options
 
-| Option             | Type                      | Notes                                                   |
-| ------------------ | ------------------------- | ------------------------------------------------------- |
-| `ssr.entry`        | `string`                  | Path to your SSR entry (default `src/ssr.ts`).          |
-| `i18n.messagesDir` | `string`                  | Folder with `{locale}.json` files (default off).        |
-| `proxies`          | `ProxyRouteConfig[]`      | Declarative API forwarding. See below.                  |
-| `adapter`          | `"auto" \| "node" \| ...` | Target platform. `"auto"` detects from env vars.        |
-| `isr`              | `{ routes, ttl }`         | Incremental Static Regeneration for prerendered routes. |
+| Option             | Type                         | Notes                                                                          |
+| ------------------ | ---------------------------- | ------------------------------------------------------------------------------ |
+| `ssr.entry`        | `string`                     | Path to your SSR entry (default `src/ssr.ts`).                                 |
+| `i18n.messagesDir` | `string`                     | Folder with `{locale}.json` files (default off).                               |
+| `proxies`          | `ProxyRouteConfig[]`         | Declarative API forwarding. See below.                                         |
+| `adapter`          | `"auto" \| "node" \| ...`    | Target platform. `"auto"` detects from env vars.                               |
+| `renderModes`      | `Record<string, RenderMode>` | Per-route render-mode override (glob keys); `"prerender"` enables ISR caching. |
 
 ### What it does
 
@@ -55,21 +55,20 @@ In build:
 
 ## `createServer` — the standalone Hono server
 
-For Node deployments and tests, the framework exports a function that gives you a ready-to-run Hono app:
+For Node deployments and tests, the framework exports an async factory. It loads `.env`, detects the runtime, builds the Hono app, registers proxies + your `setup` routes, mounts the SSR catch-all, and **starts listening** (port from config or `PORT`, default `3000`) — then returns `{ app, vite, runtime }`:
 
 ```ts
 import { createServer } from "@finesoft/front";
 
-const app = createServer({
-    ssrEntry: "./dist/server/ssr.js",
+const { app } = await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" }, // or ssrEntryPath in dev
     proxies: [{ prefix: "/api", target: "https://upstream.example" }],
-    staticDir: "./dist/client",
-    isr: { routes: ["/blog/*"], ttl: 300 },
+    port: 3000,
 });
 
-// app is a Hono instance — mount it however your runtime expects
-import { serve } from "@hono/node-server";
-serve({ fetch: app.fetch, port: 3000 });
+// `app` is the started Hono instance — export it for serverless runtimes whose
+// adapter imports the fetch handler (Vercel / Cloudflare / Netlify).
+export { app };
 ```
 
 ### What it includes
@@ -149,48 +148,58 @@ This works for most CI environments — Vercel / Cloudflare / Netlify all set th
 
 ## ISR (Incremental Static Regeneration)
 
+Mark routes `prerender` — per route (`renderMode: "prerender"`) or per glob via the Vite plugin's `renderModes` (config-level wins over route-level):
+
 ```ts
-isr: {
-    routes: ["/blog/*", "/products/*"],
-    ttl: 300,  // seconds
-}
+finesoftFrontViteConfig({
+    ssr: { entry: "src/ssr.ts" },
+    renderModes: { "/blog/*": "prerender", "/products/*": "prerender" },
+});
 ```
 
-How it works:
+A `prerender` route is served two ways:
 
-1. First request to `/blog/hello-world`: render fully, cache the HTML, set expiry to now + 300s
-2. Subsequent requests within TTL: serve cached HTML directly
-3. After expiry: next request triggers re-render; concurrent requests get stale HTML until re-render finishes
+1. **Build-time static** — the static adapter renders each prerender route at build and writes `dist/<route>.html` (one per locale when i18n is on). Served as plain static files; no controller runs at request time.
+2. **Runtime cache** — the bundled server (`createServer`) and `vp preview` render a prerender route on its **first** request and store the HTML in an in-memory LRU (`ISR_CACHE_MAX = 1000` entries, evicted least-recently-used). Subsequent requests serve the cached HTML without re-running the controller.
 
-The cache is in-memory per server instance. For multi-instance deployments where consistency matters, put a CDN in front and use HTTP `Cache-Control` headers instead.
+> **No TTL, no background regeneration.** The runtime cache has no time-based expiry and no stale-while-revalidate — an entry lives until it is LRU-evicted or the process restarts. The "regenerate after N seconds" semantics live at the **CDN**, not in the framework (below). There is no `isr` config option and no programmatic invalidation API.
 
-Routes not matched by `isr.routes` always render fresh.
+### Stale-while-revalidate is delegated to the CDN
+
+Platform adapters set cache headers on prerender responses so the edge does the real ISR:
+
+| Adapter                   | Header on prerender responses                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| Netlify                   | `Netlify-CDN-Cache-Control: max-age=3600, stale-while-revalidate=3600, durable` (true SWR) |
+| Cloudflare                | `Cache-Control: public, max-age=3600`                                                      |
+| Node (self-host) / Vercel | none — relies on the in-memory LRU                                                         |
+
+The `3600`s window is a hard-coded per-adapter constant, not user-configurable. For multi-instance / multi-region deployments the CDN headers are what give you consistent caching; the in-memory LRU is per-instance single-server serving.
 
 ### Cache invalidation
 
-Programmatic invalidation is not exposed in the public API. To force a refresh:
+There is no programmatic invalidation API. To force a refresh:
 
-- Restart the server (loses entire cache)
-- Wait for TTL
-- Add a cache-busting query param the controller can ignore but that bypasses the cache key
-
-For production, push invalidation up to CDN level — the framework's in-memory cache is for single-instance serving.
+- Restart the server (clears the entire in-memory LRU)
+- Redeploy (rebuilds build-time static and resets caches)
+- On Netlify / Cloudflare, purge the CDN cache for the path
 
 ## Custom Hono middleware
 
-If you need server logic outside the proxy and SSR (e.g., a webhook endpoint, a health check), mount it on the same Hono app:
+If you need server logic outside the proxy and SSR (e.g., a webhook endpoint, a health check), register it via the `setup` hook — it runs after proxies but **before** the SSR catch-all, so your routes win:
 
 ```ts
-const app = createServer({ ssrEntry: "./dist/server/ssr.js" });
-
-app.get("/health", (c) => c.json({ status: "ok" }));
-app.post("/webhook", async (c) => {
-    const body = await c.req.json();
-    await handleWebhook(body);
-    return c.json({ ok: true });
+await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" },
+    setup: (app) => {
+        app.get("/health", (c) => c.json({ status: "ok" }));
+        app.post("/webhook", async (c) => {
+            const body = await c.req.json();
+            await handleWebhook(body);
+            return c.json({ ok: true });
+        });
+    },
 });
-
-// SSR catch-all is registered last by createServer — your routes win.
 ```
 
 ## Environment variables
@@ -215,25 +224,16 @@ framework.container.register("config", () => ({
 For Node deployments behind a load balancer:
 
 ```ts
-import { serve } from "@hono/node-server";
-
-const app = createServer({
-    /* ... */
+await createServer({
+    ssr: { ssrProductionModule: "./dist/server/ssr.js" },
+    setup: (app) => app.get("/health", (c) => c.json({ ok: true })),
 });
-app.get("/health", (c) => c.json({ ok: true }));
 
-const server = serve({ fetch: app.fetch, port: 3000 });
-
-process.on("SIGTERM", () => {
-    server.close(() => {
-        // dispose Framework if you held a reference
-        framework.dispose();
-        process.exit(0);
-    });
-});
+// createServer starts the listener itself — no manual serve() needed.
+process.on("SIGTERM", () => process.exit(0));
 ```
 
-`framework.dispose()` recursively disposes the container, calls `destroy()` on registered recorders/loggers, and unregisters all routes.
+`createServer` does not return the underlying `http.Server`, so there's no built-in `server.close()` connection-drain. If you need graceful draining — or a handle to call `framework.dispose()` (recursively disposes the container, calls `destroy()` on recorders/loggers, unregisters routes) on shutdown — compose the lower level instead: build the Hono app and own framework yourself and `serve()` it so you keep both handles.
 
 ## Next
 
