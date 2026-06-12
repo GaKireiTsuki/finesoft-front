@@ -57,12 +57,12 @@ export const NAVIGATION_NODE_KINDS = {
 } as const;
 ```
 
-| 节点        | 字段                                                                                     | 语义                                                         | 对标 SwiftUI          |
-| ----------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------- |
-| `LeafNode`  | `intent: string`、`params: RouteParams`                                                  | 一个具体导航目标（一次 intent 派发）                         | 一个 destination view |
-| `StackNode` | `entries: readonly NavigationNode[]`                                                     | 有序路径：`entries[0]`=根，末尾=栈顶（可见）；绝不弹到根下   | `NavigationStack`     |
-| `TabsNode`  | `active: string`、`order: readonly string[]`、`branches: Record<string, NavigationNode>` | 并列分支 + 激活键 + 稳定顺序；**仅激活分支可见**             | `TabView`             |
-| `SplitNode` | `columns: readonly SplitColumn[]`（`{ id, content? }`）、可选 `visibility`                | 多列并存，列间靠 `selectColumn` 设后续列内容；可见集默认全列、可经 `visibility` 收窄 | `NavigationSplitView` |
+| 节点        | 字段                                                                                     | 语义                                                                                 | 对标 SwiftUI          |
+| ----------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------- |
+| `LeafNode`  | `intent: string`、`params: RouteParams`                                                  | 一个具体导航目标（一次 intent 派发）                                                 | 一个 destination view |
+| `StackNode` | `entries: readonly NavigationNode[]`                                                     | 有序路径：`entries[0]`=根，末尾=栈顶（可见）；绝不弹到根下                           | `NavigationStack`     |
+| `TabsNode`  | `active: string`、`order: readonly string[]`、`branches: Record<string, NavigationNode>` | 并列分支 + 激活键 + 稳定顺序；**仅激活分支可见**                                     | `TabView`             |
+| `SplitNode` | `columns: readonly SplitColumn[]`（`{ id, content? }`）、可选 `visibility`               | 多列并存，列间靠 `selectColumn` 设后续列内容；可见集默认全列、可经 `visibility` 收窄 | `NavigationSplitView` |
 
 所有节点字段 `readonly`。`NavigationNode = LeafNode | StackNode | TabsNode | SplitNode`。
 
