@@ -528,7 +528,7 @@ export function createNavigationController(
         ctx: NavigationDispatchContext,
     ): NavigationContext {
         const url = ctx.url ?? "/";
-        let path = url;
+        let path: string;
         try {
             path = new URL(url, "http://localhost").pathname;
         } catch {

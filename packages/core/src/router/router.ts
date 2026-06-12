@@ -141,11 +141,16 @@ export class Router {
             if (!ok) continue;
 
             // —— 未声明 codec 的 query 参数：保持 string（向后兼容） ——
-            for (const key of Object.keys(queryParams)) {
-                if (!(key in params) && !route.queryCodecs?.[key]) {
-                    params[key] = queryParams[key];
-                }
-            }
+            // 批量并入（Object.fromEntries + Object.assign），避免 URL 受控键的动态属性写
+            // （CodeQL remote-property-injection sink）；params 已是 null 原型，本无污染面。
+            Object.assign(
+                params,
+                Object.fromEntries(
+                    Object.entries(queryParams).filter(
+                        ([key]) => !(key in params) && !route.queryCodecs?.[key],
+                    ),
+                ),
+            );
 
             return {
                 intent: { id: route.intentId, params },
