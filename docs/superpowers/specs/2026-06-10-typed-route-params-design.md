@@ -1,7 +1,7 @@
 # 路由参数类型化（Typed Route Params）设计
 
 - **日期**：2026-06-10
-- **状态**：设计已定稿，待实现
+- **状态**：**已实现**。核心（原语 / 修饰器 / 推断 / 异步 resolve+校验 / 导出）于 #22 落地；后续跟进补齐数组形态 6c 一致性、`optional` 可选键精化、多值 query（`list()`）、`defineRoute` 自动关联类型。唯一未做：strict-400 模式（见 §10，反转决策 3，按需再启）。
 - **影响包**：`@finesoft/core`（主要）、`@finesoft/browser`、`@finesoft/ssr`、`@finesoft/front`（导出面）；`@finesoft/server` 零改动
 - **相关源**：`packages/core/src/router/router.ts`、`packages/core/src/bootstrap/define-routes.ts`、`packages/core/src/intents/{types,base-controller}.ts`、`packages/core/src/framework.ts`
 
@@ -395,7 +395,8 @@ async function runStandard(
 
 ## 10. 开放问题 / 未来增强
 
-- 多值 query（`?tag=a&tag=b` → `string[]`）的内置原语。
-- `optional` 参数渲染为可选属性键（`page?: number`）的类型精细化。
-- 可选：从 path 字面量为 controller **自动**关联参数类型（免去手写 `InferParams<typeof ...>`）的 helper（如 `defineRoute` 单数形态）。
-- 可选：strict 模式开关，把校验失败升级为显式 `400`（决策 3 的反向选项），按需引入。
+- ✅ 多值 query（`?tag=a&tag=b` → `string[]`）的内置原语 —— 已实现：`list(item, { min?, max? })`（`packages/core/src/router/params/multi.ts`），`resolve` 据 `multi` 标记对该 key 取全部值。
+- ✅ `optional` 参数渲染为可选属性键（`page?: number`）的类型精细化 —— 已实现：`InferParams`/`InferQuery` 按 `undefined extends 输出` 拆必选/可选键并剥冗余 `| undefined`。
+- ✅ 从 path 字面量为 controller **自动**关联参数类型（免去手写 `InferParams<typeof ...>`）—— 已实现：`defineRoute(path, { handler, params, query, fallback? })` 单数 helper，handler 入参从 codec 自动推导。
+- ⬜ strict 模式开关，把校验失败升级为显式 `400`（决策 3 的反向选项），按需引入 —— **未做**：会反转决策 3 选定的 fall-through→404，新增独立错误通道，缺明确需求暂不引入。
+- ✅ 数组形态 6c 的同款保证已由映射元组泛型补齐（`defineRoutes([...])` 与 `route()`、`defineRoute()` 三者的 `params` key 都受 `path` 约束）。

@@ -45,10 +45,10 @@ export function makeSchema<T>(
     };
 }
 
-/** 统一执行任意 Standard Schema 的校验，吸收同步/异步差异 */
+/** 统一执行任意 Standard Schema 的校验，吸收同步/异步差异（raw 可为单值或多值 query） */
 export async function runStandard(
     schema: StandardSchemaV1,
-    raw: string | undefined,
+    raw: string | string[] | undefined,
 ): Promise<{ ok: true; value: unknown } | { ok: false; issues: readonly StandardIssue[] }> {
     const result = await schema["~standard"].validate(raw);
     if (result.issues) return { ok: false, issues: result.issues };

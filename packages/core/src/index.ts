@@ -39,6 +39,8 @@ export type { RouteParams } from "./router/types";
 export {
     bool,
     int,
+    isMultiValueSchema,
+    list,
     makeSchema,
     num,
     oneOf,
@@ -53,6 +55,8 @@ export type {
     InferOutput,
     InferParams,
     InferQuery,
+    ListOptions,
+    MultiValueSchema,
     NumOptions,
     ParamSchema,
     ParamsFor,
@@ -120,7 +124,7 @@ export type {
     NavigationInitial,
     NavigationSSRDefinition,
 } from "./bootstrap/define-navigation";
-export { defineRoutes, route } from "./bootstrap/define-routes";
+export { defineRoute, defineRoutes, route } from "./bootstrap/define-routes";
 export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstrap/define-routes";
 
 // ===== Navigation =====
