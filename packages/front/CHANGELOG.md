@@ -1,5 +1,11 @@
 # @finesoft/front
 
+## 0.4.2
+
+### Patch Changes
+
+- Auto-generated patch release from CI (bec308e).
+
 ## 0.4.1
 
 ### Patch Changes
