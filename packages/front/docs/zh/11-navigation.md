@@ -14,12 +14,12 @@
 NavigationNode = LeafNode | StackNode | TabsNode | SplitNode
 ```
 
-| 节点        | 持有                              | 语义                                          | SwiftUI               |
-| ----------- | --------------------------------- | --------------------------------------------- | --------------------- |
-| `LeafNode`  | `intent` + `params`               | 一个目标（一次 intent 派发）                  | 一个 destination view |
-| `StackNode` | 有序 `entries[]`                  | 一条路径：`entries[0]` 是根，末尾是可见的栈顶 | `NavigationStack`     |
-| `TabsNode`  | `active` 键 + `branches`          | 并列分支；**仅激活分支可见**                  | `TabView`             |
-| `SplitNode` | `columns[]` + 可选 `visibility`   | 多列并存；可见集**默认全部列**，可收窄为 `detailOnly` / `doubleColumn` | `NavigationSplitView` |
+| 节点        | 持有                            | 语义                                                                   | SwiftUI               |
+| ----------- | ------------------------------- | ---------------------------------------------------------------------- | --------------------- |
+| `LeafNode`  | `intent` + `params`             | 一个目标（一次 intent 派发）                                           | 一个 destination view |
+| `StackNode` | 有序 `entries[]`                | 一条路径：`entries[0]` 是根，末尾是可见的栈顶                          | `NavigationStack`     |
+| `TabsNode`  | `active` 键 + `branches`        | 并列分支；**仅激活分支可见**                                           | `TabView`             |
+| `SplitNode` | `columns[]` + 可选 `visibility` | 多列并存；可见集**默认全部列**，可收窄为 `detailOnly` / `doubleColumn` | `NavigationSplitView` |
 
 叶子持有 `intent` + `params`，**不是** `Page`。树是纯粹的、可序列化的数据，描述「要去哪」；「那里是什么」（`Page`）由 controller 在解析时产出，并随快照交回。这正是树能进 URL / history 的原因。
 
@@ -195,22 +195,27 @@ await handle.selectColumn("detail", undefined);
 
 对标 SwiftUI 的 `NavigationSplitViewVisibility`，split 带一个可选的 **visibility** —— 这是**可绑定、可序列化的导航状态**（不是样式），它决定哪些列算可见，进而决定服务端预取什么：
 
-| `visibility`   | 可见列                        |
-| -------------- | ----------------------------- |
-| `automatic`（缺省）/ `all` | 全部列            |
-| `doubleColumn` | 首列 + 末列（隐藏中间列）     |
-| `detailOnly`   | 仅末列（detail）              |
+| `visibility`               | 可见列                    |
+| -------------------------- | ------------------------- |
+| `automatic`（缺省）/ `all` | 全部列                    |
+| `doubleColumn`             | 首列 + 末列（隐藏中间列） |
+| `detailOnly`               | 仅末列（detail）          |
 
 ```ts
 import { SPLIT_VISIBILITIES, visibleSplitColumns } from "@finesoft/front";
 
 // 声明时即指定（例如深链直达 detail）
-split([{ id: "sidebar", content: leaf("mailboxes") }, { id: "detail", content: leaf("message", { id: 7 }) }],
-    SPLIT_VISIBILITIES.DETAIL_ONLY);
+split(
+    [
+        { id: "sidebar", content: leaf("mailboxes") },
+        { id: "detail", content: leaf("message", { id: 7 }) },
+    ],
+    SPLIT_VISIBILITIES.DETAIL_ONLY,
+);
 
 // 或运行时切换 —— 新变可见的列会被派发，隐藏的列从快照中移除
 await handle.setVisibility(SPLIT_VISIBILITIES.DETAIL_ONLY); // 只剩 detail 目标
-await handle.setVisibility(SPLIT_VISIBILITIES.ALL);          // 重新预取 sidebar + list
+await handle.setVisibility(SPLIT_VISIBILITIES.ALL); // 重新预取 sidebar + list
 
 // 无需自己重实现映射，直接拿可见列渲染
 for (const col of visibleSplitColumns(splitNode)) renderColumn(col);
@@ -292,6 +297,8 @@ function renderApp(page, framework, snapshot) {
 }
 ```
 
+`renderApp` 具体要搭的 islands 外壳 —— chrome + 按目标的 islands 作为独立水合 root，以及客户端 `mountEntry` / `resolveIslandsShell` 如何收养并水合它们 —— 见 [Islands SSR](./04-rendering-and-hydration.md#islands-ssr结构化架构方案-c)。
+
 底层原理：每个可见目标经**既有的** `PrefetchedIntents` 通道序列化为一条普通的 `{ intent, data: page }`，再额外挂一条承载序列化树的哨兵条目。`@finesoft/server` **零改动** —— 它经同一个 `#serialized-server-data` 脚本透传哨兵。hydration 时浏览器桥从 history state（或哨兵）读回树，并复用预取的页面。
 
 若某请求没有结构化深链、应用也没提供骨架，SSR 回退到 `Router.resolve(url)` → 单个叶子 —— 即今天的扁平单页（含其 `renderMode`）。404 路径不变。
@@ -345,4 +352,4 @@ export const navigation = defineNavigation({
 ## 下一步
 
 - [中间件](./03-middleware.md) —— 导航复用的守卫语义
-- [渲染与 Hydration](./04-rendering-and-hydration.md) —— 预取结果如何跨越 SSR → CSR 边界
+- [渲染与 Hydration](./04-rendering-and-hydration.md) —— 渲染模式 × 架构矩阵、islands SSR 外壳，以及预取结果如何跨越 SSR → CSR 边界

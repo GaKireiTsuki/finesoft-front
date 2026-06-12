@@ -14,11 +14,11 @@ Navigation state is a tree of four node kinds:
 NavigationNode = LeafNode | StackNode | TabsNode | SplitNode
 ```
 
-| Node        | Holds                             | Meaning                                                       | SwiftUI               |
-| ----------- | --------------------------------- | ------------------------------------------------------------- | --------------------- |
-| `LeafNode`  | `intent` + `params`               | One destination (one intent dispatch)                         | a destination view    |
-| `StackNode` | ordered `entries[]`               | A path: `entries[0]` is the root, the last is the visible top | `NavigationStack`     |
-| `TabsNode`  | `active` key + `branches`         | Parallel branches; **only the active one is visible**         | `TabView`             |
+| Node        | Holds                               | Meaning                                                                                                      | SwiftUI               |
+| ----------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------- |
+| `LeafNode`  | `intent` + `params`                 | One destination (one intent dispatch)                                                                        | a destination view    |
+| `StackNode` | ordered `entries[]`                 | A path: `entries[0]` is the root, the last is the visible top                                                | `NavigationStack`     |
+| `TabsNode`  | `active` key + `branches`           | Parallel branches; **only the active one is visible**                                                        | `TabView`             |
 | `SplitNode` | `columns[]` + optional `visibility` | Side-by-side columns; visible set is **all columns by default**, narrowable to `detailOnly` / `doubleColumn` | `NavigationSplitView` |
 
 A leaf carries `intent` + `params`, **not** a `Page`. The tree is pure, serializable data describing _where_ to go; the controller produces _what's there_ (the `Page`) during resolution and hands it back in a snapshot. This is what keeps the tree URL- and history-friendly.
@@ -195,22 +195,27 @@ By default every column is visible, so the snapshot's `destinations` contains on
 
 Mirroring SwiftUI's `NavigationSplitViewVisibility`, a split carries an optional **visibility** — bindable, serializable navigation state (not styling) that decides which columns count as visible, and therefore what gets prefetched on the server:
 
-| `visibility`   | Visible columns                  |
-| -------------- | -------------------------------- |
-| `automatic` (default) / `all` | every column        |
-| `doubleColumn` | first + last (hides the middle)  |
-| `detailOnly`   | last (detail) only               |
+| `visibility`                  | Visible columns                 |
+| ----------------------------- | ------------------------------- |
+| `automatic` (default) / `all` | every column                    |
+| `doubleColumn`                | first + last (hides the middle) |
+| `detailOnly`                  | last (detail) only              |
 
 ```ts
 import { SPLIT_VISIBILITIES, visibleSplitColumns } from "@finesoft/front";
 
 // Declare it up front (e.g. deep-link straight to the detail)
-split([{ id: "sidebar", content: leaf("mailboxes") }, { id: "detail", content: leaf("message", { id: 7 }) }],
-    SPLIT_VISIBILITIES.DETAIL_ONLY);
+split(
+    [
+        { id: "sidebar", content: leaf("mailboxes") },
+        { id: "detail", content: leaf("message", { id: 7 }) },
+    ],
+    SPLIT_VISIBILITIES.DETAIL_ONLY,
+);
 
 // Or change it at runtime — newly-visible columns are dispatched, hidden ones are dropped from the snapshot
 await handle.setVisibility(SPLIT_VISIBILITIES.DETAIL_ONLY); // only the detail destination remains
-await handle.setVisibility(SPLIT_VISIBILITIES.ALL);          // re-prefetches sidebar + list
+await handle.setVisibility(SPLIT_VISIBILITIES.ALL); // re-prefetches sidebar + list
 
 // Render only the visible columns without re-implementing the mapping
 for (const col of visibleSplitColumns(splitNode)) renderColumn(col);
@@ -292,6 +297,8 @@ function renderApp(page, framework, snapshot) {
 }
 ```
 
+For the concrete islands shell that `renderApp` builds — chrome + per-destination islands as independent hydration roots, plus the client-side `mountEntry` / `resolveIslandsShell` that adopt and hydrate them — see [Islands SSR](./04-rendering-and-hydration.md#islands-ssr-structured-architecture-approach-c).
+
 How it works under the hood: each visible destination is serialized through the **existing** `PrefetchedIntents` channel as a normal `{ intent, data: page }` entry, plus one sentinel entry carrying the serialized tree. `@finesoft/server` needs **zero changes** — it transports the sentinel through the same `#serialized-server-data` script. On hydration the browser bridge reads the tree back from history state (or the sentinel) and reuses the prefetched pages.
 
 If a request has no structural deep-link and your app provides no skeleton, SSR falls back to `Router.resolve(url)` → a single leaf — i.e. today's flat single page, including its `renderMode`. The 404 path is unchanged.
@@ -345,4 +352,4 @@ A single destination's dispatch failure never throws out of an operation — it 
 ## Next
 
 - [Middleware](./03-middleware.md) — the guard semantics navigation reuses
-- [Rendering & hydration](./04-rendering-and-hydration.md) — how prefetched results cross the SSR → CSR boundary
+- [Rendering & hydration](./04-rendering-and-hydration.md) — the render-mode × architecture matrix, the islands SSR shell, and how prefetched results cross the SSR → CSR boundary
