@@ -14,17 +14,17 @@
 
 ## File Structure
 
-| 文件 | 职责 | 动作 |
-| --- | --- | --- |
-| `packages/core/src/navigation/islands.ts` | `ResolvedEntry`（含 `hydrate?`）+ `islandContainerAttributes`（共享标记） | 创建 |
-| `packages/core/src/navigation/index.ts` | barrel 导出上面两项 | 修改 |
-| `packages/ssr/src/islands.ts` | `renderIslandsHtml` + `RenderEntry` | 创建 |
-| `packages/ssr/src/index.ts` | 导出 ssr helper | 修改 |
-| `packages/browser/src/navigation-islands.ts` | 从 core 引 `ResolvedEntry`/共享标记；首次 sync 收养水合 | 修改 |
-| `packages/browser/src/index.ts` | 去掉本地 `ResolvedEntry` 再导出（已移 core） | 修改 |
-| `packages/front/src/index.ts` | 去重 `ResolvedEntry`；透出 `renderIslandsHtml`/`RenderEntry` | 修改 |
-| `templates/vue-minimal/src/{App.vue,main.ts,ssr.ts}` | shell 重构 + 水合接线 | 修改 |
-| 各 `*.test.ts` | 单测 | 创建/修改 |
+| 文件                                                 | 职责                                                                      | 动作      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------- | --------- |
+| `packages/core/src/navigation/islands.ts`            | `ResolvedEntry`（含 `hydrate?`）+ `islandContainerAttributes`（共享标记） | 创建      |
+| `packages/core/src/navigation/index.ts`              | barrel 导出上面两项                                                       | 修改      |
+| `packages/ssr/src/islands.ts`                        | `renderIslandsHtml` + `RenderEntry`                                       | 创建      |
+| `packages/ssr/src/index.ts`                          | 导出 ssr helper                                                           | 修改      |
+| `packages/browser/src/navigation-islands.ts`         | 从 core 引 `ResolvedEntry`/共享标记；首次 sync 收养水合                   | 修改      |
+| `packages/browser/src/index.ts`                      | 去掉本地 `ResolvedEntry` 再导出（已移 core）                              | 修改      |
+| `packages/front/src/index.ts`                        | 去重 `ResolvedEntry`；透出 `renderIslandsHtml`/`RenderEntry`              | 修改      |
+| `templates/vue-minimal/src/{App.vue,main.ts,ssr.ts}` | shell 重构 + 水合接线                                                     | 修改      |
+| 各 `*.test.ts`                                       | 单测                                                                      | 创建/修改 |
 
 执行顺序:Task 1 spike 去风险 → Task 2-5 框架 → Task 6 模板 → Task 7 端到端验证。
 
@@ -35,6 +35,7 @@
 **目的:** 在投入框架 plumbing 前，确认「Vue `createSSRApp(view,{page}).mount(SSR标记div)` 干净水合」+「chrome 挂到 sibling chrome-root、outlet 不被 chrome 触碰」。**此 Task 的改动是临时探针，验证后在 Task 6 由真实框架调用替换。**
 
 **Files:**
+
 - Modify（临时）: `templates/vue-minimal/src/ssr.ts`
 - Modify（临时）: `templates/vue-minimal/src/main.ts`
 - Modify（临时）: `templates/vue-minimal/src/App.vue`
@@ -97,6 +98,7 @@ kill $(cat /tmp/finesoft-vue-dev.pid) 2>/dev/null; sleep 1
 cd templates/vue-minimal && nohup vp dev > /tmp/finesoft-vue-dev.log 2>&1 & echo $! > /tmp/finesoft-vue-dev.pid
 sleep 3; curl -s http://localhost:5173/item/1 | grep -o '<main data-fs-outlet>.*</main>' | head -c 400
 ```
+
 Expected: `<main data-fs-outlet>` 内含 DetailView 的真实内容（非空），带 `data-fs-entry data-fs-key="detail {&quot;id&quot;:&quot;1&quot;}"`。
 
 - [ ] **Step 3: playwright 验证水合无失配 + 交互正常**
@@ -122,6 +124,7 @@ git checkout templates/vue-minimal/src/ssr.ts templates/vue-minimal/src/main.ts
 ### Task 2: core —— `ResolvedEntry`（移入 + `hydrate?`）+ `islandContainerAttributes`
 
 **Files:**
+
 - Create: `packages/core/src/navigation/islands.ts`
 - Modify: `packages/core/src/navigation/index.ts`（barrel 增导出）
 - Test: `packages/core/test/navigation/islands.test.ts`
@@ -216,6 +219,7 @@ git commit -m "feat(core): island entry type + shared container marker (islandCo
 ### Task 3: ssr —— `renderIslandsHtml` + `RenderEntry`
 
 **Files:**
+
 - Create: `packages/ssr/src/islands.ts`
 - Modify: `packages/ssr/src/index.ts`
 - Test: `packages/ssr/test/islands.test.ts`
@@ -357,6 +361,7 @@ git commit -m "feat(ssr): renderIslandsHtml — server-render visible islands wi
 ### Task 4: browser orchestrator —— 首次 sync 收养水合
 
 **Files:**
+
 - Modify: `packages/browser/src/navigation-islands.ts`
 - Test: `packages/browser/test/navigation-islands.test.ts`（追加用例；沿用现有 `fake-dom.ts`）
 
@@ -467,100 +472,100 @@ import {
 3b. `createIslandOrchestrator` 内，把现有「新建容器并 setAttribute 三处」替换为共享标记 + 收养逻辑。新增首次标志与收养器:
 
 ```ts
-    const mounted = new Map<string, MountedIsland>();
-    let booted = false; // 仅首次 sync 收养 SSR 标记
+const mounted = new Map<string, MountedIsland>();
+let booted = false; // 仅首次 sync 收养 SSR 标记
 
-    /** 收集 outlet 内既有 SSR island 容器（按 data-fs-key）。 */
-    function collectSsrContainers(): Map<string, HTMLElement> {
-        const map = new Map<string, HTMLElement>();
-        for (const el of outlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) {
-            const key = el.getAttribute("data-fs-key");
-            if (key !== null) map.set(key, el);
-        }
-        return map;
+/** 收集 outlet 内既有 SSR island 容器（按 data-fs-key）。 */
+function collectSsrContainers(): Map<string, HTMLElement> {
+    const map = new Map<string, HTMLElement>();
+    for (const el of outlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) {
+        const key = el.getAttribute("data-fs-key");
+        if (key !== null) map.set(key, el);
     }
+    return map;
+}
 ```
 
 3c. `sync` 顶部取收养表；把「确保每个可见目标已挂载」分支改为命中即收养:
 
 ```ts
-    function sync(snapshot: NavigationSnapshot): void {
-        const ssr = booted ? null : collectSsrContainers(); // 仅首次
+function sync(snapshot: NavigationSnapshot): void {
+    const ssr = booted ? null : collectSsrContainers(); // 仅首次
 
-        const presentKeys = new Set(
-            collectAllLeaves(snapshot.tree).map((l) => sessionEntryKey(l.intent, l.params)),
-        );
+    const presentKeys = new Set(
+        collectAllLeaves(snapshot.tree).map((l) => sessionEntryKey(l.intent, l.params)),
+    );
 
-        // 1) 卸载离 present 集的 island。
-        for (const [key, island] of mounted) {
-            if (!presentKeys.has(key)) teardown(key, island);
-        }
-
-        // 2) 确保每个可见目标已挂载（命中 SSR 容器则收养水合，否则新建）。
-        const visibleKeys: string[] = [];
-        for (const d of snapshot.destinations) {
-            const key = sessionEntryKey(d.intent, d.params);
-            visibleKeys.push(key);
-            const existing = mounted.get(key);
-            if (existing !== undefined && existing.page !== d.page) {
-                teardown(key, existing); // page 变了（refresh）→ 重挂拿新 page
-            }
-            if (!mounted.has(key)) {
-                const adopted = ssr?.get(key);
-                const container = adopted ?? document.createElement("div");
-                if (adopted === undefined) {
-                    for (const [k, v] of Object.entries(islandContainerAttributes(d.intent, key))) {
-                        container.setAttribute(k, v);
-                    }
-                } else {
-                    ssr?.delete(key); // 已收养，移出待清理集
-                }
-                const entry: ResolvedEntry = {
-                    intent: d.intent,
-                    params: d.params,
-                    entryKey: key,
-                    page: d.page,
-                    hydrate: adopted !== undefined,
-                };
-                const handle = mountEntry(entry, container);
-                mounted.set(key, {
-                    container,
-                    handle,
-                    attached: adopted !== undefined, // 收养的容器已在 outlet
-                    entered: false,
-                    page: d.page,
-                });
-            }
-        }
-
-        // 2.5) 首次：移除未收养的孤儿 SSR 容器（不属于任何可见目标）。
-        if (ssr) for (const el of ssr.values()) el.remove();
-
-        // 3) detach 掉 present-但-不可见的 island（保活）。
-        const visibleSet = new Set(visibleKeys);
-        for (const [key, island] of mounted) {
-            if (!visibleSet.has(key)) conceal(island);
-        }
-
-        // 4) 按 destinations 顺序 attach/reorder 可见 island。
-        for (const key of visibleKeys) {
-            const island = mounted.get(key);
-            if (island === undefined) continue;
-            const wasAttached = island.attached;
-            outlet.appendChild(island.container);
-            island.attached = true;
-            if (!island.entered) {
-                island.entered = true;
-                emit(island.container, "fs:enter");
-            }
-            if (!wasAttached) {
-                emit(island.container, "fs:reveal");
-                restoreScroll(island);
-            }
-        }
-
-        booted = true;
+    // 1) 卸载离 present 集的 island。
+    for (const [key, island] of mounted) {
+        if (!presentKeys.has(key)) teardown(key, island);
     }
+
+    // 2) 确保每个可见目标已挂载（命中 SSR 容器则收养水合，否则新建）。
+    const visibleKeys: string[] = [];
+    for (const d of snapshot.destinations) {
+        const key = sessionEntryKey(d.intent, d.params);
+        visibleKeys.push(key);
+        const existing = mounted.get(key);
+        if (existing !== undefined && existing.page !== d.page) {
+            teardown(key, existing); // page 变了（refresh）→ 重挂拿新 page
+        }
+        if (!mounted.has(key)) {
+            const adopted = ssr?.get(key);
+            const container = adopted ?? document.createElement("div");
+            if (adopted === undefined) {
+                for (const [k, v] of Object.entries(islandContainerAttributes(d.intent, key))) {
+                    container.setAttribute(k, v);
+                }
+            } else {
+                ssr?.delete(key); // 已收养，移出待清理集
+            }
+            const entry: ResolvedEntry = {
+                intent: d.intent,
+                params: d.params,
+                entryKey: key,
+                page: d.page,
+                hydrate: adopted !== undefined,
+            };
+            const handle = mountEntry(entry, container);
+            mounted.set(key, {
+                container,
+                handle,
+                attached: adopted !== undefined, // 收养的容器已在 outlet
+                entered: false,
+                page: d.page,
+            });
+        }
+    }
+
+    // 2.5) 首次：移除未收养的孤儿 SSR 容器（不属于任何可见目标）。
+    if (ssr) for (const el of ssr.values()) el.remove();
+
+    // 3) detach 掉 present-但-不可见的 island（保活）。
+    const visibleSet = new Set(visibleKeys);
+    for (const [key, island] of mounted) {
+        if (!visibleSet.has(key)) conceal(island);
+    }
+
+    // 4) 按 destinations 顺序 attach/reorder 可见 island。
+    for (const key of visibleKeys) {
+        const island = mounted.get(key);
+        if (island === undefined) continue;
+        const wasAttached = island.attached;
+        outlet.appendChild(island.container);
+        island.attached = true;
+        if (!island.entered) {
+            island.entered = true;
+            emit(island.container, "fs:enter");
+        }
+        if (!wasAttached) {
+            emit(island.container, "fs:reveal");
+            restoreScroll(island);
+        }
+    }
+
+    booted = true;
+}
 ```
 
 > 说明:收养的容器 `attached:true`、`wasAttached:true` → 不派发 `fs:reveal`（它本就在首屏可见，不是 detach→attach 转换）；但 `entered:false` → 首次仍派发 `fs:enter`（实例已进入）。`appendChild` 对已在 outlet 的容器是幂等重排。
@@ -586,6 +591,7 @@ git commit -m "feat(browser): orchestrator adopts SSR island markup on first syn
 ### Task 5: browser index + front —— 导出去重 + 透出 helper
 
 **Files:**
+
 - Modify: `packages/browser/src/index.ts`
 - Modify: `packages/front/src/index.ts`
 
@@ -596,6 +602,7 @@ git commit -m "feat(browser): orchestrator adopts SSR island markup on first syn
 - [ ] **Step 2: front 去重 `ResolvedEntry` + 透出 ssr helper**
 
 `packages/front/src/index.ts`:
+
 - 在 `from "@finesoft/browser"` 的 type 列表里**删除** `ResolvedEntry,`（它经 `export * from "@finesoft/core"` 已导出；保留会重复导出报错）。
 - 在 SSR value 再导出块（`from "@finesoft/ssr"`）加 `renderIslandsHtml,`。
 - 在 SSR type 再导出块加 `RenderEntry,`（即增 `export type { ..., RenderEntry } from "@finesoft/ssr";`）。
@@ -619,6 +626,7 @@ git commit -m "chore(exports): ResolvedEntry from core; front re-exports renderI
 ### Task 6: template（vue-minimal）—— shell 重构 + 水合接线
 
 **Files:**
+
 - Modify: `templates/vue-minimal/src/App.vue`（Task 1 已改为 chrome-only，确认保留）
 - Modify: `templates/vue-minimal/src/main.ts`
 - Modify: `templates/vue-minimal/src/ssr.ts`
@@ -747,6 +755,7 @@ kill $(cat /tmp/finesoft-vue-dev.pid) 2>/dev/null; sleep 1
 cd templates/vue-minimal && nohup vp dev > /tmp/finesoft-vue-dev.log 2>&1 & echo $! > /tmp/finesoft-vue-dev.pid
 sleep 3; curl -s -o /dev/null -w "http=%{http_code}\n" http://localhost:5173/item/1
 ```
+
 Expected: `http=200`。
 
 - [ ] **Step 2: 验证首屏 HTML 含 island 内容（SSR 真生效）**
@@ -754,11 +763,13 @@ Expected: `http=200`。
 ```bash
 curl -s http://localhost:5173/item/1 | grep -o '<main data-fs-outlet>.*</main>' | head -c 600
 ```
+
 Expected: `<main data-fs-outlet>` 内含 DetailView 真实内容（带 `data-fs-entry`、`data-fs-key="detail {&quot;id&quot;:&quot;1&quot;}"`，且 DetailView 的可见文本/输入框 markup 在内）—— **非空**。
 
 - [ ] **Step 3: playwright 验证水合无失配 + 交互/keep-alive/重载恢复不回归**
 
 用 playwright:
+
 1. navigate `/item/1` → `browser_console_messages` 断言**无** Vue `Hydration` mismatch 警告。
 2. snapshot 断言 DetailView 内容首屏在页面、island 输入框可输入。
 3. keep-alive 回归:在 detail 输入 note → 切到 Notes tab 再切回 → note 仍在（islands 保活）。

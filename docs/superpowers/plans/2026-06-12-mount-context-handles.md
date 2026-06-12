@@ -14,16 +14,16 @@
 
 ## File Structure
 
-| 文件 | 职责 | 动作 |
-| --- | --- | --- |
-| `packages/browser/src/app-handle.ts` | `AppHandle` 类型 + `createAppHandle(nav?, session?)` 扁平合并 | 创建 |
-| `packages/browser/src/start-app.ts` | mount context 加 handle/app；移除 onXReady；boot 重排；拆 core/post 段 | 修改 |
-| `packages/browser/src/index.ts` | 导出 `AppHandle` | 修改 |
-| `packages/front/src/browser.ts` | 透出 `AppHandle`（index.ts 经 `export * from "./browser"` 自动带） | 修改 |
-| `templates/vue-minimal/src/main.ts` | 用 context 取 handle/app，删模块变量+makeController+onXReady | 修改 |
-| `templates/vue-minimal/src/ssr.ts` | chrome SSR 改用真实快照（parity 升级） | 修改 |
-| `packages/browser/test/app-handle.test.ts` | createAppHandle 单测 | 创建 |
-| `packages/browser/test/start-app.test.ts` | 改写 onXReady 用例为 context/app/时序用例 | 修改 |
+| 文件                                       | 职责                                                                   | 动作 |
+| ------------------------------------------ | ---------------------------------------------------------------------- | ---- |
+| `packages/browser/src/app-handle.ts`       | `AppHandle` 类型 + `createAppHandle(nav?, session?)` 扁平合并          | 创建 |
+| `packages/browser/src/start-app.ts`        | mount context 加 handle/app；移除 onXReady；boot 重排；拆 core/post 段 | 修改 |
+| `packages/browser/src/index.ts`            | 导出 `AppHandle`                                                       | 修改 |
+| `packages/front/src/browser.ts`            | 透出 `AppHandle`（index.ts 经 `export * from "./browser"` 自动带）     | 修改 |
+| `templates/vue-minimal/src/main.ts`        | 用 context 取 handle/app，删模块变量+makeController+onXReady           | 修改 |
+| `templates/vue-minimal/src/ssr.ts`         | chrome SSR 改用真实快照（parity 升级）                                 | 修改 |
+| `packages/browser/test/app-handle.test.ts` | createAppHandle 单测                                                   | 创建 |
+| `packages/browser/test/start-app.test.ts`  | 改写 onXReady 用例为 context/app/时序用例                              | 修改 |
 
 执行顺序:Task 1（app-handle 单元）→ Task 2（start-app 重排，核心）→ Task 3（导出）→ Task 4（vue-minimal 迁移）→ Task 5（e2e 验证）。
 
@@ -32,6 +32,7 @@
 ### Task 1: `createAppHandle` + `AppHandle` 类型
 
 **Files:**
+
 - Create: `packages/browser/src/app-handle.ts`
 - Test: `packages/browser/test/app-handle.test.ts`
 
@@ -45,7 +46,10 @@ import type { SessionHandle } from "../src/session-bridge";
 
 function fakeNav(): NavigationHandle {
     return {
-        getSnapshot: vi.fn(() => ({ tree: { kind: "leaf", intent: "home", params: {} }, destinations: [] })),
+        getSnapshot: vi.fn(() => ({
+            tree: { kind: "leaf", intent: "home", params: {} },
+            destinations: [],
+        })),
         subscribe: vi.fn(() => () => {}),
         push: vi.fn(async () => ({}) as never),
         pop: vi.fn(async () => ({}) as never),
@@ -89,7 +93,9 @@ describe("createAppHandle", () => {
     });
 
     test("scope 是 getter，委托当前 session.scope（restore 重建后取到最新）", () => {
-        const session = fakeSession({ tag: "v1" }) as SessionHandle & { __setScope: (v: unknown) => void };
+        const session = fakeSession({ tag: "v1" }) as SessionHandle & {
+            __setScope: (v: unknown) => void;
+        };
         const app = createAppHandle(undefined, session);
         expect((app.scope as { tag: string }).tag).toBe("v1");
         session.__setScope({ tag: "v2" });
@@ -198,6 +204,7 @@ git commit -m "feat(browser): createAppHandle — unified nav+session component-
 ### Task 2: start-app.ts —— mount context + boot 重排 + 移除 onXReady
 
 **Files:**
+
 - Modify: `packages/browser/src/start-app.ts`
 - Modify: `packages/browser/test/start-app.test.ts`
 
@@ -250,7 +257,11 @@ async function activateNavigationCore(args: {
             const url = codec.encode({ kind: "leaf", intent, params }, framework.router);
             return {
                 container: framework.container,
-                navigation: createBrowserContext({ url, intent: { id: intent, params }, container: framework.container }),
+                navigation: createBrowserContext({
+                    url,
+                    intent: { id: intent, params },
+                    container: framework.container,
+                }),
                 url,
             };
         },
@@ -262,7 +273,13 @@ async function activateNavigationCore(args: {
             void framework.perform(makeFlowAction(url));
         },
     });
-    const handle = createNavigationBridge({ controller, codec, router: framework.router, log, getScrollablePageElement });
+    const handle = createNavigationBridge({
+        controller,
+        codec,
+        router: framework.router,
+        log,
+        getScrollablePageElement,
+    });
     // 注意:不在此 resolve()、不建 orchestrator —— 均移到 mount 后（body 中）。
     return { handle, controller, mountEntry: navigation.mountEntry };
 }
@@ -307,7 +324,10 @@ function activateSessionCore(args: {
     const currentUrl = (): string => window.location.pathname + window.location.search;
     const adapter = navController
         ? createNavigationSessionAdapter(navController, currentUrl)
-        : createUrlSessionAdapter({ currentUrl, navigate: (url) => framework.perform(makeFlowAction(url)) });
+        : createUrlSessionAdapter({
+              currentUrl,
+              navigate: (url) => framework.perform(makeFlowAction(url)),
+          });
     const subscribeNavigation = navController
         ? (onChange: () => void): (() => void) => navController.subscribe(() => onChange())
         : flatNavigation
@@ -320,7 +340,13 @@ function activateSessionCore(args: {
         maxAgeMs: session.maxAgeMs,
     });
     for (const provider of session.providers ?? []) store.register(provider);
-    return createSessionBridge({ store, adapter, subscribeNavigation, debounceMs: session.debounceMs, shouldRestore: session.shouldRestore });
+    return createSessionBridge({
+        store,
+        adapter,
+        subscribeNavigation,
+        debounceMs: session.debounceMs,
+        shouldRestore: session.shouldRestore,
+    });
 }
 ```
 
@@ -331,84 +357,94 @@ function activateSessionCore(args: {
 把 body（约 222-382）按下序重写（保留 1-3 步的 framework/bootstrap/routeUrl/locale 不变）。核心:nav/session core 前置到 mount 前;resolve/islands/restore/domRestore 留 mount 后。
 
 ```ts
-    // （1-3 不变:prefetchedIntents、initialUrl、locale、framework.create、bootstrap、routeUrl → initialAction）
+// （1-3 不变:prefetchedIntents、initialUrl、locale、framework.create、bootstrap、routeUrl → initialAction）
 
-    const target = document.getElementById(mountId);
-    if (!target) throw new Error(`[startBrowserApp] Mount target not found: #${mountId}. ...`);
+const target = document.getElementById(mountId);
+if (!target) throw new Error(`[startBrowserApp] Mount target not found: #${mountId}. ...`);
 
-    // 4. 【mount 前】nav-core:建 controller/bridge（handle 就绪;此刻 getSnapshot = {tree, []}）
-    let navCore: NavigationCore | undefined;
-    if (config.navigation) {
-        navCore = await activateNavigationCore({
-            framework, navigation: config.navigation, log,
-            getScrollablePageElement: config.getScrollablePageElement,
-        });
-    }
-
-    // 5. 【mount 前】flatNavigation 发射器(真扁平 session 用) + session-core(建 store/bridge,不 restore)
-    const flatNavigation =
-        config.session && !config.navigation && !config.mountEntry ? createNavigationEmitter() : undefined;
-    let sessionHandle: SessionHandle | undefined;
-    if (config.session) {
-        sessionHandle = activateSessionCore({
-            framework, session: config.session,
-            navController: navCore?.controller, flatNavigation,
-        });
-    }
-
-    // 6. 【mount 前】建统一 app 句柄
-    const app =
-        navCore || sessionHandle ? createAppHandle(navCore?.handle, sessionHandle) : undefined;
-
-    // 7. 【mount】context 交付 handle/app
-    const updateApp = mount(target, {
+// 4. 【mount 前】nav-core:建 controller/bridge（handle 就绪;此刻 getSnapshot = {tree, []}）
+let navCore: NavigationCore | undefined;
+if (config.navigation) {
+    navCore = await activateNavigationCore({
         framework,
-        navigation: navCore?.handle,
-        session: sessionHandle,
-        app,
-    });
-
-    // 8. 注册 action handlers（需 updateApp;manageHistory 在结构化/flat-islands 下为 false）
-    let flatPush: ((url: string) => Promise<void>) | undefined;
-    registerActionHandlers({
-        framework, log,
-        callbacks: flatNavigation ? flatNavigation.wrap(callbacks) : callbacks,
-        updateApp,
+        navigation: config.navigation,
+        log,
         getScrollablePageElement: config.getScrollablePageElement,
-        manageHistory: !(config.navigation || config.mountEntry),
-        onForward: config.mountEntry && !config.navigation ? (url) => flatPush?.(url) : undefined,
     });
+}
 
-    // 9. flat-islands（mount 后,需 outlet;无 navigation 时）
-    let activatedFlatIslands: ActivatedFlatIslands | undefined;
-    if (config.mountEntry && !config.navigation) {
-        activatedFlatIslands = await activateFlatIslands({
-            framework, initialUrl, mountEntry: config.mountEntry, target, log,
-            getScrollablePageElement: config.getScrollablePageElement,
-        });
-        flatPush = activatedFlatIslands.pushUrl;
-    }
+// 5. 【mount 前】flatNavigation 发射器(真扁平 session 用) + session-core(建 store/bridge,不 restore)
+const flatNavigation =
+    config.session && !config.navigation && !config.mountEntry
+        ? createNavigationEmitter()
+        : undefined;
+let sessionHandle: SessionHandle | undefined;
+if (config.session) {
+    sessionHandle = activateSessionCore({
+        framework,
+        session: config.session,
+        navController: navCore?.controller,
+        flatNavigation,
+    });
+}
 
-    // 10. 首屏:flat 走 perform;结构化走 nav-core 的 resolve + islands 装配（均 mount 后）
-    let islandsOutlet: HTMLElement | undefined;
-    if (navCore) {
-        const { outlet } = await attachNavigation({ core: navCore, target });
-        islandsOutlet = outlet;
-    } else if (!activatedFlatIslands) {
-        if (initialAction) await framework.perform(initialAction.action);
-        else updateApp({ page: Promise.reject(new Error("404")), isFirstPage: true });
-    }
-    islandsOutlet ??= activatedFlatIslands?.outlet;
+// 6. 【mount 前】建统一 app 句柄
+const app = navCore || sessionHandle ? createAppHandle(navCore?.handle, sessionHandle) : undefined;
 
-    // 11. 会话 boot 恢复（mount 后:保 SSR 水合 parity）
-    if (sessionHandle) await sessionHandle.restore(initialUrl);
+// 7. 【mount】context 交付 handle/app
+const updateApp = mount(target, {
+    framework,
+    navigation: navCore?.handle,
+    session: sessionHandle,
+    app,
+});
 
-    // 12. domRestore（mount 后,在 restore 之后:scope 已回填）
-    if (config.domRestore && islandsOutlet && sessionHandle) {
-        createDomRestore({ scope: sessionHandle.scope }).attach(islandsOutlet);
-    }
+// 8. 注册 action handlers（需 updateApp;manageHistory 在结构化/flat-islands 下为 false）
+let flatPush: ((url: string) => Promise<void>) | undefined;
+registerActionHandlers({
+    framework,
+    log,
+    callbacks: flatNavigation ? flatNavigation.wrap(callbacks) : callbacks,
+    updateApp,
+    getScrollablePageElement: config.getScrollablePageElement,
+    manageHistory: !(config.navigation || config.mountEntry),
+    onForward: config.mountEntry && !config.navigation ? (url) => flatPush?.(url) : undefined,
+});
 
-    await onAfterStart?.(framework);
+// 9. flat-islands（mount 后,需 outlet;无 navigation 时）
+let activatedFlatIslands: ActivatedFlatIslands | undefined;
+if (config.mountEntry && !config.navigation) {
+    activatedFlatIslands = await activateFlatIslands({
+        framework,
+        initialUrl,
+        mountEntry: config.mountEntry,
+        target,
+        log,
+        getScrollablePageElement: config.getScrollablePageElement,
+    });
+    flatPush = activatedFlatIslands.pushUrl;
+}
+
+// 10. 首屏:flat 走 perform;结构化走 nav-core 的 resolve + islands 装配（均 mount 后）
+let islandsOutlet: HTMLElement | undefined;
+if (navCore) {
+    const { outlet } = await attachNavigation({ core: navCore, target });
+    islandsOutlet = outlet;
+} else if (!activatedFlatIslands) {
+    if (initialAction) await framework.perform(initialAction.action);
+    else updateApp({ page: Promise.reject(new Error("404")), isFirstPage: true });
+}
+islandsOutlet ??= activatedFlatIslands?.outlet;
+
+// 11. 会话 boot 恢复（mount 后:保 SSR 水合 parity）
+if (sessionHandle) await sessionHandle.restore(initialUrl);
+
+// 12. domRestore（mount 后,在 restore 之后:scope 已回填）
+if (config.domRestore && islandsOutlet && sessionHandle) {
+    createDomRestore({ scope: sessionHandle.scope }).attach(islandsOutlet);
+}
+
+await onAfterStart?.(framework);
 ```
 
 **删除**原 `await config.onNavigationReady?.(...)` 与 `await config.onSessionReady?.(...)` 调用。原 `ActivatedNavigation` 接口若不再用可删（其 `outlet` 现由 `attachNavigation` 返回）。
@@ -425,18 +461,31 @@ test("mount context 收到就绪的 navigation handle（snapshot.tree 为 initia
     // ...（沿用该用例既有的 window.history/popstate stub）
     class HomeController extends BaseController<Record<string, never>, { id: string }> {
         readonly intentId = "home";
-        execute() { return { id: "home-page" }; }
+        execute() {
+            return { id: "home-page" };
+        }
     }
-    let ctx: { navigation?: import("../src/navigation-bridge").NavigationHandle; app?: import("../src/app-handle").AppHandle } | undefined;
+    let ctx:
+        | {
+              navigation?: import("../src/navigation-bridge").NavigationHandle;
+              app?: import("../src/app-handle").AppHandle;
+          }
+        | undefined;
     await startBrowserApp({
-        bootstrap(framework) { framework.router.add("/home", "home"); framework.registerIntent(new HomeController()); },
-        mount(_t, context) { ctx = context; return vi.fn(); },
+        bootstrap(framework) {
+            framework.router.add("/home", "home");
+            framework.registerIntent(new HomeController());
+        },
+        mount(_t, context) {
+            ctx = context;
+            return vi.fn();
+        },
         callbacks: makeCallbacks(),
         navigation: { initial: stack([leaf("home")]) },
     });
     expect(ctx?.navigation).toBeDefined();
     expect(ctx?.navigation?.getSnapshot().tree).toEqual(stack([leaf("home")])); // mount 时 tree 已就绪
-    expect(typeof ctx?.app?.push).toBe("function");                            // 统一句柄到位
+    expect(typeof ctx?.app?.push).toBe("function"); // 统一句柄到位
 });
 ```
 
@@ -446,8 +495,13 @@ test("mount context 收到就绪的 navigation handle（snapshot.tree 为 initia
 test("无 navigation/session 配置 → mount context 不含 navigation/session/app", async () => {
     let ctx: Record<string, unknown> | undefined;
     await startBrowserApp({
-        bootstrap(f) { f.router.add("/", "home"); },
-        mount(_t, context) { ctx = context as Record<string, unknown>; return vi.fn(); },
+        bootstrap(f) {
+            f.router.add("/", "home");
+        },
+        mount(_t, context) {
+            ctx = context as Record<string, unknown>;
+            return vi.fn();
+        },
         callbacks: makeCallbacks(),
     });
     expect(ctx?.navigation).toBeUndefined();
@@ -465,13 +519,21 @@ test("session handle 经 mount context 交付，且 restore 在 mount 之后", a
     // ...（沿用既有 fakeWebStorage / makeCoreStorage 预置 snapshot）
     let ctxSession: import("../src/session-bridge").SessionHandle | undefined;
     await startBrowserApp({
-        bootstrap(f) { f.router.add("/", "home"); },
-        mount(_t, context) { order.push("mount"); ctxSession = context.session; return vi.fn(); },
+        bootstrap(f) {
+            f.router.add("/", "home");
+        },
+        mount(_t, context) {
+            order.push("mount");
+            ctxSession = context.session;
+            return vi.fn();
+        },
         callbacks: makeCallbacks(),
-        session: { providers: [{ key: "draft", capture: () => "", restore: () => order.push("restore") }] },
+        session: {
+            providers: [{ key: "draft", capture: () => "", restore: () => order.push("restore") }],
+        },
     });
     expect(typeof ctxSession?.save).toBe("function"); // handle 在 mount 就绪
-    expect(order).toEqual(["mount", "restore"]);       // restore 在 mount 之后
+    expect(order).toEqual(["mount", "restore"]); // restore 在 mount 之后
 });
 ```
 
@@ -496,6 +558,7 @@ git commit -m "feat(browser): deliver nav/session handles + unified app in mount
 ### Task 3: 导出 `AppHandle`
 
 **Files:**
+
 - Modify: `packages/browser/src/index.ts`
 - Modify: `packages/front/src/browser.ts`
 
@@ -528,6 +591,7 @@ git commit -m "chore(exports): export AppHandle from browser + front"
 ### Task 4: vue-minimal 迁移（main.ts + ssr.ts）
 
 **Files:**
+
 - Modify: `templates/vue-minimal/src/main.ts`
 - Modify: `templates/vue-minimal/src/ssr.ts`
 
@@ -536,7 +600,13 @@ git commit -m "chore(exports): export AppHandle from browser + front"
 `templates/vue-minimal/src/main.ts` 重构。删除:`navHandle`/`sessionHandle` 模块变量、`makeController`/`controller` 常量、`onNavigationReady`/`onSessionReady` 旋钮。`AppController` 类型改为 `import type { AppHandle } from "@finesoft/front"` 的别名。`mount` 从 context 取 `app`/`navigation`:
 
 ```ts
-import { startBrowserApp, type AppHandle, type MountEntry, type NavigationSnapshot, type SessionStateProvider } from "@finesoft/front";
+import {
+    startBrowserApp,
+    type AppHandle,
+    type MountEntry,
+    type NavigationSnapshot,
+    type SessionStateProvider,
+} from "@finesoft/front";
 import { createApp, createSSRApp, markRaw, reactive, type Component } from "vue";
 import App from "./App.vue";
 import HomeView from "./views/HomeView.vue";
@@ -556,7 +626,9 @@ const state = reactive<AppState>({ snapshot: null, name: "" });
 const profileProvider: SessionStateProvider = {
     key: "profile",
     capture: () => ({ name: state.name }),
-    restore: (data) => { state.name = (data as { name?: string }).name ?? ""; },
+    restore: (data) => {
+        state.name = (data as { name?: string }).name ?? "";
+    },
 };
 
 const VIEWS: Record<string, Component> = { home: HomeView, detail: DetailView, notes: NotesView };
@@ -578,10 +650,10 @@ let controller: AppHandle | undefined;
 void startBrowserApp({
     bootstrap,
     mount(target, ctx) {
-        controller = ctx.app;                    // islands(mount 后挂)与 chrome 共用
+        controller = ctx.app; // islands(mount 后挂)与 chrome 共用
         const nav = ctx.navigation;
         if (nav) {
-            state.snapshot = nav.getSnapshot();  // mount 时 tree 已就绪
+            state.snapshot = nav.getSnapshot(); // mount 时 tree 已就绪
             nav.subscribe((s) => (state.snapshot = s));
         }
         let chromeRoot = target.querySelector<HTMLElement>("[data-fs-chrome]");
@@ -654,6 +726,7 @@ kill $(cat /tmp/finesoft-vue-dev.pid) 2>/dev/null; sleep 1
 cd templates/vue-minimal && nohup vp dev > /tmp/finesoft-vue-dev.log 2>&1 & echo $! > /tmp/finesoft-vue-dev.pid
 for i in $(seq 1 25); do curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/item/1 2>/dev/null | grep -q 200 && { echo "READY ${i}s"; break; }; sleep 1; done
 ```
+
 Expected: READY。
 
 - [ ] **Step 2: 首屏 SSR 含 nav bar + island（parity 升级验证）**
@@ -661,11 +734,13 @@ Expected: READY。
 ```bash
 curl -s http://localhost:5173/item/1 | grep -o '<div data-fs-chrome>.*</main>' | grep -o 'Feed\|Notes\|data-fs-entry\|Item 1' | sort | uniq -c
 ```
+
 Expected: chrome 段含 `Feed`/`Notes`（nav bar 现 SSR 渲出）+ outlet 含 island `Item 1`。
 
 - [ ] **Step 3: playwright 验证水合 + 功能不回归**
 
 用 playwright:
+
 1. navigate `/item/1` → `browser_console_messages(level=warning)` 断言 **0 hydration mismatch**。
 2. island note 可输入;切 Notes tab 再切回 → note 保留（keep-alive）。
 3. 输入 note → 重载 `/item/1` → note 回填（session + domRestore）;`/item/2` → 不泄漏。

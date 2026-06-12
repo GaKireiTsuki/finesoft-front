@@ -19,6 +19,7 @@
 ## File Structure
 
 **core (`packages/core/src/session/`):**
+
 - `types.ts` — `SessionSnapshot`, `SessionUrlLocation`, `SessionStateProvider`, `SessionNavigationAdapter`, `SessionStoreOptions`, `SessionErrorContext`, `NavigationScopedState`, `SessionStore`, `SessionError`, `SESSION_DEFAULT_KEY`, `SESSION_DEFAULT_VERSION`, `isUrlLocation`.
 - `snapshot.ts` — `encodeSnapshot`, `decodeSnapshot` (validation, version/shape checks).
 - `scoped-state.ts` — `createNavigationScopedState`, `sessionEntryKey`, `collectLeafKeys`.
@@ -29,6 +30,7 @@
 - Modify `packages/core/src/index.ts` — add `// ===== Session =====` export block.
 
 **browser (`packages/browser/src/`):**
+
 - `web-storage.ts` — `createWebStorage("session" | "local")`.
 - `session-bridge.ts` — `createSessionBridge`.
 - Modify `start-app.ts` — optional `session` config + wiring.
@@ -44,6 +46,7 @@
 ## Task 1: core session types + snapshot codec
 
 **Files:**
+
 - Create: `packages/core/src/session/types.ts`
 - Create: `packages/core/src/session/snapshot.ts`
 - Test: `packages/core/test/session/snapshot.test.ts`
@@ -57,7 +60,9 @@ import type { SerializedNavigation } from "../navigation";
 export const SESSION_DEFAULT_KEY = "__finesoft_session__";
 export const SESSION_DEFAULT_VERSION = 1;
 
-export interface SessionUrlLocation { readonly url: string; }
+export interface SessionUrlLocation {
+    readonly url: string;
+}
 export function isUrlLocation(nav: SessionSnapshot["navigation"]): nav is SessionUrlLocation;
 
 export interface SessionSnapshot {
@@ -68,12 +73,15 @@ export interface SessionSnapshot {
     readonly capturedAt: number;
 }
 
-export class SessionError extends Error { constructor(message: string); } // name = "SessionError"
+export class SessionError extends Error {
+    constructor(message: string);
+} // name = "SessionError"
 ```
 
 `isUrlLocation`: `nav != null && typeof nav === "object" && "url" in nav && typeof (nav as SessionUrlLocation).url === "string"` — note `SerializedNavigation` has `kind`, never a `url` field, so the discriminant is unambiguous.
 
 **snapshot.ts:**
+
 ```ts
 encodeSnapshot(snapshot: SessionSnapshot): string  // stableStringify(snapshot)
 decodeSnapshot(raw: string | undefined, expectedVersion: number): SessionSnapshot | undefined
@@ -82,6 +90,7 @@ decodeSnapshot(raw: string | undefined, expectedVersion: number): SessionSnapsho
 ```
 
 - [ ] **Step 1: Write failing tests** (`snapshot.test.ts`):
+
 ```ts
 import { describe, expect, test } from "vite-plus/test";
 import { encodeSnapshot, decodeSnapshot } from "../../src/session/snapshot";
@@ -89,7 +98,11 @@ import { SESSION_DEFAULT_VERSION } from "../../src/session/types";
 import type { SessionSnapshot } from "../../src/session/types";
 
 const snap = (over: Partial<SessionSnapshot> = {}): SessionSnapshot => ({
-    version: 1, slices: {}, scoped: {}, capturedAt: 1000, ...over,
+    version: 1,
+    slices: {},
+    scoped: {},
+    capturedAt: 1000,
+    ...over,
 });
 
 describe("encode/decode snapshot", () => {
@@ -105,8 +118,12 @@ describe("encode/decode snapshot", () => {
         const s = snap({ navigation: { url: "/posts/7" }, slices: { q: "x" } });
         expect(decodeSnapshot(encodeSnapshot(s), 1)).toEqual(s);
     });
-    test("undefined raw → undefined", () => { expect(decodeSnapshot(undefined, 1)).toBeUndefined(); });
-    test("malformed JSON → undefined (no throw)", () => { expect(decodeSnapshot("{not json", 1)).toBeUndefined(); });
+    test("undefined raw → undefined", () => {
+        expect(decodeSnapshot(undefined, 1)).toBeUndefined();
+    });
+    test("malformed JSON → undefined (no throw)", () => {
+        expect(decodeSnapshot("{not json", 1)).toBeUndefined();
+    });
     test("version mismatch → undefined", () => {
         expect(decodeSnapshot(encodeSnapshot(snap({ version: 1 })), 2)).toBeUndefined();
     });
@@ -115,6 +132,7 @@ describe("encode/decode snapshot", () => {
     });
 });
 ```
+
 - [ ] **Step 2: Run, expect FAIL** — `vp test packages/core/test/session/snapshot.test.ts` (modules missing).
 - [ ] **Step 3: Implement** `types.ts` + `snapshot.ts` per interfaces above. `decodeSnapshot` wraps `JSON.parse` in try/catch, validates `typeof` of each field, checks `version === expectedVersion`.
 - [ ] **Step 4: Run, expect PASS.**
@@ -125,10 +143,12 @@ describe("encode/decode snapshot", () => {
 ## Task 2: navigation-scoped state (the SwiftUI push/pop core)
 
 **Files:**
+
 - Create: `packages/core/src/session/scoped-state.ts`
 - Test: `packages/core/test/session/scoped-state.test.ts`
 
 **API:**
+
 ```ts
 import { stableStringify } from "../prefetched-intents/stable-stringify";
 import { collectVisibleDestinations } from "../navigation"; // NOT this — see collectLeafKeys
@@ -143,16 +163,23 @@ export function collectLeafKeys(tree: NavigationNode): string[];
 // walk the WHOLE tree (every leaf anywhere: stack entries, ALL tab branches, all split columns)
 // → sessionEntryKey for each. NOTE: "all present", not "visible".
 
-export function createNavigationScopedState(initial?: Record<string, unknown>): NavigationScopedState;
+export function createNavigationScopedState(
+    initial?: Record<string, unknown>,
+): NavigationScopedState;
 // get/set/delete/keys + prune(presentKeys): drop every key not in the present set.
 ```
 
 `collectLeafKeys` recursion: leaf → [key]; stack → flatMap(entries); tabs → flatMap(Object.values(branches)); split → flatMap(columns where content) . Distinct from `collectVisibleDestinations` (which only follows active/visible) — scoped retention needs ALL present entries.
 
 - [ ] **Step 1: Write failing tests** (`scoped-state.test.ts`):
+
 ```ts
 import { describe, expect, test } from "vite-plus/test";
-import { createNavigationScopedState, sessionEntryKey, collectLeafKeys } from "../../src/session/scoped-state";
+import {
+    createNavigationScopedState,
+    sessionEntryKey,
+    collectLeafKeys,
+} from "../../src/session/scoped-state";
 import { leaf, stack, tabs, split } from "../../src/navigation/nodes";
 
 describe("sessionEntryKey", () => {
@@ -168,7 +195,9 @@ describe("collectLeafKeys (all present, not just visible)", () => {
     });
     test("tabs collects ALL branches (inactive retained)", () => {
         const tree = tabs({ active: "x", branches: { x: leaf("X"), y: leaf("Y") } });
-        expect(collectLeafKeys(tree).sort()).toEqual([sessionEntryKey("X", {}), sessionEntryKey("Y", {})].sort());
+        expect(collectLeafKeys(tree).sort()).toEqual(
+            [sessionEntryKey("X", {}), sessionEntryKey("Y", {})].sort(),
+        );
     });
 });
 
@@ -185,11 +214,14 @@ describe("NavigationScopedState.prune — SwiftUI push/pop lifecycle", () => {
     test("get/set/delete/keys", () => {
         const s = createNavigationScopedState({ k: 1 });
         expect(s.get("k")).toBe(1);
-        s.set("k2", 2); expect(s.keys().sort()).toEqual(["k", "k2"]);
-        s.delete("k"); expect(s.get("k")).toBeUndefined();
+        s.set("k2", 2);
+        expect(s.keys().sort()).toEqual(["k", "k2"]);
+        s.delete("k");
+        expect(s.get("k")).toBeUndefined();
     });
 });
 ```
+
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement** `scoped-state.ts`. `createNavigationScopedState` holds a `Map`; `prune` builds a `Set(presentKeys)` and deletes absent keys.
 - [ ] **Step 4: Run, expect PASS.**
@@ -200,13 +232,19 @@ describe("NavigationScopedState.prune — SwiftUI push/pop lifecycle", () => {
 ## Task 3: SessionStore orchestrator
 
 **Files:**
+
 - Create: `packages/core/src/session/session-store.ts`
 - Modify: `packages/core/src/session/types.ts` (add `SessionStateProvider`, `SessionNavigationAdapter`, `SessionStoreOptions`, `SessionErrorContext`, `NavigationScopedState`, `SessionStore`)
 - Test: `packages/core/test/session/session-store.test.ts`
 
 **Interfaces (append to types.ts):**
+
 ```ts
-export interface SessionStateProvider<T = unknown> { readonly key: string; capture(): T; restore(data: T): void; }
+export interface SessionStateProvider<T = unknown> {
+    readonly key: string;
+    capture(): T;
+    restore(data: T): void;
+}
 export interface SessionNavigationAdapter {
     capture(): SessionSnapshot["navigation"] | undefined;
     apply(navigation: SessionSnapshot["navigation"]): void | Promise<void>;
@@ -219,7 +257,10 @@ export interface NavigationScopedState {
     prune(presentKeys: Iterable<string>): void;
     keys(): readonly string[];
 }
-export interface SessionErrorContext { readonly phase: "capture" | "restore" | "persist" | "load"; readonly key?: string; }
+export interface SessionErrorContext {
+    readonly phase: "capture" | "restore" | "persist" | "load";
+    readonly key?: string;
+}
 export interface SessionStoreOptions {
     readonly storage: Storage; // from ../dependencies/make-dependencies
     readonly key?: string;
@@ -242,6 +283,7 @@ export interface SessionStore {
 ```
 
 **session-store.ts behavior:**
+
 - `register` adds to a `Map<key, provider>`; returns disposer.
 - `capture()`: build `{ version, navigation: navigation?.capture(), slices, scoped: {...scopeMap}, capturedAt: now() }`. `slices` = each provider's `capture()` wrapped in try/catch → onError(phase:"capture",key) + skip on throw.
 - `persist(s = capture())`: `storage.set(key, encodeSnapshot(s))` in try/catch → onError(phase:"persist").
@@ -252,6 +294,7 @@ export interface SessionStore {
 - `scope`: a `createNavigationScopedState()` instance held by the store; `restore` replaces its contents from snapshot.
 
 - [ ] **Step 1: Write failing tests** (`session-store.test.ts`) with fakes:
+
 ```ts
 import { describe, expect, test, vi } from "vite-plus/test";
 import { createSessionStore } from "../../src/session/session-store";
@@ -260,24 +303,41 @@ import type { SessionNavigationAdapter, SessionStateProvider } from "../../src/s
 
 function fakeStorage(): Storage {
     const m = new Map<string, string>();
-    return { get: (k) => m.get(k), set: (k, v) => void m.set(k, v), delete: (k) => void m.delete(k) };
+    return {
+        get: (k) => m.get(k),
+        set: (k, v) => void m.set(k, v),
+        delete: (k) => void m.delete(k),
+    };
 }
 function fakeNav(initial: unknown): SessionNavigationAdapter {
-    let nav = initial; const present = new Set<string>();
+    let nav = initial;
+    const present = new Set<string>();
     return {
         capture: () => nav as never,
-        apply: (n) => { nav = n; },
+        apply: (n) => {
+            nav = n;
+        },
         presentKeys: () => present,
     };
 }
 
 describe("SessionStore", () => {
     test("capture collects nav + slices + scoped", () => {
-        const store = createSessionStore({ storage: fakeStorage(), now: () => 5, navigation: fakeNav({ url: "/a" }) });
+        const store = createSessionStore({
+            storage: fakeStorage(),
+            now: () => 5,
+            navigation: fakeNav({ url: "/a" }),
+        });
         store.register({ key: "theme", capture: () => "dark", restore: () => {} });
         store.scope.set("home {}", { scroll: 9 });
         const s = store.capture();
-        expect(s).toMatchObject({ version: 1, navigation: { url: "/a" }, slices: { theme: "dark" }, scoped: { "home {}": { scroll: 9 } }, capturedAt: 5 });
+        expect(s).toMatchObject({
+            version: 1,
+            navigation: { url: "/a" },
+            slices: { theme: "dark" },
+            scoped: { "home {}": { scroll: 9 } },
+            capturedAt: 5,
+        });
     });
 
     test("persist → load round-trip", () => {
@@ -293,8 +353,21 @@ describe("SessionStore", () => {
         const restored: string[] = [];
         const nav = fakeNav(undefined);
         const store = createSessionStore({ storage, navigation: nav, now: () => 1 });
-        store.register({ key: "draft", capture: () => "", restore: (d) => restored.push(d as string) });
-        storage.set("__finesoft_session__", JSON.stringify({ version: 1, navigation: { url: "/x" }, slices: { draft: "hello" }, scoped: { "k {}": 1 }, capturedAt: 1 }));
+        store.register({
+            key: "draft",
+            capture: () => "",
+            restore: (d) => restored.push(d as string),
+        });
+        storage.set(
+            "__finesoft_session__",
+            JSON.stringify({
+                version: 1,
+                navigation: { url: "/x" },
+                slices: { draft: "hello" },
+                scoped: { "k {}": 1 },
+                capturedAt: 1,
+            }),
+        );
         await store.restore();
         expect(restored).toEqual(["hello"]);
         expect(store.scope.get("k {}")).toBe(1);
@@ -302,7 +375,8 @@ describe("SessionStore", () => {
 
     test("maxAgeMs expiry → load undefined", () => {
         const storage = fakeStorage();
-        const a = createSessionStore({ storage, now: () => 0 }); a.save();
+        const a = createSessionStore({ storage, now: () => 0 });
+        a.save();
         const b = createSessionStore({ storage, now: () => 10_000, maxAgeMs: 5000 });
         expect(b.load()).toBeUndefined();
     });
@@ -316,7 +390,13 @@ describe("SessionStore", () => {
     test("provider capture throw isolated (onError, other slices survive)", () => {
         const onError = vi.fn();
         const store = createSessionStore({ storage: fakeStorage(), onError, now: () => 1 });
-        store.register({ key: "boom", capture: () => { throw new Error("x"); }, restore: () => {} });
+        store.register({
+            key: "boom",
+            capture: () => {
+                throw new Error("x");
+            },
+            restore: () => {},
+        });
         store.register({ key: "ok", capture: () => 1, restore: () => {} });
         expect(store.capture().slices).toEqual({ ok: 1 });
         expect(onError).toHaveBeenCalledOnce();
@@ -324,11 +404,14 @@ describe("SessionStore", () => {
 
     test("clear removes persisted snapshot", () => {
         const storage = fakeStorage();
-        const store = createSessionStore({ storage, now: () => 1 }); store.save();
-        store.clear(); expect(store.load()).toBeUndefined();
+        const store = createSessionStore({ storage, now: () => 1 });
+        store.save();
+        store.clear();
+        expect(store.load()).toBeUndefined();
     });
 });
 ```
+
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement** `session-store.ts` + append interfaces to `types.ts`.
 - [ ] **Step 4: Run, expect PASS.**
@@ -339,10 +422,12 @@ describe("SessionStore", () => {
 ## Task 4: navigation adapters (structured + flat)
 
 **Files:**
+
 - Create: `packages/core/src/session/navigation-adapter.ts`
 - Test: `packages/core/test/session/navigation-adapter.test.ts`
 
 **API:**
+
 ```ts
 import { serializeNavigation, deserializeNavigation } from "../navigation";
 import type { NavigationController } from "../navigation";
@@ -350,7 +435,9 @@ import { collectLeafKeys, sessionEntryKey } from "./scoped-state";
 import { isUrlLocation } from "./types";
 import type { SessionNavigationAdapter, SessionSnapshot } from "./types";
 
-export function createNavigationSessionAdapter(controller: NavigationController): SessionNavigationAdapter;
+export function createNavigationSessionAdapter(
+    controller: NavigationController,
+): SessionNavigationAdapter;
 // capture: serializeNavigation(controller.getTree())
 // apply: if isUrlLocation(nav) → controller.hydrate(leaf-from-url is app concern; here: ignore/September)
 //        else controller.hydrate(deserializeNavigation(nav))
@@ -380,6 +467,7 @@ For the structured adapter `apply` when given a `SessionUrlLocation` (mixed snap
 ## Task 5: core barrel + index exports
 
 **Files:**
+
 - Create: `packages/core/src/session/index.ts`
 - Modify: `packages/core/src/index.ts`
 - Test: none new (covered by an export smoke check in Task 12).
@@ -394,6 +482,7 @@ For the structured adapter `apply` when given a `SessionUrlLocation` (mixed snap
 ## Task 6: browser Web Storage adapter
 
 **Files:**
+
 - Create: `packages/browser/src/web-storage.ts`
 - Test: `packages/browser/test/web-storage.test.ts`
 
@@ -415,6 +504,7 @@ export function createWebStorage(kind: "session" | "local"): Storage;
 ## Task 7: SessionBridge (auto-capture + restore + scoped prune)
 
 **Files:**
+
 - Create: `packages/browser/src/session-bridge.ts`
 - Test: `packages/browser/test/session-bridge.test.ts`
 
@@ -441,6 +531,7 @@ export function defaultShouldRestore(snapshot: SessionSnapshot, currentUrl: stri
 ```
 
 Behavior:
+
 - On `subscribeNavigation` change: `store.scope.prune(adapter.presentKeys())`, then debounced `store.save()`.
 - `pagehide` + `visibilitychange` (when `document.visibilityState === "hidden"`): flush immediately (`store.save()`), cancel pending debounce.
 - `restore(currentUrl)`: `const s = store.load(); if (s && (shouldRestore ?? defaultShouldRestore)(s, currentUrl)) return store.restore(s);`
@@ -448,11 +539,11 @@ Behavior:
 - `defaultShouldRestore`: per spec §3.6 — flat (`isUrlLocation`): `currentUrl === nav.url || path(currentUrl) === "/"`; structured (`SerializedNavigation`): `path(currentUrl) === "/"`; no navigation: `true`. `path()` strips query/hash.
 
 - [ ] **Step 1: Write failing tests** — use `vi.useFakeTimers()`:
-  - nav change → debounced save persists after `debounceMs`.
-  - nav change prunes scope (pop B drops B before save).
-  - `pagehide` flushes immediately + cancels debounce.
-  - `restore`: persisted snapshot at root `/` → applied; deep-link mismatch (flat, different url) → NOT applied; structured at `/x` → NOT applied; structured at `/` → applied; slices-only → applied.
-  - `dispose` removes listeners (subsequent events no-op).
+    - nav change → debounced save persists after `debounceMs`.
+    - nav change prunes scope (pop B drops B before save).
+    - `pagehide` flushes immediately + cancels debounce.
+    - `restore`: persisted snapshot at root `/` → applied; deep-link mismatch (flat, different url) → NOT applied; structured at `/x` → NOT applied; structured at `/` → applied; slices-only → applied.
+    - `dispose` removes listeners (subsequent events no-op).
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run, expect PASS** — `vp test packages/browser/test/session-bridge.test.ts`.
@@ -463,11 +554,13 @@ Behavior:
 ## Task 8: startBrowserApp integration + browser exports
 
 **Files:**
+
 - Modify: `packages/browser/src/start-app.ts`
 - Modify: `packages/browser/src/index.ts`
 - Test: `packages/browser/test/start-app.test.ts` (extend)
 
 `BrowserAppConfig` gains optional:
+
 ```ts
 session?: {
     readonly providers?: readonly SessionStateProvider[];
@@ -479,6 +572,7 @@ session?: {
 };
 onSessionReady?: (handle: SessionHandle) => void | Promise<void>;
 ```
+
 When `config.session` present: build `SessionStore` (adapter: structured if `config.navigation` present → `createNavigationSessionAdapter(controller)`, else flat → `createUrlSessionAdapter({ currentUrl: () => location.pathname + location.search, navigate: (u) => framework.perform(makeFlowAction(u)) })`), register providers, build `SessionBridge` (subscribeNavigation from the nav bridge if present, else the flow handler's onNavigate), call `bridge.restore(initialUrl)` after the first navigation, hand `handle` to `onSessionReady`. **Absent → the existing path is byte-for-byte unchanged.**
 
 - [ ] **Step 1: Write failing tests** — (a) no `session` config → existing tests unchanged (regression); (b) with `session` + flat → boot restore of a pre-seeded sessionStorage snapshot fires provider.restore; (c) `onSessionReady` receives a handle. Mock DOM/storage per existing `start-app.test.ts`.
@@ -492,6 +586,7 @@ When `config.session` present: build `SessionStore` (adapter: structured if `con
 ## Task 9: front re-exports
 
 **Files:**
+
 - Modify: `packages/front/src/index.ts` (core auto-surfaces via `export *`; add browser block symbols)
 - Modify: `packages/front/src/browser.ts` (add the same browser symbols)
 
@@ -504,6 +599,7 @@ When `config.session` present: build `SessionStore` (adapter: structured if `con
 ## Task 10: docs (bilingual guide + sidebar)
 
 **Files:**
+
 - Create: `packages/front/docs/12-session-restoration.md`
 - Create: `packages/front/docs/zh/12-session-restoration.md`
 - Modify: `packages/site/docs/.vitepress/sidebars/en.ts`, `.../zh.ts`
@@ -517,6 +613,7 @@ When `config.session` present: build `SessionStore` (adapter: structured if `con
 ## Task 11: changeset
 
 **Files:**
+
 - Create: `.changeset/session-restoration.md`
 
 - [ ] **Step 1:** Format per `.changeset/navigation-state.md` — `"@finesoft/front": minor`, one-paragraph summary + `###` subsections (snapshot model + two scopes; navigation-scoped SwiftUI lifecycle; pluggable Storage + auto/manual capture; browser bridge + startBrowserApp opt-in).

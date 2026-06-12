@@ -17,6 +17,7 @@
 ## Task 1：编排器核心生命周期（mount-once / unmount-on-leave / detach-hide / attach-show）
 
 **Files:**
+
 - Create: `packages/browser/src/navigation-islands.ts`
 - Test: `packages/browser/test/navigation-islands.test.ts`
 
@@ -26,7 +27,15 @@
 
 ```ts
 import { describe, expect, test } from "vite-plus/test";
-import { leaf, sessionEntryKey, stack, tabs, type BasePage, type NavigationSnapshot, type ResolvedDestination } from "@finesoft/core";
+import {
+    leaf,
+    sessionEntryKey,
+    stack,
+    tabs,
+    type BasePage,
+    type NavigationSnapshot,
+    type ResolvedDestination,
+} from "@finesoft/core";
 import {
     createIslandOrchestrator,
     type IslandHandle,
@@ -55,7 +64,9 @@ function makeMountEntry(events: string[]): MountEntry {
 
 /** 该 outlet 内当前 attached（在 document 里）的 island 的 data-key，按 DOM 序。 */
 function attachedKeys(outlet: HTMLElement): string[] {
-    return [...outlet.querySelectorAll("[data-fs-entry]")].map((el) => el.getAttribute("data-key") ?? "");
+    return [...outlet.querySelectorAll("[data-fs-entry]")].map(
+        (el) => el.getAttribute("data-key") ?? "",
+    );
 }
 
 const KEY = (intent: string, params: Record<string, unknown> = {}): string =>
@@ -95,7 +106,7 @@ describe("island orchestrator — 生命周期", () => {
 
         o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] });
         // 注意：上一步 home 从未可见过 → 未挂载。先让 home 可见一次再 push，模拟真实路径。
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });        // home 挂载
+        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] }); // home 挂载
         o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] }); // detail 挂载，home detach
         events.length = 0;
 
@@ -103,7 +114,7 @@ describe("island orchestrator — 生命周期", () => {
         o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
 
         expect(events).toEqual([`unmount:${KEY("detail")}`]); // detail 离树 unmount；home 不重挂
-        expect(attachedKeys(outlet)).toEqual([KEY("home")]);   // home 重 attach
+        expect(attachedKeys(outlet)).toEqual([KEY("home")]); // home 重 attach
     });
 
     test("split 多可见目标：按 destinations 顺序 attach 为 outlet 的有序子节点", () => {
@@ -118,10 +129,13 @@ describe("island orchestrator — 生命周期", () => {
         // 但 present 集来自 tree（这里 tree 只有 x）——list/detail 不在 present 集会被立刻 unmount。
         // 因此用一个真实 split 形态的树：
         o.sync({
-            tree: { kind: "split", columns: [
-                { id: "l", content: leaf("list") },
-                { id: "d", content: leaf("detail") },
-            ] } as NavigationSnapshot["tree"],
+            tree: {
+                kind: "split",
+                columns: [
+                    { id: "l", content: leaf("list") },
+                    { id: "d", content: leaf("detail") },
+                ],
+            } as NavigationSnapshot["tree"],
             destinations: [dest("list"), dest("detail")],
         });
 
@@ -133,9 +147,15 @@ describe("island orchestrator — 生命周期", () => {
         const outlet = document.createElement("div");
         const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
 
-        const tree = tabs({ active: "home", branches: { home: leaf("home"), notes: leaf("notes") } });
-        o.sync({ tree, destinations: [dest("home")] });           // home 挂载
-        o.sync({ tree: tabs({ active: "notes", branches: { home: leaf("home"), notes: leaf("notes") } }), destinations: [dest("notes")] });
+        const tree = tabs({
+            active: "home",
+            branches: { home: leaf("home"), notes: leaf("notes") },
+        });
+        o.sync({ tree, destinations: [dest("home")] }); // home 挂载
+        o.sync({
+            tree: tabs({ active: "notes", branches: { home: leaf("home"), notes: leaf("notes") } }),
+            destinations: [dest("notes")],
+        });
         // 切到 notes：home 分支仍在 tabs 树中（present）→ home 保活 detach，不 unmount；notes 挂载。
         expect(events).toEqual([`mount:${KEY("home")}`, `mount:${KEY("notes")}`]);
         expect(attachedKeys(outlet)).toEqual([KEY("notes")]);
@@ -265,7 +285,12 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
                 container.setAttribute("data-fs-entry", "");
                 container.setAttribute("data-fs-intent", d.intent);
                 container.setAttribute("data-fs-key", key);
-                const entry: ResolvedEntry = { intent: d.intent, params: d.params, entryKey: key, page: d.page };
+                const entry: ResolvedEntry = {
+                    intent: d.intent,
+                    params: d.params,
+                    entryKey: key,
+                    page: d.page,
+                };
                 const handle = mountEntry(entry, container);
                 mounted.set(key, { container, handle, attached: false });
             }
@@ -313,6 +338,7 @@ git commit -m "feat(browser): island 编排器核心——per-entry 挂载/保�
 在 container 上派发 UI 无关的 `CustomEvent`，供应用监听（暂停视频、自定义恢复等）。`fs:enter`（首次挂载）/ `fs:reveal`（变可见）/ `fs:conceal`（变隐藏）/ `fs:exit`（卸载前）。
 
 **Files:**
+
 - Modify: `packages/browser/src/navigation-islands.ts`
 - Test: `packages/browser/test/navigation-islands.test.ts`
 
@@ -369,7 +395,10 @@ Expected: FAIL —— 未派发任何 `fs:*` 事件，`log` 为空。
 在 `navigation-islands.ts` 顶部（`createIslandOrchestrator` 内或模块级）加辅助，并在生命周期点派发。模块级加：
 
 ```ts
-function emit(container: HTMLElement, type: "fs:enter" | "fs:reveal" | "fs:conceal" | "fs:exit"): void {
+function emit(
+    container: HTMLElement,
+    type: "fs:enter" | "fs:reveal" | "fs:conceal" | "fs:exit",
+): void {
     container.dispatchEvent(new CustomEvent(type, { bubbles: true }));
 }
 ```
@@ -377,50 +406,50 @@ function emit(container: HTMLElement, type: "fs:enter" | "fs:reveal" | "fs:conce
 改 `conceal`：detach 前派发 `fs:conceal`：
 
 ```ts
-    function conceal(island: MountedIsland): void {
-        if (!island.attached) return;
-        emit(island.container, "fs:conceal");
-        island.container.remove();
-        island.attached = false;
-    }
+function conceal(island: MountedIsland): void {
+    if (!island.attached) return;
+    emit(island.container, "fs:conceal");
+    island.container.remove();
+    island.attached = false;
+}
 ```
 
 改 `teardown`：unmount 前派发 `fs:exit`：
 
 ```ts
-    function teardown(key: string, island: MountedIsland): void {
-        conceal(island);
-        emit(island.container, "fs:exit");
-        island.handle.unmount();
-        mounted.delete(key);
-    }
+function teardown(key: string, island: MountedIsland): void {
+    conceal(island);
+    emit(island.container, "fs:exit");
+    island.handle.unmount();
+    mounted.delete(key);
+}
 ```
 
 在 `sync` step 2 新挂载后派发 `fs:enter`：
 
 ```ts
-                const handle = mountEntry(entry, container);
-                mounted.set(key, { container, handle, attached: false });
-                emit(container, "fs:enter");
+const handle = mountEntry(entry, container);
+mounted.set(key, { container, handle, attached: false });
+emit(container, "fs:enter");
 ```
 
 在 `sync` step 4 attach 时，仅对「之前未 attached」的派发 `fs:reveal`：
 
 ```ts
-        for (const key of visibleKeys) {
-            const island = mounted.get(key);
-            if (island === undefined) continue;
-            const wasAttached = island.attached;
-            outlet.appendChild(island.container);
-            island.attached = true;
-            if (!wasAttached) emit(island.container, "fs:reveal");
-        }
+for (const key of visibleKeys) {
+    const island = mounted.get(key);
+    if (island === undefined) continue;
+    const wasAttached = island.attached;
+    outlet.appendChild(island.container);
+    island.attached = true;
+    if (!wasAttached) emit(island.container, "fs:reveal");
+}
 ```
 
 - [ ] **Step 4：跑测试，确认通过**
 
 Run: `vp test packages/browser/test/navigation-islands.test.ts`
-Expected: PASS（含 fs:* 用例 + 此前生命周期用例不回归）。
+Expected: PASS（含 fs:\* 用例 + 此前生命周期用例不回归）。
 
 - [ ] **Step 5：提交**
 
@@ -436,6 +465,7 @@ git commit -m "feat(browser): island fs:* 生命周期事件（enter/reveal/conc
 detach 丢的是 layout（`scrollTop` 归零），form 值等 DOM 属性随分离节点留存。编排器在 conceal 时记录可滚动后代的 `scrollTop/scrollLeft`，reveal 时重放（rAF）。
 
 **Files:**
+
 - Modify: `packages/browser/src/navigation-islands.ts`
 - Test: `packages/browser/test/navigation-islands.test.ts`
 
@@ -504,65 +534,65 @@ interface MountedIsland {
 `createIslandOrchestrator` 内取 schedule + 加捕获/重放辅助：
 
 ```ts
-    const schedule =
-        options.schedule ??
-        ((cb: () => void) => {
-            if (typeof requestAnimationFrame === "function") requestAnimationFrame(cb);
-            else cb();
+const schedule =
+    options.schedule ??
+    ((cb: () => void) => {
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(cb);
+        else cb();
+    });
+
+/** 容器内全部可滚动元素（含容器自身），按文档序。 */
+function scrollables(container: HTMLElement): HTMLElement[] {
+    const list: HTMLElement[] = [container];
+    for (const el of container.querySelectorAll<HTMLElement>("[data-fs-scroll]")) list.push(el);
+    return list;
+}
+
+function captureScroll(island: MountedIsland): void {
+    island.scroll = scrollables(island.container).map((el) => ({
+        top: el.scrollTop,
+        left: el.scrollLeft,
+    }));
+}
+
+function restoreScroll(island: MountedIsland): void {
+    const saved = island.scroll;
+    if (saved === undefined) return;
+    schedule(() => {
+        const els = scrollables(island.container);
+        saved.forEach((pos, i) => {
+            const el = els[i];
+            if (el !== undefined) {
+                el.scrollTop = pos.top;
+                el.scrollLeft = pos.left;
+            }
         });
-
-    /** 容器内全部可滚动元素（含容器自身），按文档序。 */
-    function scrollables(container: HTMLElement): HTMLElement[] {
-        const list: HTMLElement[] = [container];
-        for (const el of container.querySelectorAll<HTMLElement>("[data-fs-scroll]")) list.push(el);
-        return list;
-    }
-
-    function captureScroll(island: MountedIsland): void {
-        island.scroll = scrollables(island.container).map((el) => ({
-            top: el.scrollTop,
-            left: el.scrollLeft,
-        }));
-    }
-
-    function restoreScroll(island: MountedIsland): void {
-        const saved = island.scroll;
-        if (saved === undefined) return;
-        schedule(() => {
-            const els = scrollables(island.container);
-            saved.forEach((pos, i) => {
-                const el = els[i];
-                if (el !== undefined) {
-                    el.scrollTop = pos.top;
-                    el.scrollLeft = pos.left;
-                }
-            });
-        });
-    }
+    });
+}
 ```
 
 `conceal` 在 detach 前捕获滚动：
 
 ```ts
-    function conceal(island: MountedIsland): void {
-        if (!island.attached) return;
-        captureScroll(island);
-        emit(island.container, "fs:conceal");
-        island.container.remove();
-        island.attached = false;
-    }
+function conceal(island: MountedIsland): void {
+    if (!island.attached) return;
+    captureScroll(island);
+    emit(island.container, "fs:conceal");
+    island.container.remove();
+    island.attached = false;
+}
 ```
 
 reveal（attach）后重放：
 
 ```ts
-            const wasAttached = island.attached;
-            outlet.appendChild(island.container);
-            island.attached = true;
-            if (!wasAttached) {
-                emit(island.container, "fs:reveal");
-                restoreScroll(island);
-            }
+const wasAttached = island.attached;
+outlet.appendChild(island.container);
+island.attached = true;
+if (!wasAttached) {
+    emit(island.container, "fs:reveal");
+    restoreScroll(island);
+}
 ```
 
 - [ ] **Step 4：跑测试，确认通过**
@@ -586,6 +616,7 @@ git commit -m "feat(browser): island conceal/reveal 滚动捕获重放（detach 
 Phase 1 的 `refresh()` 会让某条目重新 dispatch、产出**新 page**。编排器需检测可见条目的 page 引用变化并 remount（拿新 page），否则活 island 收不到新数据。
 
 **Files:**
+
 - Modify: `packages/browser/src/navigation-islands.ts`
 - Test: `packages/browser/test/navigation-islands.test.ts`
 
@@ -603,7 +634,11 @@ describe("island orchestrator — page 变化 remount", () => {
         events.length = 0;
 
         // 同 key、新 page 对象（模拟 refresh 后控制器产出的新页）
-        const d2: ResolvedDestination = { intent: "home", params: {}, page: { id: "home", pageType: "home", title: "fresh" } as BasePage };
+        const d2: ResolvedDestination = {
+            intent: "home",
+            params: {},
+            page: { id: "home", pageType: "home", title: "fresh" } as BasePage,
+        };
         o.sync({ tree: stack([leaf("home")]), destinations: [d2] });
 
         expect(events).toEqual([`unmount:${KEY("home")}`, `mount:${KEY("home")}`]);
@@ -645,25 +680,30 @@ interface MountedIsland {
 `sync` step 2 中，命中已挂载但 page 引用变化时先 teardown 再重挂；记录 page：
 
 ```ts
-        const visibleKeys: string[] = [];
-        for (const d of snapshot.destinations) {
-            const key = sessionEntryKey(d.intent, d.params);
-            visibleKeys.push(key);
-            const existing = mounted.get(key);
-            if (existing !== undefined && existing.page !== d.page) {
-                teardown(key, existing); // page 变了（refresh）→ 重挂拿新 page
-            }
-            if (!mounted.has(key)) {
-                const container = document.createElement("div");
-                container.setAttribute("data-fs-entry", "");
-                container.setAttribute("data-fs-intent", d.intent);
-                container.setAttribute("data-fs-key", key);
-                const entry: ResolvedEntry = { intent: d.intent, params: d.params, entryKey: key, page: d.page };
-                const handle = mountEntry(entry, container);
-                mounted.set(key, { container, handle, attached: false, page: d.page });
-                emit(container, "fs:enter");
-            }
-        }
+const visibleKeys: string[] = [];
+for (const d of snapshot.destinations) {
+    const key = sessionEntryKey(d.intent, d.params);
+    visibleKeys.push(key);
+    const existing = mounted.get(key);
+    if (existing !== undefined && existing.page !== d.page) {
+        teardown(key, existing); // page 变了（refresh）→ 重挂拿新 page
+    }
+    if (!mounted.has(key)) {
+        const container = document.createElement("div");
+        container.setAttribute("data-fs-entry", "");
+        container.setAttribute("data-fs-intent", d.intent);
+        container.setAttribute("data-fs-key", key);
+        const entry: ResolvedEntry = {
+            intent: d.intent,
+            params: d.params,
+            entryKey: key,
+            page: d.page,
+        };
+        const handle = mountEntry(entry, container);
+        mounted.set(key, { container, handle, attached: false, page: d.page });
+        emit(container, "fs:enter");
+    }
+}
 ```
 
 - [ ] **Step 4：跑测试，确认通过**
@@ -685,6 +725,7 @@ git commit -m "feat(browser): island 在 page 标识变化时 remount（支撑 c
 `BrowserNavigationConfig` 加可选 `mountEntry`；提供时 `activateNavigation` 在首屏 resolve 后从 `[data-fs-outlet]` 取 outlet、建编排器、首同步 + 订阅 controller 驱动后续 `sync`。
 
 **Files:**
+
 - Modify: `packages/browser/src/start-app.ts`
 - Modify: `packages/browser/src/index.ts`
 - Test: `packages/browser/test/start-app.test.ts`（追加 islands 接线用例；若该文件无 jsdom DOM 装配，参照其现有用例风格）
@@ -702,7 +743,16 @@ describe("startBrowserApp — islands（navigation.mountEntry）", () => {
         await startBrowserApp({
             bootstrap: (fw) => {
                 // 注册一个 home controller（参照本文件既有 bootstrap 写法）
-                defineRoutes(fw, [{ path: "/", intentId: "home", controller: { intentId: "home", execute: () => ({ id: "home", pageType: "home", title: "Home" }) } }]);
+                defineRoutes(fw, [
+                    {
+                        path: "/",
+                        intentId: "home",
+                        controller: {
+                            intentId: "home",
+                            execute: () => ({ id: "home", pageType: "home", title: "Home" }),
+                        },
+                    },
+                ]);
             },
             mount: (target) => {
                 target.innerHTML = `<header data-chrome></header><main data-fs-outlet></main>`;
@@ -785,7 +835,10 @@ async function activateNavigation(args: {
                     "请在 chrome 里放一个稳定、空的 <main data-fs-outlet></main>。",
             );
         }
-        const orchestrator = createIslandOrchestrator({ outlet, mountEntry: navigation.mountEntry });
+        const orchestrator = createIslandOrchestrator({
+            outlet,
+            mountEntry: navigation.mountEntry,
+        });
         orchestrator.sync(controller.getSnapshot());
         controller.subscribe((snapshot) => orchestrator.sync(snapshot));
     }
@@ -797,17 +850,17 @@ async function activateNavigation(args: {
 **(d)** 调用处（约 line 289-296）把 `target` 传进去：
 
 ```ts
-    let activatedNavigation: ActivatedNavigation | undefined;
-    if (config.navigation) {
-        activatedNavigation = await activateNavigation({
-            framework,
-            navigation: config.navigation,
-            log,
-            target,
-            getScrollablePageElement: config.getScrollablePageElement,
-        });
-        await config.onNavigationReady?.(activatedNavigation.handle);
-    }
+let activatedNavigation: ActivatedNavigation | undefined;
+if (config.navigation) {
+    activatedNavigation = await activateNavigation({
+        framework,
+        navigation: config.navigation,
+        log,
+        target,
+        getScrollablePageElement: config.getScrollablePageElement,
+    });
+    await config.onNavigationReady?.(activatedNavigation.handle);
+}
 ```
 
 `index.ts` 导出 islands 公共符号：
@@ -844,6 +897,7 @@ git commit -m "feat(browser): startBrowserApp 接 islands —— navigation.moun
 ## Task 6：`front` 再导出 + 全量验证
 
 **Files:**
+
 - Modify: `packages/front/src/index.ts`（或其聚合导出入口；对齐既有再导出 browser 符号的写法）
 
 - [ ] **Step 1：在 front 再导出 islands 符号**
@@ -878,6 +932,6 @@ git commit -m "feat(front): 再导出 island 编排器符号"
 
 ## 自审记录
 
-- **spec 覆盖**：§4.0（两模型并存——mountEntry opt-in）、§4.1（islands + mountEntry 原语 + 编排器）、§4.2（detach 隐藏 + fs:* + 滚动重放）、§4.4 协同（page 稳定/refresh remount）、§8 browser 段（navigation-islands + start-app + index）。§4.3 容器/chrome（outlet + app 画 chrome）落在 Task 5 接线 + Phase 5 模版。
+- **spec 覆盖**：§4.0（两模型并存——mountEntry opt-in）、§4.1（islands + mountEntry 原语 + 编排器）、§4.2（detach 隐藏 + fs:\* + 滚动重放）、§4.4 协同（page 稳定/refresh remount）、§8 browser 段（navigation-islands + start-app + index）。§4.3 容器/chrome（outlet + app 画 chrome）落在 Task 5 接线 + Phase 5 模版。
 - **占位扫描**：无 TBD；每步完整代码 + 精确 import/锚点。Task 1 split 用例直接构造 split 树字面量（避免依赖 `split` 构造器导出与否）。
 - **类型一致**：`MountEntry`/`ResolvedEntry`/`IslandHandle`/`IslandOrchestrator`/`IslandOrchestratorOptions`、`MountedIsland`（内部）跨任务一致；`sync(snapshot: NavigationSnapshot)`、`schedule?: (cb) => void` 一致。

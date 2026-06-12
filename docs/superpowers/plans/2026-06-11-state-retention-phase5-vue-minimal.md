@@ -21,10 +21,11 @@ islands 的内容在**客户端** per-entry `createApp` 挂载。若 vue-minimal
 - [ ] **Step 1：判定当前内容是否 SSR + 选定 islands 的 SSR 策略**
 
 读 `ssr.ts` 与路由 renderMode：
+
 - 若内容本就 CSR（renderMode `csr`）→ 重构无 SSR 影响，直接进 Task 1。
 - 若内容 SSR → 选定策略并记录：
-  - **(推荐，本阶段采用) 内容 CSR 化**：把演示路由设为 `renderMode: "csr"`（islands 是客户端 keep-alive 特性；服务端渲 chrome 空壳）。在模版 README/注释说明。
-  - **(follow-up，本阶段不做) island 水合**：服务端把可见 entry 内容渲进 outlet 容器、客户端 `createSSRApp` 水合首个 island 而非重挂——非平凡，列为后续。
+    - **(推荐，本阶段采用) 内容 CSR 化**：把演示路由设为 `renderMode: "csr"`（islands 是客户端 keep-alive 特性；服务端渲 chrome 空壳）。在模版 README/注释说明。
+    - **(follow-up，本阶段不做) island 水合**：服务端把可见 entry 内容渲进 outlet 容器、客户端 `createSSRApp` 水合首个 island 而非重挂——非平凡，列为后续。
 
 把判定与所选策略写进本任务结论。
 
@@ -44,6 +45,7 @@ git commit -m "chore(vue-minimal): islands 内容采用 CSR 渲染（SSR-of-isla
 ## Task 1：新增 per-entry 视图组件
 
 **Files:**
+
 - Create: `templates/vue-minimal/src/views/HomeView.vue`
 - Create: `templates/vue-minimal/src/views/DetailView.vue`
 - Create: `templates/vue-minimal/src/views/NotesView.vue`
@@ -67,7 +69,10 @@ const feed = computed(() => (page.pageType === "home" ? (page as FeedPage) : nul
         <p style="color: #666; margin: 0 0 1rem">{{ page.description }}</p>
         <ul v-if="feed" style="list-style: none; padding: 0; display: grid; gap: 0.5rem">
             <li v-for="item in feed.items" :key="item.id">
-                <button style="width: 100%; text-align: left" @click="controller?.push('detail', { id: item.id })">
+                <button
+                    style="width: 100%; text-align: left"
+                    @click="controller?.push('detail', { id: item.id })"
+                >
                     {{ item.title }} →
                 </button>
             </li>
@@ -99,7 +104,11 @@ defineProps<{ page: BasePage }>();
         <div data-restore-root>
             <label style="display: block; margin-top: 1rem">
                 Draft note for this screen:
-                <input name="note" placeholder="kept while alive; restored on reload" style="width: 100%" />
+                <input
+                    name="note"
+                    placeholder="kept while alive; restored on reload"
+                    style="width: 100%"
+                />
             </label>
         </div>
     </section>
@@ -196,7 +205,9 @@ const name = computed({
             </button>
         </nav>
 
-        <button v-if="canGoBack" style="margin-bottom: 0.5rem" @click="controller?.pop()">← Back</button>
+        <button v-if="canGoBack" style="margin-bottom: 0.5rem" @click="controller?.pop()">
+            ← Back
+        </button>
 
         <!-- islands 内容由框架挂进此 outlet（稳定、空、不加 v-if） -->
         <main data-fs-outlet></main>
@@ -224,7 +235,14 @@ git commit -m "refactor(vue-minimal): App.vue 收敛为 chrome + data-fs-outlet�
 **(a)** import：
 
 ```ts
-import { startBrowserApp, type MountEntry, type NavigationHandle, type NavigationSnapshot, type SessionHandle, type SessionStateProvider } from "@finesoft/front";
+import {
+    startBrowserApp,
+    type MountEntry,
+    type NavigationHandle,
+    type NavigationSnapshot,
+    type SessionHandle,
+    type SessionStateProvider,
+} from "@finesoft/front";
 import { createApp, markRaw, reactive, type Component } from "vue";
 import App from "./App.vue";
 import HomeView from "./views/HomeView.vue";
@@ -239,7 +257,8 @@ import { bootstrap, navigation } from "./bootstrap";
 export type AppController = ReturnType<typeof makeController>;
 function makeController() {
     return markRaw({
-        push: (intent: string, params?: Record<string, unknown>) => void navHandle?.push(intent, params),
+        push: (intent: string, params?: Record<string, unknown>) =>
+            void navHandle?.push(intent, params),
         pop: () => void navHandle?.pop(),
         selectTab: (key: string) => void navHandle?.selectTab(key),
         /** 手动落盘（全局切片改动后调；nav 变更已自动落盘）。 */
@@ -320,6 +339,7 @@ git commit -m "feat(vue-minimal): main.ts 接 islands mountEntry + domRestore，
 - [ ] **Step 2：验证 in-session 保活（pop 不丢状态、不重 fetch）**
 
 playwright：
+
 1. `browser_navigate` → `/`（Feed）。
 2. 点一个 item → push 到 detail（`browser_click`）。
 3. 在 detail 的 "Draft note" 输入框输入 `hello`（`browser_type`）。

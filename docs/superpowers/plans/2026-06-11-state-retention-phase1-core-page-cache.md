@@ -11,6 +11,7 @@
 **落地分支：** `feat/session-restoration`（当前分支）。**不新建分支。**
 
 **全局约定（每个任务都适用）：**
+
 - 跑单文件测试：`vp test <文件路径>`；跑某目录：`vp test <目录>`。
 - 类型/lint 校验**务必 scoped 到 src+test 目录**（bare `vp check` 会在 `packages/front/CHANGELOG.md` 的 fmt 处 halt）：`vp check packages/core/src packages/core/test`。
 - 导入一律从 `vite-plus` / `vite-plus/test`，不从 `vite`/`vitest`。
@@ -23,6 +24,7 @@
 收集树中**全部**叶子（含不可见：栈非顶 entry、未激活 tab 分支、所有非空 split 列），区别于只走可见分支的 `collectVisibleDestinations`。供控制器缓存 prune 与 session `collectLeafKeys` 共用。
 
 **Files:**
+
 - Modify: `packages/core/src/navigation/operations.ts`（在 `collectVisibleDestinations` 段后追加）
 - Modify: `packages/core/src/navigation/index.ts`（Operations 导出段加 `collectAllLeaves`）
 - Test: `packages/core/test/navigation/operations.test.ts`（追加 describe 块 + 导入）
@@ -178,6 +180,7 @@ git commit -m "feat(core): add collectAllLeaves — 收集树中全部存在叶�
 session 的 `collectLeafKeys` 与新 `collectAllLeaves` 是同一遍历，只差「返回 key 字符串」。改为委派，去重。**纯重构**——现有 session 测试须原样通过。
 
 **Files:**
+
 - Modify: `packages/core/src/session/scoped-state.ts`
 - Test（回归，不新增）：`packages/core/test/session/scoped-state.test.ts`、`packages/core/test/session/navigation-adapter.test.ts`
 
@@ -234,6 +237,7 @@ git commit -m "refactor(core): collectLeafKeys 复用 collectAllLeaves，去重�
 `resolveTree` 改用持久化的 `pageCache`，使 pop/切 tab 回到仍在树中的条目复用缓存、不重 dispatch（守卫照常跑）。**3 个既有测试断言的是被本特性改掉的「重 fetch」行为，须更新为新行为（RED），再实现（GREEN）。**
 
 **Files:**
+
 - Modify: `packages/core/src/navigation/controller.ts`
 - Test: `packages/core/test/navigation/controller.test.ts`（更新 3 个既有用例 + 新增 2 个）
 
@@ -250,117 +254,117 @@ import { sessionEntryKey } from "../../src/session/scoped-state";
 **(b)** 替换 `:160` 的用例（`describe("stack operations")` 内，原名 `pop drops the top entry; the now-visible root is newly-visible → re-dispatched`）。把整个 `test(...)` 块替换为：
 
 ```ts
-    test("pop reveals the still-present root from cache without re-dispatching", async () => {
-        const calls: string[] = [];
-        const controller = stackController(calls);
-        await controller.resolve();
-        await controller.push("detail");
+test("pop reveals the still-present root from cache without re-dispatching", async () => {
+    const calls: string[] = [];
+    const controller = stackController(calls);
+    await controller.resolve();
+    await controller.push("detail");
 
-        const snap = await controller.pop();
+    const snap = await controller.pop();
 
-        // root 自始至终在树中（stack 底）→ 首屏已 dispatch 并缓存 → pop 复用、不重 fetch。
-        expect(calls).toEqual(["root", "detail"]);
-        expect(snap.destinations).toHaveLength(1);
-        expect(snap.destinations[0].intent).toBe("root");
-        expect(snap.tree).toEqual(stack([leaf("root")]));
-    });
+    // root 自始至终在树中（stack 底）→ 首屏已 dispatch 并缓存 → pop 复用、不重 fetch。
+    expect(calls).toEqual(["root", "detail"]);
+    expect(snap.destinations).toHaveLength(1);
+    expect(snap.destinations[0].intent).toBe("root");
+    expect(snap.tree).toEqual(stack([leaf("root")]));
+});
 ```
 
 **(c)** 更新 `:282` 用例（`describe("tabs")` 内 `selectTab switches active branch and dispatches the new one`）的「切回 home」断言。把：
 
 ```ts
-        // 切回 home：home 不在「上一」快照（只有 profile）→ 重新可见 → 重新 dispatch
-        const back = await controller.selectTab("home");
-        expect(calls).toEqual(["home", "profile", "home"]);
-        expect(back.destinations[0].intent).toBe("home");
+// 切回 home：home 不在「上一」快照（只有 profile）→ 重新可见 → 重新 dispatch
+const back = await controller.selectTab("home");
+expect(calls).toEqual(["home", "profile", "home"]);
+expect(back.destinations[0].intent).toBe("home");
 ```
 
 替换为：
 
 ```ts
-        // 切回 home：home 分支自始至终在 tabs 树中 → 缓存复用、不重 dispatch。
-        const back = await controller.selectTab("home");
-        expect(calls).toEqual(["home", "profile"]);
-        expect(back.destinations[0].intent).toBe("home");
+// 切回 home：home 分支自始至终在 tabs 树中 → 缓存复用、不重 dispatch。
+const back = await controller.selectTab("home");
+expect(calls).toEqual(["home", "profile"]);
+expect(back.destinations[0].intent).toBe("home");
 ```
 
 **(d)** 替换 `:741` 用例（`describe("prefetched reuse")` 内 `prefetched is one-shot: a second resolve of a changed-back destination re-dispatches`）整块为：
 
 ```ts
-    test("a popped-back present entry reuses its cached page (prefetched result included), no re-dispatch", async () => {
-        const calls: string[] = [];
-        const dispatcher = makeDispatcher(
-            { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
-            calls,
-        );
-        const prefetched = PrefetchedIntents.fromArray([
-            { intent: { id: "home", params: {} }, data: { id: "h", pageType: "home", title: "S" } },
-        ]);
-        const controller = createNavigationController(
-            makeOptions({
-                intentDispatcher: dispatcher,
-                initial: stack(leaf("home")),
-                prefetched,
-            }),
-        );
+test("a popped-back present entry reuses its cached page (prefetched result included), no re-dispatch", async () => {
+    const calls: string[] = [];
+    const dispatcher = makeDispatcher(
+        { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
+        calls,
+    );
+    const prefetched = PrefetchedIntents.fromArray([
+        { intent: { id: "home", params: {} }, data: { id: "h", pageType: "home", title: "S" } },
+    ]);
+    const controller = createNavigationController(
+        makeOptions({
+            intentDispatcher: dispatcher,
+            initial: stack(leaf("home")),
+            prefetched,
+        }),
+    );
 
-        await controller.resolve(); // home 来自预取（消费 + 缓存），calls=[]
-        await controller.push("other"); // calls=[other]；home 仍在树（栈底）
-        const snap = await controller.pop(); // 揭示 home：复用缓存、不重 dispatch
+    await controller.resolve(); // home 来自预取（消费 + 缓存），calls=[]
+    await controller.push("other"); // calls=[other]；home 仍在树（栈底）
+    const snap = await controller.pop(); // 揭示 home：复用缓存、不重 dispatch
 
-        expect(calls).toEqual(["other"]);
-        expect(snap.destinations[0].intent).toBe("home");
-        expect(snap.destinations[0].page.title).toBe("S"); // 复用的是 SSR 预取页
-    });
+    expect(calls).toEqual(["other"]);
+    expect(snap.destinations[0].intent).toBe("home");
+    expect(snap.destinations[0].page.title).toBe("S"); // 复用的是 SSR 预取页
+});
 ```
 
 **(e)** 在 `describe("stack operations")` 末尾（最后一个 `test` 之后、`describe` 闭合 `});` 之前）新增两个用例：
 
 ```ts
-    test("revealing a cached entry re-runs guards but does NOT re-dispatch", async () => {
-        const dispatchCalls: string[] = [];
-        const guardCalls: string[] = [];
-        const guard: BeforeLoadGuard = (ctx: NavigationContext) => {
-            guardCalls.push(ctx.intent.id);
-            return next();
-        };
-        const dispatcher = makeDispatcher(
-            { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
-            dispatchCalls,
-        );
-        const controller = createNavigationController(
-            makeOptions({
-                intentDispatcher: dispatcher,
-                initial: stack(leaf("root")),
-                beforeLoad: [guard],
-            }),
-        );
-        await controller.resolve(); // dispatch root；guard[root]
-        await controller.push("detail"); // dispatch detail；guard[detail]
-        dispatchCalls.length = 0;
-        guardCalls.length = 0;
+test("revealing a cached entry re-runs guards but does NOT re-dispatch", async () => {
+    const dispatchCalls: string[] = [];
+    const guardCalls: string[] = [];
+    const guard: BeforeLoadGuard = (ctx: NavigationContext) => {
+        guardCalls.push(ctx.intent.id);
+        return next();
+    };
+    const dispatcher = makeDispatcher(
+        { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
+        dispatchCalls,
+    );
+    const controller = createNavigationController(
+        makeOptions({
+            intentDispatcher: dispatcher,
+            initial: stack(leaf("root")),
+            beforeLoad: [guard],
+        }),
+    );
+    await controller.resolve(); // dispatch root；guard[root]
+    await controller.push("detail"); // dispatch detail；guard[detail]
+    dispatchCalls.length = 0;
+    guardCalls.length = 0;
 
-        await controller.pop(); // 揭示 root
+    await controller.pop(); // 揭示 root
 
-        expect(guardCalls).toEqual(["root"]); // 守卫照常跑（安全语义不变）
-        expect(dispatchCalls).toEqual([]); // 但不重 fetch（复用缓存页）
-    });
+    expect(guardCalls).toEqual(["root"]); // 守卫照常跑（安全语义不变）
+    expect(dispatchCalls).toEqual([]); // 但不重 fetch（复用缓存页）
+});
 
-    test("an entry removed from the tree then re-added is re-dispatched (cache pruned on leave)", async () => {
-        const calls: string[] = [];
-        const dispatcher = makeDispatcher(
-            { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
-            calls,
-        );
-        const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("home")) }),
-        );
-        await controller.resolve(); // [home]
-        await controller.replaceTop("other"); // home 离树 → 缓存 prune；[other]
-        await controller.replaceTop("home"); // home 重新入树、未缓存 → 重新 dispatch
+test("an entry removed from the tree then re-added is re-dispatched (cache pruned on leave)", async () => {
+    const calls: string[] = [];
+    const dispatcher = makeDispatcher(
+        { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
+        calls,
+    );
+    const controller = createNavigationController(
+        makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("home")) }),
+    );
+    await controller.resolve(); // [home]
+    await controller.replaceTop("other"); // home 离树 → 缓存 prune；[other]
+    await controller.replaceTop("home"); // home 重新入树、未缓存 → 重新 dispatch
 
-        expect(calls).toEqual(["home", "other", "home"]);
-    });
+    expect(calls).toEqual(["home", "other", "home"]);
+});
 ```
 
 > 说明：`BeforeLoadGuard`、`NavigationContext`、`next`、`pageFor`、`makeDispatcher`、`makeOptions`、`stackController` 均已在该测试文件顶部定义/导入（见文件现状），直接使用。
@@ -369,6 +373,7 @@ import { sessionEntryKey } from "../../src/session/scoped-state";
 
 Run: `vp test packages/core/test/navigation/controller.test.ts`
 Expected: FAIL —— 现实现仍按旧「重 dispatch」语义：
+
 - `pop reveals the still-present root...` 实际得到 `["root","detail","root"]`，期望 `["root","detail"]`。
 - tabs 切回 home 实际 `["home","profile","home"]`。
 - `revealing a cached entry...` 实际 `dispatchCalls=["root"]`、`guardCalls=["root"]`（期望 dispatch 为空）。
@@ -401,109 +406,109 @@ import {
 **(b)** 在状态声明处（`let tree...` 一带，约 line 314-322）新增缓存 Map，并删除 `resolvedOnce`（重写后不再需要）。把：
 
 ```ts
-    let tree: NavigationNode = options.initial;
-    let snapshot: NavigationSnapshot = { tree, destinations: [] };
-    let resolvedOnce = false;
-    const listeners = new Set<(snapshot: NavigationSnapshot) => void>();
+let tree: NavigationNode = options.initial;
+let snapshot: NavigationSnapshot = { tree, destinations: [] };
+let resolvedOnce = false;
+const listeners = new Set<(snapshot: NavigationSnapshot) => void>();
 ```
 
 替换为：
 
 ```ts
-    let tree: NavigationNode = options.initial;
-    let snapshot: NavigationSnapshot = { tree, destinations: [] };
-    const listeners = new Set<(snapshot: NavigationSnapshot) => void>();
+let tree: NavigationNode = options.initial;
+let snapshot: NavigationSnapshot = { tree, destinations: [] };
+const listeners = new Set<(snapshot: NavigationSnapshot) => void>();
 
-    // 按条目身份键缓存已成功解析的目标（ResolvedDestination）。
-    // 复用源 = 此缓存（超集：含上一快照 + 所有仍在树中的已解析条目）。
-    // 每轮提交后写穿（仅 status===undefined 的成功页）并按 collectAllLeaves prune：
-    // 条目离树（pop 掉、tab 分支销毁）→ 其缓存清除（与作用域状态同一生命周期）。
-    const pageCache = new Map<string, ResolvedDestination>();
+// 按条目身份键缓存已成功解析的目标（ResolvedDestination）。
+// 复用源 = 此缓存（超集：含上一快照 + 所有仍在树中的已解析条目）。
+// 每轮提交后写穿（仅 status===undefined 的成功页）并按 collectAllLeaves prune：
+// 条目离树（pop 掉、tab 分支销毁）→ 其缓存清除（与作用域状态同一生命周期）。
+const pageCache = new Map<string, ResolvedDestination>();
 ```
 
 **(c)** 重写 `resolveTree`（约 line 342-387）。把原 doc 注释 + 函数整体替换为：
 
 ```ts
-    /**
-     * 解析 `nextTree` 的全部可见目标，返回新快照（纯计算 + 读写 pageCache，不改 `tree`/`snapshot`）。
-     *
-     * - 复用：可见目标命中 `pageCache` 时，主目标把缓存页喂给 `resolvePrimary`（守卫照常跑、
-     *   跳过 dispatch），次目标直接复用缓存结果。
-     * - 写穿：本轮解析出的**成功**目标（`status===undefined`）写入缓存；失败/deny/redirect
-     *   目标不缓存（并清除其旧缓存），保证下次 reveal 重试 + 不复用错误页。
-     * - prune：按 `collectAllLeaves(nextTree)`（全部存在条目）裁剪，离树条目缓存清除。
-     */
-    async function resolveTree(nextTree: NavigationNode): Promise<NavigationSnapshot> {
-        const visible = collectVisibleDestinations(nextTree);
+/**
+ * 解析 `nextTree` 的全部可见目标，返回新快照（纯计算 + 读写 pageCache，不改 `tree`/`snapshot`）。
+ *
+ * - 复用：可见目标命中 `pageCache` 时，主目标把缓存页喂给 `resolvePrimary`（守卫照常跑、
+ *   跳过 dispatch），次目标直接复用缓存结果。
+ * - 写穿：本轮解析出的**成功**目标（`status===undefined`）写入缓存；失败/deny/redirect
+ *   目标不缓存（并清除其旧缓存），保证下次 reveal 重试 + 不复用错误页。
+ * - prune：按 `collectAllLeaves(nextTree)`（全部存在条目）裁剪，离树条目缓存清除。
+ */
+async function resolveTree(nextTree: NavigationNode): Promise<NavigationSnapshot> {
+    const visible = collectVisibleDestinations(nextTree);
 
-        // 主目标 = 激活路径末端的 leaf（与现有 runner 的「单页」对齐）。
-        const activeLeaf = findActiveLeaf(nextTree);
-        const primaryKey = activeLeaf
-            ? destinationKey(activeLeaf.intent, activeLeaf.params)
-            : undefined;
+    // 主目标 = 激活路径末端的 leaf（与现有 runner 的「单页」对齐）。
+    const activeLeaf = findActiveLeaf(nextTree);
+    const primaryKey = activeLeaf
+        ? destinationKey(activeLeaf.intent, activeLeaf.params)
+        : undefined;
 
-        const destinations: ResolvedDestination[] = [];
+    const destinations: ResolvedDestination[] = [];
 
-        for (const dest of visible) {
-            const key = destinationKey(dest.intent, dest.params);
-            const isPrimary = primaryKey !== undefined && key === primaryKey;
-            const cached = pageCache.get(key);
+    for (const dest of visible) {
+        const key = destinationKey(dest.intent, dest.params);
+        const isPrimary = primaryKey !== undefined && key === primaryKey;
+        const cached = pageCache.get(key);
 
-            if (isPrimary) {
-                // 主目标始终跑守卫；命中缓存时把缓存页喂入 → 跳过 dispatch（不重 fetch）。
-                destinations.push(await resolvePrimary(dest, cached?.page));
-            } else if (cached !== undefined) {
-                // 非主、已缓存：直接复用（不 dispatch、不跑守卫）。
-                destinations.push(cached);
-            } else {
-                // 非主、未缓存：仅 dispatch（含 prefetched 复用），无守卫。
-                destinations.push(await resolveSecondary(dest));
-            }
+        if (isPrimary) {
+            // 主目标始终跑守卫；命中缓存时把缓存页喂入 → 跳过 dispatch（不重 fetch）。
+            destinations.push(await resolvePrimary(dest, cached?.page));
+        } else if (cached !== undefined) {
+            // 非主、已缓存：直接复用（不 dispatch、不跑守卫）。
+            destinations.push(cached);
+        } else {
+            // 非主、未缓存：仅 dispatch（含 prefetched 复用），无守卫。
+            destinations.push(await resolveSecondary(dest));
         }
-
-        // 写穿 + prune。
-        for (const d of destinations) {
-            const k = destinationKey(d.intent, d.params);
-            if (d.status === undefined) {
-                pageCache.set(k, d);
-            } else {
-                pageCache.delete(k); // 失败/deny/redirect 不缓存，清旧缓存避免复用错误页。
-            }
-        }
-        const presentKeys = new Set(
-            collectAllLeaves(nextTree).map((l) => destinationKey(l.intent, l.params)),
-        );
-        for (const k of pageCache.keys()) {
-            if (!presentKeys.has(k)) pageCache.delete(k);
-        }
-
-        return { tree: nextTree, destinations };
     }
+
+    // 写穿 + prune。
+    for (const d of destinations) {
+        const k = destinationKey(d.intent, d.params);
+        if (d.status === undefined) {
+            pageCache.set(k, d);
+        } else {
+            pageCache.delete(k); // 失败/deny/redirect 不缓存，清旧缓存避免复用错误页。
+        }
+    }
+    const presentKeys = new Set(
+        collectAllLeaves(nextTree).map((l) => destinationKey(l.intent, l.params)),
+    );
+    for (const k of pageCache.keys()) {
+        if (!presentKeys.has(k)) pageCache.delete(k);
+    }
+
+    return { tree: nextTree, destinations };
+}
 ```
 
 **(d)** `commit`（约 line 536-544）里删除 `resolvedOnce = true;` 一行：
 
 ```ts
-    function commit(next: NavigationSnapshot): NavigationSnapshot {
-        tree = next.tree;
-        snapshot = next;
-        for (const listener of listeners) {
-            listener(snapshot);
-        }
-        return snapshot;
+function commit(next: NavigationSnapshot): NavigationSnapshot {
+    tree = next.tree;
+    snapshot = next;
+    for (const listener of listeners) {
+        listener(snapshot);
     }
+    return snapshot;
+}
 ```
 
 **(e)** `apply`（约 line 582-589）的 `resolveTree(nextTree, snapshot)` 改为 `resolveTree(nextTree)`：
 
 ```ts
-    function apply(op: NavigationOperation): Promise<NavigationSnapshot> {
-        return enqueue(async () => {
-            const nextTree = computeNextTree(op);
-            const next = await resolveTree(nextTree);
-            return commit(next);
-        });
-    }
+function apply(op: NavigationOperation): Promise<NavigationSnapshot> {
+    return enqueue(async () => {
+        const nextTree = computeNextTree(op);
+        const next = await resolveTree(nextTree);
+        return commit(next);
+    });
+}
 ```
 
 **(f)** `resolve()`（约 line 640-650）简化——删除 `base`/`resolvedOnce` 逻辑：
@@ -538,6 +543,7 @@ git commit -m "feat(core): 控制器按条目缓存页面——pop/切 tab 复�
 默认即时复用缓存；需要新数据时由应用显式触发。`invalidate` 清缓存（指定键或全部），`refresh` 清当前激活叶子缓存并重解析当前树。
 
 **Files:**
+
 - Modify: `packages/core/src/navigation/controller.ts`（接口 + 返回对象）
 - Test: `packages/core/test/navigation/controller.test.ts`（新增 describe 块）
 

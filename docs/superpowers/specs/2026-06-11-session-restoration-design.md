@@ -14,6 +14,7 @@
 ## 2. 目标 / 非目标
 
 ### 目标
+
 1. **会话快照模型**：可序列化、带版本、JSON 安全地捕获「导航位置 + 应用状态切片」。
 2. **可插拔持久化**：复用现有 `Storage`（`DEP_KEYS.STORAGE`）；浏览器默认 `sessionStorage`，应用可换 `localStorage` / 服务端 Storage。
 3. **应用状态切片**：应用注册 `SessionStateProvider`（`capture()` / `restore()`），框架编排时机与持久化；UI 无关。
@@ -23,6 +24,7 @@
 7. **纯附加 + 向后兼容**：不配 `session` 时行为字节级不变。
 
 ### 非目标（本版不做）
+
 - **服务端持久化的内建适配器**：可插拔 `Storage` 已让应用用「服务端同步的 Storage」实现跨设备，但框架 v1 不内建服务端端点。
 - **多命名会话 / 会话管理器**：单 key（应用可自定义 / 按用户命名空间）。不做 session 列表 UI / 切换。
 - **冲突合并 / CRDT**：恢复是「整份快照覆盖」，不做字段级合并。
@@ -74,20 +76,19 @@ interface SessionStateProvider<T = unknown> {
 - **全局切片（§3.2，`slices`）**：app-wide，生命周期 = 整个会话（主题、跨屏向导草稿…）。键 = `provider.key`。
 - **导航作用域状态（`scoped`）**：**绑定到某个导航条目**，对标 SwiftUI 视图 `@State` 的「位置作用域」语义——
 
-  > `A` → push `B` → 返回（pop `B`）到 `A`：**`B` 的状态丢弃，`A` 的状态仍在**。
+    > `A` → push `B` → 返回（pop `B`）到 `A`：**`B` 的状态丢弃，`A` 的状态仍在**。
 
-  机制：状态按**条目身份键** `entryKey = intent + " " + stableStringify(params)`（与 controller 的 `destinationKey` 同源、跨重载稳定）存入 `Map<entryKey, 状态袋>`。每次导航提交后，框架按**树中实际存在的全部条目**（注意是「存在」而非「可见」）prune——身份不在树里的条目状态被丢弃：
+    机制：状态按**条目身份键** `entryKey = intent + " " + stableStringify(params)`（与 controller 的 `destinationKey` 同源、跨重载稳定）存入 `Map<entryKey, 状态袋>`。每次导航提交后，框架按**树中实际存在的全部条目**（注意是「存在」而非「可见」）prune——身份不在树里的条目状态被丢弃：
+    - push `B`：树 `[A, B]`，present `{A, B}` → `A` 状态保留（`A` 仍在栈、只是不可见），`B` 拿到自己的作用域。
+    - pop `B`：树 `[A]`，present `{A}` → **`B` 的作用域被 prune 丢弃**，`A` 的原样保留；返回 `A` 按保留态渲染。
+    - TabView 切 tab：其它分支仍在树中 → 其状态保留（与 SwiftUI tab 保活一致）。
+    - 跨重载：`scoped` 随快照序列化；重载后每个仍在树的条目恢复各自作用域，之后 pop 照常丢弃。
 
-  - push `B`：树 `[A, B]`，present `{A, B}` → `A` 状态保留（`A` 仍在栈、只是不可见），`B` 拿到自己的作用域。
-  - pop `B`：树 `[A]`，present `{A}` → **`B` 的作用域被 prune 丢弃**，`A` 的原样保留；返回 `A` 按保留态渲染。
-  - TabView 切 tab：其它分支仍在树中 → 其状态保留（与 SwiftUI tab 保活一致）。
-  - 跨重载：`scoped` 随快照序列化；重载后每个仍在树的条目恢复各自作用域，之后 pop 照常丢弃。
+    **扁平 vs 结构化**：上面的「A 留在 B 底下、pop 回 A 保留」**栈式保留**语义**本质上就是栈**，因而只在**结构化导航**（栈/树有「present 但不 visible」的条目）成立。**扁平单页没有栈**——A→B 是整页替换，`presentKeys()` 恒为单条目（当前 URL），所以一离开某屏其作用域即被 prune、浏览器返回是 fresh 重渲染。两种模式都支持「当前屏作用域 + 跨重载恢复」；要「返回保留上一屏」就把它建成结构化栈（push 而非 replace）——这正是 `NavigationStack` 的意义，不是扁平模式的缺陷。
 
-  **扁平 vs 结构化**：上面的「A 留在 B 底下、pop 回 A 保留」**栈式保留**语义**本质上就是栈**，因而只在**结构化导航**（栈/树有「present 但不 visible」的条目）成立。**扁平单页没有栈**——A→B 是整页替换，`presentKeys()` 恒为单条目（当前 URL），所以一离开某屏其作用域即被 prune、浏览器返回是 fresh 重渲染。两种模式都支持「当前屏作用域 + 跨重载恢复」；要「返回保留上一屏」就把它建成结构化栈（push 而非 replace）——这正是 `NavigationStack` 的意义，不是扁平模式的缺陷。
+    **应用读写**：每个 `ResolvedDestination` 配套 `entryKey`（同款 `sessionEntryKey(intent, params)` 辅助）；应用渲染某屏时用它 `store.scope.get(entryKey)` / `set(entryKey, data)`。框架只搬运状态袋、不解释其形状。
 
-  **应用读写**：每个 `ResolvedDestination` 配套 `entryKey`（同款 `sessionEntryKey(intent, params)` 辅助）；应用渲染某屏时用它 `store.scope.get(entryKey)` / `set(entryKey, data)`。框架只搬运状态袋、不解释其形状。
-
-  **身份取值（v1）**：内容键 `intent + stableStringify(params)`。已知局限——**同时存在的两个完全相同目标**（同 intent 同 params）会共享作用域、且仅当最后一个离树才丢弃；需严格区分时应用在 params 带区分位（未来可加显式 entry id，留接口位）。
+    **身份取值（v1）**：内容键 `intent + stableStringify(params)`。已知局限——**同时存在的两个完全相同目标**（同 intent 同 params）会共享作用域、且仅当最后一个离树才丢弃；需严格区分时应用在 params 带区分位（未来可加显式 entry id，留接口位）。
 
 ### 3.3 SessionStore（core 编排器）
 
@@ -157,6 +158,7 @@ interface SessionNavigationAdapter {
 ```
 
 ship 两个 helper：
+
 - `createNavigationSessionAdapter(controller, shouldApply?)`：结构化。`capture` = `serializeNavigation(controller.getTree())`；`apply` = `controller.hydrate(deserializeNavigation(nav))`（nav 是 URL 形态则降级为单 leaf）；`presentKeys` = 遍历 `controller.getTree()` 收集**全部 leaf**（含不可见的 A、未激活分支）→ `sessionEntryKey(intent, params)`。需要一个全树 leaf 遍历（session 层自带 `collectLeafKeys(tree)`，不改导航包）。
 - `createUrlSessionAdapter({ currentUrl, navigate })`：扁平。`capture` = `{ url: currentUrl() }`；`apply` = `navigate(nav.url)`（应用提供 `framework.perform(makeFlowAction(url))`）；`presentKeys` = 单条目（当前 URL → 一个 entryKey），故扁平单页天然只有「当前屏」一个作用域。
 
@@ -169,6 +171,7 @@ ship 两个 helper：
 ```ts
 createWebStorage(kind: "session" | "local"): Storage
 ```
+
 实现 core `Storage` 接口的 Web Storage 适配器（`get`→`getItem`、`set`→`setItem`、`delete`→`removeItem`；`sessionStorage` 不可用时降级 no-op，不抛）。
 
 ```ts
@@ -185,17 +188,19 @@ createSessionBridge(options: SessionBridgeOptions): {
     dispose(): void;
 }
 ```
+
 - **自动捕获触发器**：导航变更（`subscribeNavigation`）时**先 `store.scope.prune(adapter.presentKeys())`**（丢弃离树条目的作用域——这就是 pop B 后 B 状态消失的落点），再防抖落盘；外加 `window` 的 `pagehide` 与 `visibilitychange(hidden)` 立即落盘（比 `beforeunload` 在移动端可靠）。`dispose` 解绑全部监听。
 - **恢复**：boot 时 `restore(currentUrl)` → `store.load()`；命中且 `shouldRestore(snapshot, currentUrl)` 为真才整体应用（nav + slices 一个布尔门）。
 - **`shouldRestore` 默认策略**（精确、无歧义，honors「显式深链优先」）：
-  - `snapshot.navigation` 为 `SessionUrlLocation`（扁平）→ 恢复当且仅当 `currentUrl === snapshot.navigation.url` **或** `currentUrl` 路径为根 `/`（重载同页 / 全新进入 → 恢复；不同深链 → 跳过）。
-  - `snapshot.navigation` 为 `SerializedNavigation`（结构化）→ 恢复当且仅当 `currentUrl` 路径为根 `/`（树无单一可比 URL，门在「入口」；要更细由应用覆盖 predicate）。
-  - 无 `snapshot.navigation`（仅切片）→ 恢复（与 URL 无关）。
-  - 「根」默认判定为路径 `=== "/"`；带 base path 的应用覆盖 `shouldRestore`。
+    - `snapshot.navigation` 为 `SessionUrlLocation`（扁平）→ 恢复当且仅当 `currentUrl === snapshot.navigation.url` **或** `currentUrl` 路径为根 `/`（重载同页 / 全新进入 → 恢复；不同深链 → 跳过）。
+    - `snapshot.navigation` 为 `SerializedNavigation`（结构化）→ 恢复当且仅当 `currentUrl` 路径为根 `/`（树无单一可比 URL，门在「入口」；要更细由应用覆盖 predicate）。
+    - 无 `snapshot.navigation`（仅切片）→ 恢复（与 URL 无关）。
+    - 「根」默认判定为路径 `=== "/"`；带 base path 的应用覆盖 `shouldRestore`。
 
 ### 3.7 接入 startBrowserApp（可选）
 
 `BrowserAppConfig` 加可选：
+
 ```ts
 session?: {
     readonly providers?: readonly SessionStateProvider[];
@@ -206,20 +211,21 @@ session?: {
     readonly shouldRestore?: (snapshot, currentUrl) => boolean;
 }
 ```
+
 存在时：装配 `SessionStore`（导航适配器：有 `navigation` 配置 → 结构化适配器；否则 → URL 适配器接 `framework.perform`）+ `SessionBridge`，boot 时在首次导航后 `restore(initialUrl)`，并把 handle（save/clear）交给应用。**缺省整段不生效，原路径不变。**
 
 ## 4. 决策记录
 
-| 决策 | 选择 | 理由 |
-|---|---|---|
-| 恢复范围 | 导航位置 + 全局切片 + **导航作用域状态** | 对标 SwiftUI `@SceneStorage`（全局）+ `@State`（位置作用域）；框架管时机+持久化+导航，应用定义状态内容 |
-| **导航作用域生命周期** | 按「树中存在的条目」prune | 给出 SwiftUI 式 push/pop：A→B 保留 A、pop B 丢弃 B；TabView 切 tab 保活其它分支。身份 = `intent+stableStringify(params)`（跨重载稳定），同目标重复共享作用域为已知 v1 局限 |
-| 持久化 | 可插拔 `Storage`，默认 `sessionStorage` | 复用现有 DI；durability（标签级/跨关闭/跨设备）由应用换 Storage 决定 |
-| 捕获时机 | 自动（防抖 + pagehide）+ 手动 `save()` | 最少接线即生效，敏感场景可手动控 |
-| **显式 URL vs 恢复** | **显式深链优先** | 默认 `shouldRestore`（一个布尔门，gate 整份 nav+slices）：扁平 → `currentUrl` 等于快照 URL 或为根 `/`；结构化 → `currentUrl` 为根 `/`；仅切片（无 nav）→ 总恢复。直接深链 `/x` 不被旧会话覆盖。应用可改 predicate（见 §3.6） |
-| **SSR 闪烁** | **接受并文档化** | SSR 先渲染 URL 页、客户端再恢复到不同态会有一次跳变；CSR 可 boot 前恢复无此问题。恢复时机经 bridge 暴露给应用控 |
-| 导航耦合 | 适配器接口 + 两 helper | SessionStore 不依赖 NavigationController，core 不产生 nav→session 反向耦合；扁平/结构化同机制 |
-| 时钟 | 注入 `now()` | `capturedAt`/过期判断可测；不在 store 里裸调 `Date.now` |
+| 决策                   | 选择                                     | 理由                                                                                                                                                                                                                         |
+| ---------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 恢复范围               | 导航位置 + 全局切片 + **导航作用域状态** | 对标 SwiftUI `@SceneStorage`（全局）+ `@State`（位置作用域）；框架管时机+持久化+导航，应用定义状态内容                                                                                                                       |
+| **导航作用域生命周期** | 按「树中存在的条目」prune                | 给出 SwiftUI 式 push/pop：A→B 保留 A、pop B 丢弃 B；TabView 切 tab 保活其它分支。身份 = `intent+stableStringify(params)`（跨重载稳定），同目标重复共享作用域为已知 v1 局限                                                   |
+| 持久化                 | 可插拔 `Storage`，默认 `sessionStorage`  | 复用现有 DI；durability（标签级/跨关闭/跨设备）由应用换 Storage 决定                                                                                                                                                         |
+| 捕获时机               | 自动（防抖 + pagehide）+ 手动 `save()`   | 最少接线即生效，敏感场景可手动控                                                                                                                                                                                             |
+| **显式 URL vs 恢复**   | **显式深链优先**                         | 默认 `shouldRestore`（一个布尔门，gate 整份 nav+slices）：扁平 → `currentUrl` 等于快照 URL 或为根 `/`；结构化 → `currentUrl` 为根 `/`；仅切片（无 nav）→ 总恢复。直接深链 `/x` 不被旧会话覆盖。应用可改 predicate（见 §3.6） |
+| **SSR 闪烁**           | **接受并文档化**                         | SSR 先渲染 URL 页、客户端再恢复到不同态会有一次跳变；CSR 可 boot 前恢复无此问题。恢复时机经 bridge 暴露给应用控                                                                                                              |
+| 导航耦合               | 适配器接口 + 两 helper                   | SessionStore 不依赖 NavigationController，core 不产生 nav→session 反向耦合；扁平/结构化同机制                                                                                                                                |
+| 时钟                   | 注入 `now()`                             | `capturedAt`/过期判断可测；不在 store 里裸调 `Date.now`                                                                                                                                                                      |
 
 ## 5. 错误处理与健壮性
 

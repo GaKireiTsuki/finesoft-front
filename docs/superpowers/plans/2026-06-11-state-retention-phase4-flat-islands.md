@@ -21,17 +21,20 @@
 **目的：** 在写实现前，确认 FLOW action 如何改道到控制器，并用一个失败的集成测试锁定目标行为。
 
 **Files:**
+
 - Read（侦察）：`packages/core/src/actions/*`（ActionDispatcher / `framework.onAction` / `framework.perform` 语义）、`packages/browser/src/action-handlers/register.ts`
 - Test: `packages/browser/test/flat-islands.test.ts`
 
 - [ ] **Step 1：侦察 FLOW 处理语义并记录结论**
 
 读 core 的 action 派发：
+
 - `framework.onAction(ACTION_KINDS.FLOW, handler)` 是否**覆盖**既有 handler 还是追加？（决定能否用「自定义 FLOW handler」替换扁平 handler 的正向导航。）
 - `framework.perform(action)` 如何分发到 handler；多 handler 时的次序。
 - `registerActionHandlers`（register.ts）注册了哪些 handler、顺序。
 
 把结论写进本任务下方「Spike 结论」小节（三选一）：
+
 - **(A) onAction 覆盖式**：合成模式下，先注册扁平 handler，再用自定义 FLOW handler 覆盖正向导航 → 路由到 `controller.push`。
 - **(B) 单 handler + 内部分支**：给 `registerFlowActionHandler` 加一个「flatIslands 路由器」注入点：正向 FLOW 调 `onForward(url)` 而非 `updateApp`，由合成层接 `controller.push`。
 - **(C) 不改 handler，FLOW 前置拦截**：在 `framework.perform` 前包一层，FLOW 正向导航直接调 `controller.push`，不进扁平 handler（modal/redirect 仍走 perform）。
@@ -39,6 +42,7 @@
 - [ ] **Step 2：写 RED 集成测试（锁定目标行为）**
 
 新建 `packages/browser/test/flat-islands.test.ts`，用 `startBrowserApp`（顶层 `mountEntry`、无 `navigation`）驱动两次「导航」（perform FlowAction 或调 spike 选定的入口），断言：
+
 1. 首屏 island 挂载到 `[data-fs-outlet]`。
 2. 正向导航（→ B）：B 挂载，A 仍挂载但 detach（保活）。
 3. back（popstate）：A 复用活实例（mountEntry 不重调）、重 attach；B 仍 present 则保活。
@@ -55,11 +59,29 @@ describe("flat islands（顶层 mountEntry，无 navigation）", () => {
         const mountCalls: string[] = [];
 
         const app = await startBrowserApp({
-            bootstrap: (fw) => defineRoutes(fw, [
-                { path: "/a", intentId: "a", controller: { intentId: "a", execute: () => ({ id: "a", pageType: "a", title: "A" }) } },
-                { path: "/b", intentId: "b", controller: { intentId: "b", execute: () => ({ id: "b", pageType: "b", title: "B" }) } },
-            ]),
-            mount: (target) => { target.innerHTML = `<main data-fs-outlet></main>`; return () => undefined; },
+            bootstrap: (fw) =>
+                defineRoutes(fw, [
+                    {
+                        path: "/a",
+                        intentId: "a",
+                        controller: {
+                            intentId: "a",
+                            execute: () => ({ id: "a", pageType: "a", title: "A" }),
+                        },
+                    },
+                    {
+                        path: "/b",
+                        intentId: "b",
+                        controller: {
+                            intentId: "b",
+                            execute: () => ({ id: "b", pageType: "b", title: "B" }),
+                        },
+                    },
+                ]),
+            mount: (target) => {
+                target.innerHTML = `<main data-fs-outlet></main>`;
+                return () => undefined;
+            },
             callbacks: { onNavigate() {}, onModal() {} },
             mountEntry: (entry, container) => {
                 mountCalls.push(entry.entryKey);
@@ -69,7 +91,10 @@ describe("flat islands（顶层 mountEntry，无 navigation）", () => {
         });
 
         const outlet = document.querySelector("[data-fs-outlet]") as HTMLElement;
-        const visible = (): string[] => [...outlet.querySelectorAll("[data-fs-entry]")].map((e) => e.getAttribute("data-fs-key") ?? "");
+        const visible = (): string[] =>
+            [...outlet.querySelectorAll("[data-fs-entry]")].map(
+                (e) => e.getAttribute("data-fs-key") ?? "",
+            );
 
         // 首屏 A
         expect(mountCalls).toEqual([sessionEntryKey("a", {})]);
@@ -105,6 +130,7 @@ git commit -m "spike(browser): flat-islands FLOW 改道结论 + RED 集成测试
 ## Task 2：扁平栈 URL 编解码器
 
 **Files:**
+
 - Create: `packages/browser/src/flat-stack-codec.ts`（或放 core navigation/codec.ts；倾向 browser 侧避免 core 体积，且依赖 router 读取面）
 - Test: `packages/browser/test/flat-stack-codec.test.ts`
 
@@ -169,7 +195,9 @@ export function createFlatStackCodec(): NavigationCodec {
         decode(url: string, router: NavigationRouterLike): NavigationNode | undefined {
             const match = router.match?.(url) ?? undefined; // 按 NavigationRouterLike 实际读取面调整
             if (!match) return undefined;
-            return stack([leaf(match.intent.id, (match.intent.params ?? {}) as Record<string, string>)]);
+            return stack([
+                leaf(match.intent.id, (match.intent.params ?? {}) as Record<string, string>),
+            ]);
         },
         encode(tree: NavigationNode, router: NavigationRouterLike): string {
             const visible = collectVisibleDestinations(tree);
@@ -200,6 +228,7 @@ git commit -m "feat(browser): flat-stack-codec —— URL↔单叶栈（flat-isl
 ## Task 3：`activateFlatIslands` + FLOW 改道 + 接线
 
 **Files:**
+
 - Create: `packages/browser/src/flat-islands.ts`（合成 controller + bridge + 编排器 + FLOW 路由器）
 - Modify: `packages/browser/src/start-app.ts`（顶层 `mountEntry` + 检测 + 调用）
 - Test: `packages/browser/test/flat-islands.test.ts`（补全 Task 1 的 RED 测试断言 → GREEN）

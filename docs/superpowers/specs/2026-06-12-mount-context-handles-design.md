@@ -16,6 +16,7 @@
 **根因**:handle 晚于 mount 到达。**治法**:让 handle 在 mount 时就绪并经 mount context 交付;框架再提供一个合并 nav+session 的统一句柄,免应用手拼 facade。
 
 **成功判据**:
+
 - `vue-minimal` 的 `main.ts` 不再有 `navHandle`/`sessionHandle` 模块变量、`makeController`、`onNavigationReady`/`onSessionReady`。
 - 组件拿到一个就绪的统一句柄(命令 + 查询齐全)。
 - 既有能力不回归:keep-alive、深链重载恢复、SSR 水合**零失配**。
@@ -45,10 +46,10 @@ mount(target, {
 
 `app` = NavigationHandle 与 SessionHandle 的**组件面成员**平铺合并(无碰撞):
 
-| 来源 | 并入 `app` | **不并入**(留 raw handle) |
-| --- | --- | --- |
-| `NavigationHandle` | `getSnapshot` `subscribe` `push` `pop` `popToRoot` `replaceTop` `selectTab` `selectColumn` | `hydrate`(桥内部 / popstate 用) |
-| `SessionHandle` | `save` `clear` `scope` | `restore`(boot 专用,框架调) `dispose`(teardown) |
+| 来源               | 并入 `app`                                                                                 | **不并入**(留 raw handle)                       |
+| ------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| `NavigationHandle` | `getSnapshot` `subscribe` `push` `pop` `popToRoot` `replaceTop` `selectTab` `selectColumn` | `hydrate`(桥内部 / popstate 用)                 |
+| `SessionHandle`    | `save` `clear` `scope`                                                                     | `restore`(boot 专用,框架调) `dispose`(teardown) |
 
 - 只配 navigation → `app` 仅 nav 面;只配 session → 仅 `{ save, clear, scope }`;两者皆配 → 合并。
 - 被排除的成员(`hydrate`/`restore`/`dispose`)经 context 里的 raw `navigation`/`session` 访问。
@@ -67,6 +68,7 @@ mount(target, {
 > 一致;恢复值作为**水合后的响应式更新**生效(与当前行为一致)。
 
 故拆分为:
+
 - **nav-core(mount 前)**:建 `NavigationController` + `NavigationBridge` → `navHandle`;`await controller.resolve()` 解析 **URL 推导**的首屏(不碰 DOM)。`navHandle.getSnapshot()` 即 URL 推导快照。
 - **session-core(mount 前)**:建 `SessionStore` + 注册 providers + `SessionBridge` → `sessionHandle`(`save`/`clear`/`scope` 即可用)。**不调 restore**。
 - 建统一 `app` = merge(navHandle, sessionHandle)。
@@ -102,18 +104,18 @@ flowchart TB
 ```ts
 // 之后:
 startBrowserApp({
-  bootstrap,
-  mount(target, { app, navigation }) {
-    state.snapshot = navigation.getSnapshot();          // 终态(URL 推导)快照,首帧即有
-    navigation.subscribe((s) => (state.snapshot = s));  // 应用自己的响应式绑定(本质,保留)
-    const chromeRoot = ensureChromeRoot(target);        // shell 处理(另一热点,本次不动)
-    const factory = chromeRoot.firstChild ? createSSRApp : createApp;
-    factory(App, { state, controller: markRaw(app) }).mount(chromeRoot);
-    return () => undefined;
-  },
-  navigation: { ...navigation.toBrowserConfig(), mountEntry },
-  session: { providers: [profileProvider] },
-  domRestore: true,
+    bootstrap,
+    mount(target, { app, navigation }) {
+        state.snapshot = navigation.getSnapshot(); // 终态(URL 推导)快照,首帧即有
+        navigation.subscribe((s) => (state.snapshot = s)); // 应用自己的响应式绑定(本质,保留)
+        const chromeRoot = ensureChromeRoot(target); // shell 处理(另一热点,本次不动)
+        const factory = chromeRoot.firstChild ? createSSRApp : createApp;
+        factory(App, { state, controller: markRaw(app) }).mount(chromeRoot);
+        return () => undefined;
+    },
+    navigation: { ...navigation.toBrowserConfig(), mountEntry },
+    session: { providers: [profileProvider] },
+    domRestore: true,
 });
 ```
 
@@ -131,11 +133,11 @@ startBrowserApp({
 ## 9. 测试
 
 - **`packages/browser/test/start-app.test.ts`**:
-  - 配了 navigation+session 时,`mount` 的 context 收到 `navigation`/`session`/`app`(均为可用 handle)。
-  - `app.push` 委托 `navigation.push`、`app.save` 委托 `session.save`、`app.scope` 委托 `session.scope`(getter)。
-  - flat(无 navigation/session)时 context 无 `navigation`/`session`/`app`。
-  - 时序:`mount` 收到的 `navigation.getSnapshot()` 是 resolve 后的终态(URL 推导)快照(证明 nav-core 在 mount 前完成);session restore 在 mount 后(可用 spy 断言 restore 调用晚于 mount)。
-  - `onNavigationReady`/`onSessionReady` 已移除(相关旧用例改写)。
+    - 配了 navigation+session 时,`mount` 的 context 收到 `navigation`/`session`/`app`(均为可用 handle)。
+    - `app.push` 委托 `navigation.push`、`app.save` 委托 `session.save`、`app.scope` 委托 `session.scope`(getter)。
+    - flat(无 navigation/session)时 context 无 `navigation`/`session`/`app`。
+    - 时序:`mount` 收到的 `navigation.getSnapshot()` 是 resolve 后的终态(URL 推导)快照(证明 nav-core 在 mount 前完成);session restore 在 mount 后(可用 spy 断言 restore 调用晚于 mount)。
+    - `onNavigationReady`/`onSessionReady` 已移除(相关旧用例改写)。
 - **e2e(vue-minimal,playwright)**:迁移后 —— 首屏 outlet 含 SSR island 内容 + chrome nav bar SSR 渲出;水合 **0 mismatch**;keep-alive(tab 往返 note 保留);深链重载恢复(note 回填)。
 
 ## 10. 非目标 / 开放点

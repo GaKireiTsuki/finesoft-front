@@ -15,6 +15,7 @@
 ## Task 1：`dom-restore` 捕获/回填核心（纯函数 + 模块）
 
 **Files:**
+
 - Create: `packages/browser/src/dom-restore.ts`
 - Test: `packages/browser/test/dom-restore.test.ts`
 
@@ -44,7 +45,8 @@ describe("dom-restore — 捕获", () => {
 
         dr.captureEntry(c);
 
-        const dom = (scope.get("home {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom;
+        const dom = (scope.get("home {}") as { __dom?: { fields?: Record<string, unknown> } })
+            .__dom;
         expect(dom?.fields).toEqual({ note: "draft" });
     });
 
@@ -77,7 +79,11 @@ describe("dom-restore — 捕获", () => {
 
         dr.captureEntry(c);
 
-        const dom = (scope.get("k {}") as { __dom?: { fields?: Record<string, unknown>; details?: Record<string, boolean> } }).__dom;
+        const dom = (
+            scope.get("k {}") as {
+                __dom?: { fields?: Record<string, unknown>; details?: Record<string, boolean> };
+            }
+        ).__dom;
         expect(dom?.fields).toEqual({ agree: true, kk: "v" });
         expect(dom?.details).toEqual({ sec: true });
     });
@@ -164,7 +170,10 @@ function restoreRoots(container: HTMLElement): HTMLElement[] {
 
 /** 字段键：data-restore-key 优先，否则 name；都无返回 undefined（不捕获）。 */
 function fieldKey(el: Element): string | undefined {
-    return el.getAttribute("data-restore-key") ?? (el as HTMLInputElement).name ?? undefined || undefined;
+    return (
+        (el.getAttribute("data-restore-key") ?? (el as HTMLInputElement).name ?? undefined) ||
+        undefined
+    );
 }
 
 function keyOf(container: HTMLElement): string | undefined {
@@ -192,14 +201,17 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
                 if (!key) continue;
                 const type = (el as HTMLInputElement).type;
                 fields[key] =
-                    type === "checkbox" || type === "radio" ? (el as HTMLInputElement).checked : el.value;
+                    type === "checkbox" || type === "radio"
+                        ? (el as HTMLInputElement).checked
+                        : el.value;
             }
             for (const d of root.querySelectorAll<HTMLDetailsElement>("details")) {
                 const key = d.getAttribute("data-restore-key") ?? d.id;
                 if (key) details[key] = d.open;
             }
             for (const s of root.querySelectorAll<HTMLElement>("[data-restore-scroll]")) {
-                const key = s.getAttribute("data-restore-key") ?? s.getAttribute("data-restore-scroll");
+                const key =
+                    s.getAttribute("data-restore-key") ?? s.getAttribute("data-restore-scroll");
                 if (key) scroll[key] = { top: s.scrollTop, left: s.scrollLeft };
             }
         }
@@ -232,7 +244,9 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
                 if (d) d.open = open;
             }
             for (const [key, pos] of Object.entries(dom.scroll ?? {})) {
-                const s = root.querySelector<HTMLElement>(`[data-restore-scroll="${key}"], [data-restore-key="${key}"]`);
+                const s = root.querySelector<HTMLElement>(
+                    `[data-restore-scroll="${key}"], [data-restore-key="${key}"]`,
+                );
                 if (s) {
                     s.scrollTop = pos.top;
                     s.scrollLeft = pos.left;
@@ -275,9 +289,10 @@ git commit -m "feat(browser): dom-restore 捕获/回填核心（排除 password�
 
 ---
 
-## Task 2：`attach` 接线（fs:* / input / pagehide + boot catch-up）
+## Task 2：`attach` 接线（fs:\* / input / pagehide + boot catch-up）
 
 **Files:**
+
 - Modify: `packages/browser/src/dom-restore.ts`
 - Test: `packages/browser/test/dom-restore.test.ts`
 
@@ -359,55 +374,55 @@ Expected: FAIL —— `attach` 抛 `not implemented until Task 2`。
 替换 Task 1 中的占位 `attach`/`dispose`：
 
 ```ts
-    let boundOutlet: HTMLElement | undefined;
+let boundOutlet: HTMLElement | undefined;
 
-    /** 从事件 target 上溯到 island container。 */
-    function containerOf(target: EventTarget | null): HTMLElement | undefined {
-        return (target as HTMLElement | null)?.closest<HTMLElement>("[data-fs-entry]") ?? undefined;
-    }
+/** 从事件 target 上溯到 island container。 */
+function containerOf(target: EventTarget | null): HTMLElement | undefined {
+    return (target as HTMLElement | null)?.closest<HTMLElement>("[data-fs-entry]") ?? undefined;
+}
 
-    const onEnter = (e: Event): void => {
-        const c = containerOf(e.target);
-        if (c) restoreEntry(c);
-    };
-    const onConceal = (e: Event): void => {
-        const c = containerOf(e.target);
-        if (c) captureEntry(c);
-    };
-    const onEdit = (e: Event): void => {
-        const c = containerOf(e.target);
-        if (c) captureEntry(c);
-    };
-    const flushVisible = (): void => {
-        if (!boundOutlet) return;
-        for (const c of boundOutlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) captureEntry(c);
-    };
-    const onVisibility = (): void => {
-        if (document.visibilityState === "hidden") flushVisible();
-    };
+const onEnter = (e: Event): void => {
+    const c = containerOf(e.target);
+    if (c) restoreEntry(c);
+};
+const onConceal = (e: Event): void => {
+    const c = containerOf(e.target);
+    if (c) captureEntry(c);
+};
+const onEdit = (e: Event): void => {
+    const c = containerOf(e.target);
+    if (c) captureEntry(c);
+};
+const flushVisible = (): void => {
+    if (!boundOutlet) return;
+    for (const c of boundOutlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) captureEntry(c);
+};
+const onVisibility = (): void => {
+    if (document.visibilityState === "hidden") flushVisible();
+};
 
-    function attach(outlet: HTMLElement): void {
-        boundOutlet = outlet;
-        outlet.addEventListener("fs:enter", onEnter);
-        outlet.addEventListener("fs:conceal", onConceal);
-        outlet.addEventListener("input", onEdit, true);
-        outlet.addEventListener("change", onEdit, true);
-        window.addEventListener("pagehide", flushVisible);
-        document.addEventListener("visibilitychange", onVisibility);
-        // boot catch-up：islands 在会话恢复 scope 之前已挂载（fs:enter 已过），对当前 attached 的回填一次。
-        for (const c of outlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) restoreEntry(c);
-    }
+function attach(outlet: HTMLElement): void {
+    boundOutlet = outlet;
+    outlet.addEventListener("fs:enter", onEnter);
+    outlet.addEventListener("fs:conceal", onConceal);
+    outlet.addEventListener("input", onEdit, true);
+    outlet.addEventListener("change", onEdit, true);
+    window.addEventListener("pagehide", flushVisible);
+    document.addEventListener("visibilitychange", onVisibility);
+    // boot catch-up：islands 在会话恢复 scope 之前已挂载（fs:enter 已过），对当前 attached 的回填一次。
+    for (const c of outlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) restoreEntry(c);
+}
 
-    function dispose(): void {
-        if (!boundOutlet) return;
-        boundOutlet.removeEventListener("fs:enter", onEnter);
-        boundOutlet.removeEventListener("fs:conceal", onConceal);
-        boundOutlet.removeEventListener("input", onEdit, true);
-        boundOutlet.removeEventListener("change", onEdit, true);
-        window.removeEventListener("pagehide", flushVisible);
-        document.removeEventListener("visibilitychange", onVisibility);
-        boundOutlet = undefined;
-    }
+function dispose(): void {
+    if (!boundOutlet) return;
+    boundOutlet.removeEventListener("fs:enter", onEnter);
+    boundOutlet.removeEventListener("fs:conceal", onConceal);
+    boundOutlet.removeEventListener("input", onEdit, true);
+    boundOutlet.removeEventListener("change", onEdit, true);
+    window.removeEventListener("pagehide", flushVisible);
+    document.removeEventListener("visibilitychange", onVisibility);
+    boundOutlet = undefined;
+}
 ```
 
 （删除 Task 1 里 `throw new Error("not implemented until Task 2")` 的占位 `attach` 与空 `dispose`。）
@@ -431,6 +446,7 @@ git commit -m "feat(browser): dom-restore attach 接线（fs:*/input/pagehide + 
 `domRestore` 仅当同时有 islands（`navigation.mountEntry`）+ `session` 时生效。`activateNavigation` 暴露 outlet 供接线；DomRestore 在会话激活（scope 已恢复）后 attach，catch-up 回填 boot DOM。
 
 **Files:**
+
 - Modify: `packages/browser/src/start-app.ts`
 - Modify: `packages/browser/src/index.ts`
 - Test: `packages/browser/test/start-app.test.ts`
@@ -443,10 +459,22 @@ describe("startBrowserApp — domRestore（islands + session）", () => {
         document.body.innerHTML = `<div id="app"></div>`;
         // 预置会话快照：scoped[home].__dom.fields.note = "restored"
         const storage = makeMemoryStorage(); // 见本文件既有存储替身；无则用 createWebStorage("session") 并 seed
-        seedSessionSnapshot(storage, { scoped: { [sessionEntryKey("home", {})]: { __dom: { fields: { note: "restored" } } } } });
+        seedSessionSnapshot(storage, {
+            scoped: { [sessionEntryKey("home", {})]: { __dom: { fields: { note: "restored" } } } },
+        });
 
         await startBrowserApp({
-            bootstrap: (fw) => defineRoutes(fw, [{ path: "/", intentId: "home", controller: { intentId: "home", execute: () => ({ id: "home", pageType: "home", title: "Home" }) } }]),
+            bootstrap: (fw) =>
+                defineRoutes(fw, [
+                    {
+                        path: "/",
+                        intentId: "home",
+                        controller: {
+                            intentId: "home",
+                            execute: () => ({ id: "home", pageType: "home", title: "Home" }),
+                        },
+                    },
+                ]),
             mount: (target) => {
                 target.innerHTML = `<main data-fs-outlet></main>`;
                 return () => undefined;
@@ -513,38 +541,40 @@ interface ActivatedNavigation {
 `activateNavigation` 里把 outlet 纳入返回。改 islands 分支与 return：
 
 ```ts
-    let outlet: HTMLElement | undefined;
-    if (navigation.mountEntry) {
-        const found = target.querySelector<HTMLElement>("[data-fs-outlet]");
-        if (!found) {
-            throw new Error(
-                "[startBrowserApp] navigation.mountEntry 已提供，但找不到 [data-fs-outlet]。",
-            );
-        }
-        outlet = found;
-        const orchestrator = createIslandOrchestrator({ outlet, mountEntry: navigation.mountEntry });
-        orchestrator.sync(controller.getSnapshot());
-        controller.subscribe((snapshot) => orchestrator.sync(snapshot));
+let outlet: HTMLElement | undefined;
+if (navigation.mountEntry) {
+    const found = target.querySelector<HTMLElement>("[data-fs-outlet]");
+    if (!found) {
+        throw new Error(
+            "[startBrowserApp] navigation.mountEntry 已提供，但找不到 [data-fs-outlet]。",
+        );
     }
+    outlet = found;
+    const orchestrator = createIslandOrchestrator({ outlet, mountEntry: navigation.mountEntry });
+    orchestrator.sync(controller.getSnapshot());
+    controller.subscribe((snapshot) => orchestrator.sync(snapshot));
+}
 
-    return { handle, controller, outlet };
+return { handle, controller, outlet };
 ```
 
 **(d)** 会话激活后（6.7 之后）接 DomRestore（新 6.8）：
 
 ```ts
-    // 6.7 会话恢复 ...（保持不变，拿到 handle）...
-    let sessionHandle: SessionHandle | undefined;
-    if (config.session) {
-        sessionHandle = await activateSession({ /* ...原参数... */ });
-        await config.onSessionReady?.(sessionHandle);
-    }
+// 6.7 会话恢复 ...（保持不变，拿到 handle）...
+let sessionHandle: SessionHandle | undefined;
+if (config.session) {
+    sessionHandle = await activateSession({
+        /* ...原参数... */
+    });
+    await config.onSessionReady?.(sessionHandle);
+}
 
-    // 6.8 重载 DOM 自动恢复（opt-in）—— 需 islands outlet + session scope。
-    if (config.domRestore && activatedNavigation?.outlet && sessionHandle) {
-        const domRestore = createDomRestore({ scope: sessionHandle.scope });
-        domRestore.attach(activatedNavigation.outlet); // attach 内 catch-up 回填 boot DOM
-    }
+// 6.8 重载 DOM 自动恢复（opt-in）—— 需 islands outlet + session scope。
+if (config.domRestore && activatedNavigation?.outlet && sessionHandle) {
+    const domRestore = createDomRestore({ scope: sessionHandle.scope });
+    domRestore.attach(activatedNavigation.outlet); // attach 内 catch-up 回填 boot DOM
+}
 ```
 
 > 注：原 6.7 块若是 `const handle = await activateSession(...)` 内联，改为上面的 `let sessionHandle`，把它带到 6.8。`activateSession` 的参数原样不动。
@@ -576,6 +606,7 @@ git commit -m "feat(browser): startBrowserApp 接 dom-restore —— opt-in domR
 ## Task 4：`front` 再导出 + 全量验证
 
 **Files:**
+
 - Modify: `packages/front/src/index.ts`（对齐既有再导出 browser 符号处）
 
 - [ ] **Step 1：再导出**

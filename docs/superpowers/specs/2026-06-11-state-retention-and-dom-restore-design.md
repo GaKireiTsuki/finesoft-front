@@ -16,10 +16,10 @@
 
 ## 2. 两种 regime：保活 vs 序列化（物理事实，不是设计选择）
 
-| | 实例活着（会话内） | 实例已死（跨进程：刷新/冷启动） |
-|---|---|---|
-| 手段 | **保活**：不销毁，什么都不用做 | **序列化重建**：进程没了，活对象消失，只能重建可序列化子集 |
-| 覆盖 | 无损、全类别、零枚举 | 天然有损、部分（存得了 `currentTime`，存不了活的 `AVPlayer`/组件实例） |
+|      | 实例活着（会话内）             | 实例已死（跨进程：刷新/冷启动）                                        |
+| ---- | ------------------------------ | ---------------------------------------------------------------------- |
+| 手段 | **保活**：不销毁，什么都不用做 | **序列化重建**：进程没了，活对象消失，只能重建可序列化子集             |
+| 覆盖 | 无损、全类别、零枚举           | 天然有损、部分（存得了 `currentTime`，存不了活的 `AVPlayer`/组件实例） |
 
 → **会话内走保活；重载走有损序列化兜底。** 服务两个物理上不同的场景。
 
@@ -27,8 +27,8 @@
 
 - 身份键 `entryKey = intent + " " + stableStringify(params)`（与控制器 `destinationKey` 同源）。
 - **present 集（在场）**：
-  - 结构化导航 = `collectAllLeaves(tree)`（**新增**：全部存在叶子，含不可见——栈非顶 entry、未激活 tab 分支、所有 split 列）。
-  - 扁平导航（升级到 islands 时）= 隐式单栈：导航 = push，back = 揭示下层活实例；离开当前 forward 路径的条目按 LRU 收（深历史有界，前进越界则走重载层重建）。
+    - 结构化导航 = `collectAllLeaves(tree)`（**新增**：全部存在叶子，含不可见——栈非顶 entry、未激活 tab 分支、所有 split 列）。
+    - 扁平导航（升级到 islands 时）= 隐式单栈：导航 = push，back = 揭示下层活实例；离开当前 forward 路径的条目按 LRU 收（深历史有界，前进越界则走重载层重建）。
 - **visible 集** = `collectVisibleDestinations(tree)` / 隐式栈顶。
 - 三层全挂这根脊柱：**身份 = `entryKey`，生死 = present 集，显隐 = visible 集**。
 
@@ -36,10 +36,10 @@
 
 ### 4.0 两种挂载模型并存（组织主线）
 
-| 模型 | app 提供 | 会话内 | 重载 | 适用 |
-|---|---|---|---|---|
-| **基线（单 mount）** | `mount(target) => updateFn` | 导航整屏重渲（无活保活） | **serialize-restore ✓** | flat / 结构化，现有不破 |
-| **islands（升级，opt-in）** | `mountEntry(entry, el) => {unmount}` | **活保活**（实例不销毁） | serialize-restore ✓ | flat（隐式单栈）/ 结构化（树） |
+| 模型                        | app 提供                             | 会话内                   | 重载                    | 适用                           |
+| --------------------------- | ------------------------------------ | ------------------------ | ----------------------- | ------------------------------ |
+| **基线（单 mount）**        | `mount(target) => updateFn`          | 导航整屏重渲（无活保活） | **serialize-restore ✓** | flat / 结构化，现有不破        |
+| **islands（升级，opt-in）** | `mountEntry(entry, el) => {unmount}` | **活保活**（实例不销毁） | serialize-restore ✓     | flat（隐式单栈）/ 结构化（树） |
 
 - **serialize-restore 是两模型、flat+结构化的通用基线**（已建，§4.5），所有 app 免费享有。
 - **islands 是 opt-in 升级**：app 提供 `mountEntry` 即获得活保活；不提供则停留基线、只享重载恢复——**现有 flat 单 mount 应用/模版零改动、不破**。代价：框架内两套挂载路径共存。
@@ -49,18 +49,18 @@
 提供 `mountEntry` 时，结构化导航的挂载从「单 mount 整树重渲」改为「**N 个独立 UI root，每 present entry 一个**」：
 
 - **通用挂载原语**（适配器提供，跨框架一致）：
-  ```ts
-  mountEntry(entry: ResolvedEntry, container: HTMLElement): { unmount(): void }
-  // Vue:    createApp(View, props).mount(el)   → app.unmount()
-  // React:  createRoot(el).render(<View/>)     → root.unmount()
-  // Svelte: new View({ target: el, props })    → comp.$destroy()
-  ```
-  `ResolvedEntry = { intent, params, entryKey, page }`，`page` 来自控制器（§4.4 保证稳定，只挂一次）。
+    ```ts
+    mountEntry(entry: ResolvedEntry, container: HTMLElement): { unmount(): void }
+    // Vue:    createApp(View, props).mount(el)   → app.unmount()
+    // React:  createRoot(el).render(<View/>)     → root.unmount()
+    // Svelte: new View({ target: el, props })    → comp.$destroy()
+    ```
+    `ResolvedEntry = { intent, params, entryKey, page }`，`page` 来自控制器（§4.4 保证稳定，只挂一次）。
 - **keep-alive 逻辑全在框架**（适配器只需上面那个原语，不用 Vue `<KeepAlive>` 等框架专有机制）：
-  - 进入 present 集 → `mountEntry` 一次，记入 `Map<entryKey,{container,unmount}>`。
-  - 变 visible → container attach 到结构槽、显示。
-  - present 但不可见 → **detach container**（§4.2），实例不 unmount、全程活着。
-  - 离 present 集 → `unmount()`，从 Map 删除（同时清 page 缓存 + scope）。
+    - 进入 present 集 → `mountEntry` 一次，记入 `Map<entryKey,{container,unmount}>`。
+    - 变 visible → container attach 到结构槽、显示。
+    - present 但不可见 → **detach container**（§4.2），实例不 unmount、全程活着。
+    - 离 present 集 → `unmount()`，从 Map 删除（同时清 page 缓存 + scope）。
 - **扁平用同一编排器**：flat FlowAction handler 在提供 `mountEntry` 时，维护隐式单栈喂给编排器（push/pop），不再调 `updateApp`。
 
 ### 4.2 隐藏 = detach（节点离 document，devtools 不可见）
@@ -69,9 +69,9 @@ present-但-不可见的 island，框架**把 container 从 document 摘除**（
 
 - **收益**：节点出 document → devtools 看不到、`document.getElementById`/全局 `querySelector` 只命中可见屏 → **无重复 `id`、无跨屏查询歧义，屏间真隔离**。
 - **代价（已接受）**：
-  - **背景屏 `<video>`/`<audio>` 暂停** —— HTML 规范「media element 移出 document → pause」，无法绕过。
-  - `ResizeObserver`/`IntersectionObserver` detach 时断、reveal 时重连（一般无害）。
-  - **滚动**：detach 丢 layout 不丢 DOM 属性 —— `input.value`/`checked`/组件态随分离节点在内存留存，reveal 即在；唯独 `scrollTop` 依赖 layout，框架 **conceal 时记录、reveal 时 rAF 重放**（与 §4.5 共用滚动捕获逻辑）。
+    - **背景屏 `<video>`/`<audio>` 暂停** —— HTML 规范「media element 移出 document → pause」，无法绕过。
+    - `ResizeObserver`/`IntersectionObserver` detach 时断、reveal 时重连（一般无害）。
+    - **滚动**：detach 丢 layout 不丢 DOM 属性 —— `input.value`/`checked`/组件态随分离节点在内存留存，reveal 即在；唯独 `scrollTop` 依赖 layout，框架 **conceal 时记录、reveal 时 rAF 重放**（与 §4.5 共用滚动捕获逻辑）。
 - **opt-out（post-v1）**：条目声明 `keepRendered` → 改 hide-in-place（`content-visibility:hidden`，留 DOM 树）以维持连续媒体。
 - **生命周期信号**：框架在 container 上派发 UI 无关 `CustomEvent`：`fs:enter`/`fs:reveal`/`fs:conceal`/`fs:exit`，任意框架可监听（如 conceal 自暂停、reveal 自刷新）。
 
@@ -103,18 +103,18 @@ present-但-不可见的 island，框架**把 container 从 document 摘除**（
 
 ## 5. 决策记录
 
-| 决策 | 选择 | 理由 |
-|---|---|---|
-| 落地分支 | **`feat/session-restoration`**，框架定位为会话恢复的完整实现 | 这本就是会话恢复该有的形态；不另起特性 |
-| 会话内保活机制 | **islands**（框架挂 N root，通用 mountEntry 原语） | keep-alive 进框架、适配器只剩跨框架一致原语；比 `<KeepAlive>` 更 UI 无关 |
-| 隐藏语义 | **detach（出 document，devtools 不可见）** | 屏间真隔离、无重复 id；代价是背景媒体暂停 + 滚动重放（已接受） |
-| flat 支持 | **mountEntry 作为 opt-in 升级，两模型共存** | serialize 兜底通用基线已覆盖 flat；想活保活则升级，现有 flat 单 mount 不破 |
-| flat 历史 | 视作隐式单栈，back 全活、前进越界走重载重建 | 浏览器历史双向无界，纯保活会爆内存 |
-| pop 回前页 | 控制器缓存复用、不重 fetch | 对标 SwiftUI 栈保活 |
-| reveal 时守卫 | 照常跑，只省 fetch | 安全语义不变 |
-| chrome / island DOM | 框架拥结构容器 + island；app 拥 chrome + 叶子挂载 | 物理隔离，chrome 重渲不碰活 island |
-| 重载 | 有损序列化兜底（自动 DOM 子集 + slice） | 跨进程实例必死，物理限制 |
-| 安全 | opt-in `data-restore-root` + 排除 password | 自动持久化 DOM 值的红线 |
+| 决策                | 选择                                                         | 理由                                                                       |
+| ------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| 落地分支            | **`feat/session-restoration`**，框架定位为会话恢复的完整实现 | 这本就是会话恢复该有的形态；不另起特性                                     |
+| 会话内保活机制      | **islands**（框架挂 N root，通用 mountEntry 原语）           | keep-alive 进框架、适配器只剩跨框架一致原语；比 `<KeepAlive>` 更 UI 无关   |
+| 隐藏语义            | **detach（出 document，devtools 不可见）**                   | 屏间真隔离、无重复 id；代价是背景媒体暂停 + 滚动重放（已接受）             |
+| flat 支持           | **mountEntry 作为 opt-in 升级，两模型共存**                  | serialize 兜底通用基线已覆盖 flat；想活保活则升级，现有 flat 单 mount 不破 |
+| flat 历史           | 视作隐式单栈，back 全活、前进越界走重载重建                  | 浏览器历史双向无界，纯保活会爆内存                                         |
+| pop 回前页          | 控制器缓存复用、不重 fetch                                   | 对标 SwiftUI 栈保活                                                        |
+| reveal 时守卫       | 照常跑，只省 fetch                                           | 安全语义不变                                                               |
+| chrome / island DOM | 框架拥结构容器 + island；app 拥 chrome + 叶子挂载            | 物理隔离，chrome 重渲不碰活 island                                         |
+| 重载                | 有损序列化兜底（自动 DOM 子集 + slice）                      | 跨进程实例必死，物理限制                                                   |
+| 安全                | opt-in `data-restore-root` + 排除 password                   | 自动持久化 DOM 值的红线                                                    |
 
 ## 6. 错误处理 / 安全
 
