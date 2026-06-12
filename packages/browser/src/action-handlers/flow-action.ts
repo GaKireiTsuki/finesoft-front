@@ -39,11 +39,18 @@ export interface FlowActionDependencies {
      * 仍负责 dispatch + updateApp（初始渲染 / redirect / modal），只是不碰 history。
      */
     manageHistory?: boolean;
+    /**
+     * flat-islands 正向导航钩子（可选）。提供后，正向 FlowAction（非 modal）会调用此函数
+     * 并 return，**绕过** navigateTo / updateApp。由 activateFlatIslands 注入，把 URL
+     * 路由到隐式单栈 `NavigationController.push`。未提供时行为与今天扁平路径字节级相同。
+     */
+    onForward?: (url: string) => void | Promise<void>;
 }
 
 export function registerFlowActionHandler(deps: FlowActionDependencies): void {
     const { framework, log, callbacks, updateApp } = deps;
     const manageHistory = deps.manageHistory ?? true;
+    const { onForward } = deps;
     let isFirstPage = true;
     let navigationId = 0;
 
@@ -198,6 +205,12 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
                 const page = (await framework.dispatch(match.intent)) as BasePage;
                 callbacks.onModal(page);
             }
+            return;
+        }
+
+        // flat-islands 正向导航：把控制权交给隐式单栈 controller（bypass navigateTo/updateApp）。
+        if (onForward) {
+            await onForward(url);
             return;
         }
 

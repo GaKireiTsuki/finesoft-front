@@ -97,31 +97,29 @@ export const navigation = defineNavigation({
 
 ### Wiring it into the browser
 
-`startBrowserApp` gains an optional `navigation` field and an `onNavigationReady` callback that hands you a `NavigationHandle`:
+`startBrowserApp` gains an optional `navigation` field; when present, the `NavigationHandle` (and a unified `app` handle) is handed to your `mount` callback in its context, ready to use:
 
 ```ts
 // src/main.ts
-import { startBrowserApp, type NavigationHandle } from "@finesoft/front";
+import { startBrowserApp } from "@finesoft/front";
 import { bootstrap, navigation } from "./bootstrap";
-import { mount } from "./lib/mount";
-
-let handle: NavigationHandle;
 
 startBrowserApp({
     bootstrap,
-    mount,
     callbacks,
     navigation: navigation.toBrowserConfig(),
-    onNavigationReady(h) {
-        handle = h;
-        // Re-render whenever the snapshot changes
-        h.subscribe((snapshot) => mountNavigation(snapshot));
-        mountNavigation(h.getSnapshot());
+    mount(target, { navigation: nav, app }) {
+        // nav/app are ready at mount time (no callback needed).
+        // Re-render whenever the snapshot changes:
+        nav?.subscribe((snapshot) => mountNavigation(snapshot));
+        if (nav) mountNavigation(nav.getSnapshot());
+        // ... mount your UI into `target`, pass `app` to components ...
+        return () => undefined;
     },
 });
 ```
 
-When `navigation` is present, the framework builds a `NavigationController` and a history bridge, resolves the first screen, and gives you the handle. When it's absent, `startBrowserApp` runs the original flat single-page path unchanged.
+When `navigation` is present, the framework builds a `NavigationController` and a history bridge, resolves the first screen, and gives you the handle in the mount context. When it's absent, `startBrowserApp` runs the original flat single-page path unchanged.
 
 ## Driving navigation
 
@@ -299,6 +297,8 @@ function renderApp(page, framework, snapshot) {
 }
 ```
 
+For the concrete islands shell that `renderApp` builds — chrome + per-destination islands as independent hydration roots, plus the client-side `mountEntry` / `resolveIslandsShell` that adopt and hydrate them — see [Islands SSR](./04-rendering-and-hydration.md#islands-ssr-structured-architecture-approach-c).
+
 How it works under the hood: each visible destination is serialized through the **existing** `PrefetchedIntents` channel as a normal `{ intent, data: page }` entry, plus one sentinel entry carrying the serialized tree. `@finesoft/server` needs **zero changes** — it transports the sentinel through the same `#serialized-server-data` script. On hydration the browser bridge reads the tree back from history state (or the sentinel) and reuses the prefetched pages.
 
 If a request has no structural deep-link and your app provides no skeleton, SSR falls back to `Router.resolve(url)` → a single leaf — i.e. today's flat single page, including its `renderMode`. The 404 path is unchanged.
@@ -352,4 +352,4 @@ A single destination's dispatch failure never throws out of an operation — it 
 ## Next
 
 - [Middleware](./03-middleware.md) — the guard semantics navigation reuses
-- [Rendering & hydration](./04-rendering-and-hydration.md) — how prefetched results cross the SSR → CSR boundary
+- [Rendering & hydration](./04-rendering-and-hydration.md) — the render-mode × architecture matrix, the islands SSR shell, and how prefetched results cross the SSR → CSR boundary

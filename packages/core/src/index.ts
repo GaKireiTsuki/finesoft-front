@@ -125,8 +125,11 @@ export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstr
 
 // ===== Navigation =====
 export {
+    collectAllLeaves,
     collectVisibleDestinations,
+    islandContainerAttributes,
     createActiveLeafCodec,
+    createFlatStackCodec,
     createFullStateCodec,
     createNavigationController,
     decodeNavigationTreeParam,
@@ -185,6 +188,7 @@ export type {
     PushOptions,
     ReplaceTopOperation,
     ResolvedDestination,
+    ResolvedEntry,
     SelectColumnOperation,
     SelectTabOperation,
     SerializedLeaf,
@@ -202,6 +206,33 @@ export type {
     TabsInit,
     TabsNode,
 } from "./navigation";
+
+// ===== Session =====
+export {
+    collectLeafKeys,
+    createNavigationScopedState,
+    createNavigationSessionAdapter,
+    createSessionStore,
+    createUrlSessionAdapter,
+    decodeSnapshot,
+    encodeSnapshot,
+    isUrlLocation,
+    SESSION_DEFAULT_KEY,
+    SESSION_DEFAULT_VERSION,
+    SessionError,
+    sessionEntryKey,
+} from "./session";
+export type {
+    NavigationScopedState,
+    SessionErrorContext,
+    SessionNavigationAdapter,
+    SessionSnapshot,
+    SessionStateProvider,
+    SessionStore,
+    SessionStoreOptions,
+    SessionUrlLocation,
+    UrlAdapterOptions,
+} from "./session";
 
 // ===== Utils =====
 export { LruMap } from "./utils/lru-map";

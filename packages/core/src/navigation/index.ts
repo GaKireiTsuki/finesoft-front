@@ -36,8 +36,15 @@ export {
     type TabsInit,
 } from "./nodes";
 
+// ===== Islands（条目类型 + 共享标记构造器）=====
+export { islandContainerAttributes, type ResolvedEntry } from "./islands";
+
+// ===== Keys（稳定身份键）=====
+export { entryKey } from "./keys";
+
 // ===== Operations（纯函数）=====
 export {
+    collectAllLeaves,
     collectVisibleDestinations,
     findNearestStack,
     findNode,
@@ -69,6 +76,7 @@ export {
 // ===== Codec（URL 编解码）=====
 export {
     createActiveLeafCodec,
+    createFlatStackCodec,
     createFullStateCodec,
     decodeNavigationTreeParam,
     DEFAULT_NAV_PARAM,

@@ -1,6 +1,6 @@
 # 4. 渲染与 Hydration
 
-页面从 Controller 输出到字节流再回到活着的浏览器应用要走的路。本章覆盖 SSR、CSR、prerender，以及把两端绑在一起的 `PrefetchedIntents` 机制。
+页面从 Controller 输出到字节流再回到活着的浏览器应用要走的路。本章覆盖 SSR、CSR、prerender，它们正交组合的第二根轴 —— **应用架构**（扁平单页 vs 结构化导航 + islands）—— 以及把两端绑在一起的 `PrefetchedIntents` 机制。
 
 ## 三种模式并排比
 
@@ -14,6 +14,25 @@
 | SEO                      | 好                                      | 需要支持 JS 的爬虫            | 最好                                    |
 
 模式是**按路由**配置，自由混合。
+
+## 两根轴：渲染模式 × 应用架构
+
+渲染模式是一根轴。**应用架构**是正交的第二根轴：
+
+- **扁平单页** —— 服务端 `createSSRRender`，客户端单次挂载、每次导航重渲。一个 root、一个可见页。（见下方 [SSR 管线](#ssr-管线)。）
+- **结构化导航 + islands** —— 服务端 `createSSRNavigationRender`，客户端按目标挂为 _islands_：独立 root，切 tab / 栈时保活不销毁。（见 [导航](./11-navigation.md) 与下方 [Islands SSR](#islands-ssr结构化架构方案-c)。）
+
+两轴组合成矩阵 —— 渲染模式决定 HTML _何时/何地_ 产出，架构决定应用 _怎么组织_：
+
+|               | 扁平单页                | 结构化导航 + islands（方案 C）    |
+| ------------- | ----------------------- | --------------------------------- |
+| **ssr**       | ✅ `svelte-minimal`     | ✅ `vue-minimal`、`react-minimal` |
+| **csr**       | ◐ 空壳 → 单 client root | ◐ 空壳 → islands 客户端挂         |
+| **prerender** | ◐ 缓存扁平 SSR          | ◐ 缓存方案 C SSR                  |
+
+✅ 有 starter 模板实证 · ◐ 设计上成立，暂无 starter 模板。
+
+**islands 是 SSR 还是 CSR，是模式的结果、不是独立选项**：`ssr`/`prerender` 下框架服务端渲出每个可见 island、客户端 _收养并水合_；`csr` 下无服务端 HTML，每个 island 都在客户端新挂。每种模式的子维度仍叠加其上 —— CSR 有两个触发点（[见下](#csr客户端渲染)），prerender 有构建期静态与运行时 ISR 两种形态（[见下](#prerender静态--isr)）。会话恢复 + DOM 恢复是再一层正交（客户端、post-hydration），可叠加在任意格上 —— 见 [会话恢复](./12-session-restoration.md)。
 
 ## SSR 管线
 
@@ -82,6 +101,57 @@ Vite 插件和 adapter 替你调用 `render(url, options)`。你返回 `{ html, 
 - 根据解析出的 locale 设置 `<html lang dir>`
 - 根据 `deny()` / `redirect()` / `rewrite()` 结果设置 HTTP status
 - `afterLoad` 发出 rewrite 信号时加 `Content-Location` 头
+
+## Islands SSR（结构化架构，"方案 C"）
+
+结构化架构把 **chrome**（tab bar、header —— 持久外框）和 **island 内容**（当前活动页）渲为**独立的水合 root**，作为挂载节点下的 sibling：
+
+```html
+<div id="app">
+    <div data-fs-chrome><!-- chrome 渲在这 --></div>
+    <main data-fs-outlet><!-- 每个可见 island 渲在这 --></main>
+</div>
+```
+
+**服务端** —— `renderApp` 渲 chrome；`renderIslandsHtml(snapshot, renderEntry)` 把每个可见目标渲进 outlet，带上共享标记（`data-fs-entry` / `data-fs-intent` / `data-fs-key`）供客户端匹配：
+
+```ts
+// src/ssr.ts —— 结构化入口（createSSRNavigationRender）
+async renderApp(page, _framework, snapshot) {
+    const chromeHtml = await renderToString(createSSRApp(App, { snapshot }));
+    const islandsHtml = await renderIslandsHtml(snapshot, (entry) =>
+        renderToString(createSSRApp(VIEWS[entry.intent], { page: entry.page })),
+    );
+    return {
+        html: `<div data-fs-chrome>${chromeHtml}</div><main data-fs-outlet>${islandsHtml}</main>`,
+        head: `<title>${page.title}</title>`,
+        css: "",
+    };
+}
+```
+
+**客户端** —— `resolveIslandsShell(target)` 找到（或创建）chrome/outlet sibling，并报告 chrome 是否服务端渲过（`hydrate`）。island 编排器按 `data-fs-key` 收养每个 SSR'd 容器，调你的 `mountEntry(entry, container)` 时置 `entry.hydrate = true`，让你水合已有 DOM 而非新建：
+
+```ts
+// src/main.ts
+const mountEntry = (entry, container) => {
+    const factory = entry.hydrate ? createSSRApp : createApp; // 水合 SSR'd vs 新建（客户端导航）
+    const app = factory(VIEWS[entry.intent], { page: entry.page, controller: ctx.app });
+    app.mount(container);
+    return { unmount: () => app.unmount() };
+};
+
+startBrowserApp({
+    bootstrap,
+    mount,
+    callbacks,
+    navigation: { ...navigation.toBrowserConfig(), mountEntry },
+});
+```
+
+> **同步挂载契约。** `mountEntry` 返回后，island 的 DOM 必须已就绪：框架在下一帧回填 `data-restore-root` 字段（见 [会话恢复](./12-session-restoration.md)）。Vue/Svelte 的 `.mount()` 同步满足。**React** 异步提交 DOM，故须把**客户端新挂**路径用 `flushSync(() => root.render(view))` 包住 —— 仅客户端新挂的 island 需要（SSR'd island 的 DOM 已来自服务端）。见 `templates/react-minimal/src/main.tsx`。
+
+完整示例：`templates/vue-minimal` 与 `templates/react-minimal`（均为 `ssr` + 结构化导航 + islands + 会话恢复）。
 
 ## CSR（客户端渲染）
 

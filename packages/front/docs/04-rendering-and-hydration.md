@@ -1,6 +1,6 @@
 # 4. Rendering & hydration
 
-How a page travels from controller output to bytes on the wire, then back into a live browser app. This chapter covers SSR, CSR, prerender, and the `PrefetchedIntents` machinery that ties them together.
+How a page travels from controller output to bytes on the wire, then back into a live browser app. This chapter covers SSR, CSR, prerender, the second axis they compose with — **app architecture** (flat single page vs structured navigation + islands) — and the `PrefetchedIntents` machinery that ties them together.
 
 ## The three modes side by side
 
@@ -14,6 +14,25 @@ How a page travels from controller output to bytes on the wire, then back into a
 | SEO                         | Good                             | Requires JS-aware crawlers       | Best                             |
 
 Mode is **per-route**. Mix freely.
+
+## Two axes: render mode × app architecture
+
+Render mode is one axis. The **app architecture** is a second, orthogonal axis:
+
+- **Flat single page** — `createSSRRender` on the server, a single client mount that re-renders on each navigation. One root, one visible page. (See [SSR pipeline](#ssr-pipeline) below.)
+- **Structured navigation + islands** — `createSSRNavigationRender` on the server, per-destination _islands_ on the client: independent roots that stay alive across tab/stack switches. (See [Navigation](./11-navigation.md) and [Islands SSR](#islands-ssr-structured-architecture-approach-c) below.)
+
+The two axes compose into a matrix — render mode decides _when/where_ HTML is produced; architecture decides _how_ the app is structured:
+
+|               | Flat single page          | Structured nav + islands (approach C) |
+| ------------- | ------------------------- | ------------------------------------- |
+| **ssr**       | ✅ `svelte-minimal`       | ✅ `vue-minimal`, `react-minimal`     |
+| **csr**       | ◐ shell → one client root | ◐ shell → islands mount client-side   |
+| **prerender** | ◐ cached flat SSR         | ◐ cached approach-C SSR               |
+
+✅ demonstrated by a starter template · ◐ composes by design, no starter template yet.
+
+**Islands are SSR'd or CSR'd as a consequence of the mode, not as a separate choice:** under `ssr`/`prerender` the framework server-renders each visible island and the client _adopts and hydrates_ it; under `csr` there is no server HTML, so every island mounts fresh on the client. The per-mode sub-dimensions still apply on top — CSR has two triggers ([below](#csr-client-side-render)), prerender has build-time-static and runtime-ISR forms ([below](#prerender-static--isr)). Session restoration + DOM restore are a further orthogonal layer (client-side, post-hydration) that stacks onto any cell — see [Session restoration](./12-session-restoration.md).
 
 ## SSR pipeline
 
@@ -82,6 +101,57 @@ The Vite plugin and adapters call `render(url, options)` for you. You return `{ 
 - Sets `<html lang dir>` from the resolved locale
 - Sets HTTP status from `deny()` / `redirect()` / `rewrite()` results
 - Adds `Content-Location` header when `afterLoad` signaled a rewrite
+
+## Islands SSR (structured architecture, "approach C")
+
+The structured architecture renders the **chrome** (tab bar, headers — the persistent frame) and the **island content** (the active page) as **independent hydration roots**, placed as siblings under the mount node:
+
+```html
+<div id="app">
+    <div data-fs-chrome><!-- chrome SSR'd here --></div>
+    <main data-fs-outlet><!-- each visible island SSR'd here --></main>
+</div>
+```
+
+**Server** — `renderApp` renders the chrome; `renderIslandsHtml(snapshot, renderEntry)` renders each visible destination into the outlet with shared markers (`data-fs-entry` / `data-fs-intent` / `data-fs-key`) so the client can match them:
+
+```ts
+// src/ssr.ts — structured entry (createSSRNavigationRender)
+async renderApp(page, _framework, snapshot) {
+    const chromeHtml = await renderToString(createSSRApp(App, { snapshot }));
+    const islandsHtml = await renderIslandsHtml(snapshot, (entry) =>
+        renderToString(createSSRApp(VIEWS[entry.intent], { page: entry.page })),
+    );
+    return {
+        html: `<div data-fs-chrome>${chromeHtml}</div><main data-fs-outlet>${islandsHtml}</main>`,
+        head: `<title>${page.title}</title>`,
+        css: "",
+    };
+}
+```
+
+**Client** — `resolveIslandsShell(target)` locates (or creates) the chrome/outlet siblings and reports whether the chrome was server-rendered (`hydrate`). The island orchestrator adopts each SSR'd container by `data-fs-key` and calls your `mountEntry(entry, container)` with `entry.hydrate = true`, so you hydrate the existing DOM rather than create new:
+
+```ts
+// src/main.ts
+const mountEntry = (entry, container) => {
+    const factory = entry.hydrate ? createSSRApp : createApp; // hydrate SSR'd vs mount fresh (client nav)
+    const app = factory(VIEWS[entry.intent], { page: entry.page, controller: ctx.app });
+    app.mount(container);
+    return { unmount: () => app.unmount() };
+};
+
+startBrowserApp({
+    bootstrap,
+    mount,
+    callbacks,
+    navigation: { ...navigation.toBrowserConfig(), mountEntry },
+});
+```
+
+> **Synchronous-mount contract.** After `mountEntry` returns, the island's DOM must already exist: the framework restores `data-restore-root` fields on the next animation frame (see [Session restoration](./12-session-restoration.md)). Vue/Svelte `.mount()` satisfies this synchronously. **React** commits asynchronously, so wrap the **client-mount** path in `flushSync(() => root.render(view))` — only client-mounted islands need it (SSR'd islands already have their DOM from the server). See `templates/react-minimal/src/main.tsx`.
+
+Complete examples: `templates/vue-minimal` and `templates/react-minimal` (both `ssr` + structured navigation + islands + session restoration).
 
 ## CSR (client-side render)
 

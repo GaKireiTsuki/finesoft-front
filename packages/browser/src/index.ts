@@ -11,7 +11,12 @@ export {
 export { registerActionHandlers, type ActionHandlerDependencies } from "./action-handlers/register";
 
 // ===== Browser App =====
-export { startBrowserApp, type BrowserAppConfig, type BrowserNavigationConfig } from "./start-app";
+export {
+    startBrowserApp,
+    type BrowserAppConfig,
+    type BrowserNavigationConfig,
+    type BrowserSessionConfig,
+} from "./start-app";
 
 // ===== Navigation Bridge =====
 export {
@@ -19,6 +24,31 @@ export {
     type NavigationBridgeDependencies,
     type NavigationHandle,
 } from "./navigation-bridge";
+
+// ===== Navigation Islands =====
+export {
+    createIslandOrchestrator,
+    type IslandHandle,
+    type IslandOrchestrator,
+    type IslandOrchestratorOptions,
+    type MountEntry,
+    type ResolvedEntry,
+} from "./navigation-islands";
+export { createAppHandle, type AppHandle } from "./app-handle";
+export { resolveIslandsShell, type IslandsShell } from "./islands-shell";
+
+// ===== Session =====
+export {
+    createSessionBridge,
+    defaultShouldRestore,
+    SESSION_DEFAULT_DEBOUNCE_MS,
+    type SessionBridgeOptions,
+    type SessionHandle,
+} from "./session-bridge";
+export { createWebStorage, type WebStorageKind } from "./web-storage";
+
+// ===== DOM Restore =====
+export { createDomRestore, type DomRestore, type DomRestoreOptions } from "./dom-restore";
 
 // ===== Browser Utils =====
 export { History } from "./utils/history";

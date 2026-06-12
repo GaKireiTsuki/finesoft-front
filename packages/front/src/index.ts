@@ -1,30 +1,9 @@
 /// <reference types="./shims/server-peer-modules.d.ts" />
 
-// ===== Core =====
-export * from "@finesoft/core";
-
-// ===== Browser (unique exports only) =====
-export {
-    History,
-    createNavigationBridge,
-    createPrefetchedIntentsFromDom,
-    deserializeServerData,
-    registerActionHandlers,
-    registerExternalUrlHandler,
-    registerFlowActionHandler,
-    startBrowserApp,
-    tryScroll,
-} from "@finesoft/browser";
-export type {
-    ActionHandlerDependencies,
-    BrowserAppConfig,
-    BrowserNavigationConfig,
-    ExternalUrlDependencies,
-    FlowActionCallbacks,
-    FlowActionDependencies,
-    NavigationBridgeDependencies,
-    NavigationHandle,
-} from "@finesoft/browser";
+// ===== Core + Browser =====
+// 复用 browser-only 入口（src/browser.ts），避免两个入口重复维护同一份 core+browser 导出清单。
+// index 在其之上再叠加 SSR + Server；browser 入口刻意排除 server 代码（见 src/browser.ts）。
+export * from "./browser";
 
 // ===== SSR (unique exports only) =====
 export {
@@ -35,6 +14,7 @@ export {
     injectCSRShell,
     injectSSRContent,
     NAVIGATION_TREE_INTENT_ID,
+    renderIslandsHtml,
     serializeServerData,
     ssrRender,
     ssrRenderNavigation,
@@ -42,6 +22,7 @@ export {
 } from "@finesoft/ssr";
 export type {
     InjectSSROptions,
+    RenderEntry,
     SerializedNavigationTreePayload,
     SerializeServerDataOptions,
     SSRContext,

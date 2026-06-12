@@ -97,31 +97,29 @@ export const navigation = defineNavigation({
 
 ### 接入浏览器
 
-`startBrowserApp` 新增一个可选 `navigation` 字段和一个 `onNavigationReady` 回调，把 `NavigationHandle` 交给你：
+`startBrowserApp` 新增一个可选 `navigation` 字段；存在时，`NavigationHandle`（以及统一的 `app` 句柄）会在 `mount` 回调的 context 里交给你，挂载时即可直接使用：
 
 ```ts
 // src/main.ts
-import { startBrowserApp, type NavigationHandle } from "@finesoft/front";
+import { startBrowserApp } from "@finesoft/front";
 import { bootstrap, navigation } from "./bootstrap";
-import { mount } from "./lib/mount";
-
-let handle: NavigationHandle;
 
 startBrowserApp({
     bootstrap,
-    mount,
     callbacks,
     navigation: navigation.toBrowserConfig(),
-    onNavigationReady(h) {
-        handle = h;
-        // 快照变更时重渲染
-        h.subscribe((snapshot) => mountNavigation(snapshot));
-        mountNavigation(h.getSnapshot());
+    mount(target, { navigation: nav, app }) {
+        // nav/app 在 mount 时已就绪，无需等待回调。
+        // 快照变更时重渲染：
+        nav?.subscribe((snapshot) => mountNavigation(snapshot));
+        if (nav) mountNavigation(nav.getSnapshot());
+        // ... 把 UI 挂载到 target，将 app 传给组件 ...
+        return () => undefined;
     },
 });
 ```
 
-提供 `navigation` 时，框架会构建 `NavigationController` 和 history 桥、解析首屏、把 handle 交给你。缺省时 `startBrowserApp` 走原有扁平单页路径，行为不变。
+提供 `navigation` 时，框架会构建 `NavigationController` 和 history 桥、解析首屏，并在 mount context 中把 handle 交给你。缺省时 `startBrowserApp` 走原有扁平单页路径，行为不变。
 
 ## 驱动导航
 
@@ -299,6 +297,8 @@ function renderApp(page, framework, snapshot) {
 }
 ```
 
+`renderApp` 具体要搭的 islands 外壳 —— chrome + 按目标的 islands 作为独立水合 root，以及客户端 `mountEntry` / `resolveIslandsShell` 如何收养并水合它们 —— 见 [Islands SSR](./04-rendering-and-hydration.md#islands-ssr结构化架构方案-c)。
+
 底层原理：每个可见目标经**既有的** `PrefetchedIntents` 通道序列化为一条普通的 `{ intent, data: page }`，再额外挂一条承载序列化树的哨兵条目。`@finesoft/server` **零改动** —— 它经同一个 `#serialized-server-data` 脚本透传哨兵。hydration 时浏览器桥从 history state（或哨兵）读回树，并复用预取的页面。
 
 若某请求没有结构化深链、应用也没提供骨架，SSR 回退到 `Router.resolve(url)` → 单个叶子 —— 即今天的扁平单页（含其 `renderMode`）。404 路径不变。
@@ -352,4 +352,4 @@ export const navigation = defineNavigation({
 ## 下一步
 
 - [中间件](./03-middleware.md) —— 导航复用的守卫语义
-- [渲染与 Hydration](./04-rendering-and-hydration.md) —— 预取结果如何跨越 SSR → CSR 边界
+- [渲染与 Hydration](./04-rendering-and-hydration.md) —— 渲染模式 × 架构矩阵、islands SSR 外壳，以及预取结果如何跨越 SSR → CSR 边界

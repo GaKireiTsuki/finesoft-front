@@ -1,0 +1,243 @@
+/**
+ * Island 编排器 —— opt-in 的 per-entry 挂载模型（spec §4.1/§4.2）。
+ *
+ * 应用提供 `mountEntry(entry, container) => { unmount }`（Vue/React/Svelte 通用原语）。
+ * 编排器按导航 present/visible 集管理生命周期：
+ * - 首次可见 → `mountEntry` 一次（实例诞生）。
+ * - present 但不可见 → **detach**（container.remove()，出 document，实例保活）。
+ * - 可见 → attach 进 outlet（按 destinations 顺序）。
+ * - 离 present 集（pop 掉 / tab 分支销毁）→ `unmount()`。
+ *
+ * 「隐藏=detach」：节点出 document，devtools/全局 querySelector 看不到、屏间真隔离；
+ * 代价是背景媒体暂停、滚动需重放（见 Task 3）。
+ */
+
+import {
+    collectAllLeaves,
+    islandContainerAttributes,
+    sessionEntryKey,
+    type BasePage,
+    type NavigationSnapshot,
+    type ResolvedEntry,
+} from "@finesoft/core";
+
+export type { ResolvedEntry } from "@finesoft/core";
+
+/** `mountEntry` 返回的 island 句柄。 */
+export interface IslandHandle {
+    /** 销毁该 island 实例（应用用 app.unmount() / root.unmount() / comp.$destroy() 实现）。 */
+    unmount(): void;
+}
+
+/** 通用挂载原语：把一个条目的视图挂进 container，返回卸载句柄。 */
+export type MountEntry = (entry: ResolvedEntry, container: HTMLElement) => IslandHandle;
+
+/** `createIslandOrchestrator` 选项。 */
+export interface IslandOrchestratorOptions {
+    /** 框架在其内构建/挂载 island 容器的 outlet 元素（应用渲染、稳定、空）。 */
+    readonly outlet: HTMLElement;
+    /** 应用提供的挂载原语。 */
+    readonly mountEntry: MountEntry;
+    /** 重放调度（默认 requestAnimationFrame；测试可注入同步执行）。 */
+    readonly schedule?: (cb: () => void) => void;
+}
+
+/** 编排器对外接口。 */
+export interface IslandOrchestrator {
+    /** 把 DOM 同步到一个导航快照（挂新/卸离树/detach 隐藏/attach 可见）。 */
+    sync(snapshot: NavigationSnapshot): void;
+    /** 卸载全部 island、清空 outlet。 */
+    dispose(): void;
+}
+
+/** 一个已挂载 island 的内部记录。 */
+interface MountedIsland {
+    readonly container: HTMLElement;
+    readonly handle: IslandHandle;
+    /** 当前是否 attached（在 document 里 = 可见）。 */
+    attached: boolean;
+    /** fs:enter 是否已派发（挂载时置 false，首次 attach 后置 true）。 */
+    entered: boolean;
+    /** 挂载时对应的 page 引用（用于检测 controller.refresh 产出的新 page，触发 remount）。 */
+    page: BasePage;
+    /** conceal 时记录的滚动位置（按可滚动元素序）。 */
+    scroll?: { top: number; left: number }[];
+}
+
+/** 在 container 上派发生命周期 CustomEvent（bubbles: true，会冒泡到 outlet）。 */
+function emit(
+    container: HTMLElement,
+    type: "fs:enter" | "fs:reveal" | "fs:conceal" | "fs:exit",
+): void {
+    container.dispatchEvent(new CustomEvent(type, { bubbles: true }));
+}
+
+export function createIslandOrchestrator(options: IslandOrchestratorOptions): IslandOrchestrator {
+    const { outlet, mountEntry } = options;
+    const mounted = new Map<string, MountedIsland>();
+    let booted = false; // 仅首次 sync 收养 SSR 标记
+
+    /** 收集 outlet 内既有 SSR island 容器（按 data-fs-key）。 */
+    function collectSsrContainers(): Map<string, HTMLElement> {
+        const map = new Map<string, HTMLElement>();
+        for (const el of outlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) {
+            const key = el.getAttribute("data-fs-key");
+            if (key !== null) map.set(key, el);
+        }
+        return map;
+    }
+
+    const schedule =
+        options.schedule ??
+        ((cb: () => void) => {
+            if (typeof requestAnimationFrame === "function") requestAnimationFrame(cb);
+            else cb();
+        });
+
+    /** 容器内全部可滚动元素（含容器自身），按文档序。 */
+    function scrollables(container: HTMLElement): HTMLElement[] {
+        const list: HTMLElement[] = [container];
+        for (const el of container.querySelectorAll<HTMLElement>("[data-fs-scroll]")) list.push(el);
+        return list;
+    }
+
+    function captureScroll(island: MountedIsland): void {
+        island.scroll = scrollables(island.container).map((el) => ({
+            top: el.scrollTop,
+            left: el.scrollLeft,
+        }));
+    }
+
+    function restoreScroll(island: MountedIsland): void {
+        const saved = island.scroll;
+        if (saved === undefined) return;
+        schedule(() => {
+            const els = scrollables(island.container);
+            saved.forEach((pos, i) => {
+                const el = els[i];
+                if (el !== undefined) {
+                    el.scrollTop = pos.top;
+                    el.scrollLeft = pos.left;
+                }
+            });
+        });
+    }
+
+    function conceal(island: MountedIsland): void {
+        if (!island.attached) return;
+        captureScroll(island);
+        emit(island.container, "fs:conceal");
+        island.container.remove(); // 出 document（保活，实例不销毁）
+        island.attached = false;
+    }
+
+    /**
+     * 销毁 island 并派发 `fs:exit`。
+     *
+     * **`fs:exit` 语义说明**
+     * - `fs:exit` 在 unmount 前无条件派发到 island 的容器元素上。
+     * - island **仍在 document（attached）时**：事件 bubbles，outlet 上的委托监听器可收到。
+     * - island **已被 conceal（detached，容器已出 document）时**：事件仅在孤立容器上
+     *   触发，**不会冒泡到 outlet 级委托监听器**（实 DOM 行为）。
+     *
+     * 因此，需要可靠接收每个 island teardown 通知的应用，应在 `mountEntry` 传入的
+     * `container` 上直接监听 `fs:exit`，而不要依赖 outlet 级委托。
+     */
+    function teardown(key: string, island: MountedIsland): void {
+        // Emit fs:exit unconditionally (before remove if attached, or on the orphaned container if
+        // already detached). Attached path bubbles to outlet-level listeners; detached path fires
+        // only on the container itself. Semantics: fs:exit = "being destroyed", distinct from
+        // fs:conceal = "going to background, staying alive".
+        emit(island.container, "fs:exit");
+        if (island.attached) {
+            island.container.remove();
+            island.attached = false;
+        }
+        island.handle.unmount();
+        mounted.delete(key);
+    }
+
+    function sync(snapshot: NavigationSnapshot): void {
+        const ssr = booted ? null : collectSsrContainers(); // 仅首次
+
+        const presentKeys = new Set(
+            collectAllLeaves(snapshot.tree).map((l) => sessionEntryKey(l.intent, l.params)),
+        );
+
+        // 1) 卸载离 present 集的 island。
+        for (const [key, island] of mounted) {
+            if (!presentKeys.has(key)) teardown(key, island);
+        }
+
+        // 2) 确保每个可见目标已挂载（命中 SSR 容器则收养水合，否则新建）。
+        const visibleKeys: string[] = [];
+        for (const d of snapshot.destinations) {
+            const key = sessionEntryKey(d.intent, d.params);
+            visibleKeys.push(key);
+            const existing = mounted.get(key);
+            if (existing !== undefined && existing.page !== d.page) {
+                teardown(key, existing); // page 变了（refresh）→ 重挂拿新 page
+            }
+            if (!mounted.has(key)) {
+                const adopted = ssr?.get(key);
+                const container = adopted ?? document.createElement("div");
+                if (adopted === undefined) {
+                    for (const [k, v] of Object.entries(islandContainerAttributes(d.intent, key))) {
+                        container.setAttribute(k, v);
+                    }
+                } else {
+                    ssr?.delete(key); // 已收养，移出待清理集
+                }
+                const entry: ResolvedEntry = {
+                    intent: d.intent,
+                    params: d.params,
+                    entryKey: key,
+                    page: d.page,
+                    hydrate: adopted !== undefined,
+                };
+                const handle = mountEntry(entry, container);
+                mounted.set(key, {
+                    container,
+                    handle,
+                    attached: adopted !== undefined, // 收养的容器已在 outlet
+                    entered: false,
+                    page: d.page,
+                });
+            }
+        }
+
+        // 2.5) 首次：移除未收养的孤儿 SSR 容器（不属于任何可见目标）。
+        if (ssr) for (const el of ssr.values()) el.remove();
+
+        // 3) detach 掉 present-但-不可见的 island（保活）。
+        const visibleSet = new Set(visibleKeys);
+        for (const [key, island] of mounted) {
+            if (!visibleSet.has(key)) conceal(island);
+        }
+
+        // 4) 按 destinations 顺序 attach/reorder 可见 island。
+        for (const key of visibleKeys) {
+            const island = mounted.get(key);
+            if (island === undefined) continue;
+            const wasAttached = island.attached;
+            outlet.appendChild(island.container);
+            island.attached = true;
+            if (!island.entered) {
+                island.entered = true;
+                emit(island.container, "fs:enter");
+            }
+            if (!wasAttached) {
+                emit(island.container, "fs:reveal");
+                restoreScroll(island);
+            }
+        }
+
+        booted = true;
+    }
+
+    function dispose(): void {
+        for (const [key, island] of mounted) teardown(key, island);
+    }
+
+    return { sync, dispose };
+}
