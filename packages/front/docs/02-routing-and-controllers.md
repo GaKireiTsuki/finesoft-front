@@ -19,6 +19,7 @@ A route definition combines:
 - A **path pattern** (`/products/:id`)
 - An **intent id** (logical name for the operation; one intent can have multiple routes)
 - A **controller instance** (where the page data is produced)
+- Optional **param codecs** (`params` / `query`) that validate and type the URL params
 - An optional **render mode** (`ssr` / `csr` / `prerender`)
 - Optional **guards** (`beforeLoad` / `afterLoad`)
 
@@ -68,23 +69,132 @@ export function bootstrap(framework: Framework): void {
 
 ### Route options
 
-| Field        | Type                             | Notes                                                                |
-| ------------ | -------------------------------- | -------------------------------------------------------------------- |
-| `path`       | `string`                         | Path pattern with `:param` placeholders. Trailing `/` is normalized. |
-| `intentId`   | `string`                         | Logical operation name. Used to register the controller.             |
-| `controller` | `BaseController<TParams, TPage>` | Optional if the intent is already registered.                        |
-| `renderMode` | `"ssr" \| "csr" \| "prerender"`  | Default `"ssr"`. See [chapter 4](./04-rendering-and-hydration.md).   |
-| `beforeLoad` | `BeforeLoadGuard[]`              | Run before the controller. See [chapter 3](./03-middleware.md).      |
-| `afterLoad`  | `AfterLoadGuard[]`               | Run after the page is produced.                                      |
+| Field        | Type                             | Notes                                                                    |
+| ------------ | -------------------------------- | ------------------------------------------------------------------------ |
+| `path`       | `string`                         | Path pattern with `:param` placeholders. Trailing `/` is normalized.     |
+| `intentId`   | `string`                         | Logical operation name. Used to register the controller.                 |
+| `controller` | `BaseController<TParams, TPage>` | Optional if the intent is already registered.                            |
+| `params`     | codec map                        | Validate/convert **path** params. Keys must appear in `path`. See below. |
+| `query`      | codec map                        | Validate/convert **query** params. Keys are open. See below.             |
+| `renderMode` | `"ssr" \| "csr" \| "prerender"`  | Default `"ssr"`. See [chapter 4](./04-rendering-and-hydration.md).       |
+| `beforeLoad` | `BeforeLoadGuard[]`              | Run before the controller. See [chapter 3](./03-middleware.md).          |
+| `afterLoad`  | `AfterLoadGuard[]`               | Run after the page is produced.                                          |
 
 ### Path patterns
 
 - Static: `/about`
 - Parameterized: `/products/:id`, `/users/:userId/posts/:postId`
-- Trailing wildcard: `/files/*`
-- Optional segment is **not** supported — write two routes instead.
+- Optional param: `/blog/:slug?` matches both `/blog` and `/blog/hello`.
 
-Parameters are passed to `controller.execute(params, container)` as a string-keyed object.
+By default, path and query params arrive in `controller.execute(params, container)` as a **string-keyed object**. Attach codecs (next section) to validate and convert them.
+
+## Typed route params
+
+Codecs turn raw string params into validated, converted, **compile-time-typed** values. Built-ins cover the common cases with zero dependencies; any [Standard Schema](https://standardschema.dev) (zod, valibot, arktype, …) works too.
+
+```ts
+import { defineRoutes, int, list, oneOf, optional, str, withDefault } from "@finesoft/front";
+
+defineRoutes(framework, [
+    {
+        path: "/products/:id",
+        intentId: "product",
+        controller: new ProductController(),
+        params: { id: int({ min: 1 }) }, // :id validated as a positive integer, converted to number
+        query: {
+            page: withDefault(int({ min: 1 }), 1), // ?page= → number, defaults to 1 when absent
+            sort: optional(oneOf(["asc", "desc"] as const)), // optional "asc" | "desc"
+            tags: list(str()), // ?tags=a&tags=b → string[]
+        },
+    },
+]);
+```
+
+### Built-in codecs
+
+| Codec                   | Output        | Validates                                                   |
+| ----------------------- | ------------- | ----------------------------------------------------------- |
+| `str(opts?)`            | `string`      | `minLength` / `maxLength` / `pattern` (`RegExp`)            |
+| `int(opts?)`            | `number`      | integer + `min` / `max`                                     |
+| `num(opts?)`            | `number`      | finite number + `min` / `max`                               |
+| `bool()`                | `boolean`     | `"true" \| "1" \| "false" \| "0"`                           |
+| `oneOf([...] as const)` | literal union | membership                                                  |
+| `uuid()`                | `string`      | UUID v1–v5                                                  |
+| `list(item, opts?)`     | `T[]`         | multi-value query; each item via `item` + `min`/`max` count |
+
+Modifiers wrap a codec (codecs stay plain serializable data — no chained `.optional()`):
+
+- `optional(codec)` — missing input → `undefined`; renders the key as **optional** (`page?: T`).
+- `withDefault(codec, fallback)` — missing input → `fallback`; key stays required.
+
+### Validation = fall-through to 404
+
+A failed codec means the route **doesn't match** — the router continues to the next route, falling through to your existing 404 if nothing else catches it. There is no separate `400` channel. This lets overlapping routes disambiguate by type:
+
+```ts
+defineRoutes(framework, [
+    { path: "/item/:id", intentId: "item-by-id", controller, params: { id: int() } },
+    { path: "/item/:slug", intentId: "item-by-slug", controller, params: { slug: str() } },
+]);
+// /item/42    → item-by-id   (int matches)
+// /item/hello → item-by-slug (int rejects → falls through to str)
+```
+
+### Compile-time param types
+
+`InferParams` / `InferQuery` derive the controller's param type straight from the codec objects — no hand-written generics to keep in sync:
+
+```ts
+import {
+    BaseController,
+    type InferParams,
+    type InferQuery,
+    int,
+    oneOf,
+    optional,
+} from "@finesoft/front";
+
+const params = { id: int() };
+const query = { sort: optional(oneOf(["asc", "desc"] as const)) };
+
+class ProductController extends BaseController<
+    InferParams<typeof params> & InferQuery<typeof query>, // { id: number; sort?: "asc" | "desc" }
+    ProductPage
+> {
+    readonly intentId = "product";
+    execute(params) {
+        // params.id: number, params.sort: "asc" | "desc" | undefined
+    }
+}
+```
+
+### `route()` — param-key safety
+
+The plain array-object form already checks that every `params` key appears in the `path`. The `route(path, def)` helper gives the same check as a standalone, composable entry:
+
+```ts
+route("/products/:id", { intentId: "product", params: { id: int() } }); // ✓
+route("/products/:id", { intentId: "product", params: { slug: str() } }); // ✗ compile error: "slug" is not in the path
+```
+
+### `defineRoute()` — auto-typed handlers
+
+`defineRoute(path, def)` takes a **handler** function instead of a controller class, and infers its params type from the codecs automatically — no `InferParams` needed. It mirrors `BaseController`'s `try/catch → fallback`:
+
+```ts
+defineRoute("/products/:id", {
+    intentId: "product",
+    params: { id: int() },
+    query: { page: withDefault(int(), 1) },
+    handler: (params, container) => {
+        // params: { id: number; page: number } — inferred from the codecs
+        return loadProduct(params.id, params.page);
+    },
+    fallback: (params, error) => errorPage(error), // optional
+});
+```
+
+Routes without `params` / `query` behave exactly as before — params stay strings, runtime is unchanged.
 
 ## Writing a controller
 
@@ -177,19 +287,20 @@ This avoids duplicating controller instances when only the URL surface differs. 
 
 ## Inspecting the resolved match
 
-For diagnostics or custom routing, call `Router.resolve()` directly:
+For diagnostics or custom routing, call `Router.resolve()` directly. It is **async** (codecs may validate asynchronously), so `await` it:
 
 ```ts
-const match = framework.router.resolve("/products/42");
+const match = await framework.router.resolve("/products/42");
 // {
-//   intent: { intentId: "product", params: { id: "42" } },
+//   intent: { id: "product", params: { id: "42" } },
 //   action: { kind: "flow", url: "/products/42" },
 //   renderMode: "ssr",
-//   guards: { before: [...], after: [...] },
+//   beforeGuards: [...],
+//   afterGuards: [...],
 // }
 ```
 
-`router.resolve()` returns `null` for unmatched URLs — handle this in your server-side 404 logic.
+`router.resolve()` resolves to `null` for unmatched URLs — handle this in your server-side 404 logic.
 
 ## Try it
 

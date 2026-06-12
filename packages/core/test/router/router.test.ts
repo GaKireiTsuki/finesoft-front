@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { makeFlowAction } from "../../src/actions/types";
-import { int, str } from "../../src/router/params";
+import { int, list, str } from "../../src/router/params";
 import { Router } from "../../src/router/router";
 
 describe("Router", () => {
@@ -107,6 +107,37 @@ describe("Router", () => {
 
         const match = await router.resolve("/search?page=2&q=hello");
         expect(match?.intent.params).toEqual({ page: 2, q: "hello" });
+    });
+
+    test("collects multi-value query params via list() codec", async () => {
+        const router = new Router();
+        router.add("/search", "search", { queryCodecs: { tags: list(str()) } });
+
+        const match = await router.resolve("/search?tags=a&tags=b");
+        expect(match?.intent.params).toEqual({ tags: ["a", "b"] });
+    });
+
+    test("list() query with a single value still yields an array", async () => {
+        const router = new Router();
+        router.add("/search", "search", { queryCodecs: { tags: list(str()) } });
+
+        expect((await router.resolve("/search?tags=solo"))?.intent.params).toEqual({
+            tags: ["solo"],
+        });
+    });
+
+    test("list() query absent yields an empty array", async () => {
+        const router = new Router();
+        router.add("/search", "search", { queryCodecs: { tags: list(str()) } });
+
+        expect((await router.resolve("/search"))?.intent.params).toEqual({ tags: [] });
+    });
+
+    test("list() item codec rejection falls through", async () => {
+        const router = new Router();
+        router.add("/feed/:id", "feed", { queryCodecs: { pages: list(int({ min: 1 })) } });
+
+        expect(await router.resolve("/feed/1?pages=2&pages=0")).toBeNull();
     });
 
     test("logs a debug message when a route is skipped due to codec failure", async () => {

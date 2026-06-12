@@ -19,6 +19,7 @@ URL  ──Router.resolve()──▶  RouteMatch { intent, renderMode, guards }
 - **路径模式**（`/products/:id`）
 - **intent id**（操作的逻辑名；一个 intent 可以对应多条路由）
 - **Controller 实例**（产出页面数据）
+- 可选的**参数 codec**（`params` / `query`）—— 校验并类型化 URL 参数
 - 可选的**渲染模式**（`ssr` / `csr` / `prerender`）
 - 可选的**守卫**（`beforeLoad` / `afterLoad`）
 
@@ -73,6 +74,8 @@ export function bootstrap(framework: Framework): void {
 | `path`       | `string`                         | 路径模式，含 `:param` 占位。结尾的 `/` 会被归一化。            |
 | `intentId`   | `string`                         | 操作的逻辑名。用于注册 Controller。                            |
 | `controller` | `BaseController<TParams, TPage>` | 若 intent 已注册可省略。                                       |
+| `params`     | codec map                        | 校验/转换 **path** 参数。key 必须出现在 `path` 中。见下文。    |
+| `query`      | codec map                        | 校验/转换 **query** 参数。key 开放。见下文。                   |
 | `renderMode` | `"ssr" \| "csr" \| "prerender"`  | 默认 `"ssr"`。详见[第 4 章](./04-rendering-and-hydration.md)。 |
 | `beforeLoad` | `BeforeLoadGuard[]`              | Controller 之前执行。详见[第 3 章](./03-middleware.md)。       |
 | `afterLoad`  | `AfterLoadGuard[]`               | Page 产出之后执行。                                            |
@@ -81,10 +84,117 @@ export function bootstrap(framework: Framework): void {
 
 - 静态：`/about`
 - 带参数：`/products/:id`、`/users/:userId/posts/:postId`
-- 尾部通配：`/files/*`
-- **不**支持可选段 —— 写两条路由代替。
+- 可选参数：`/blog/:slug?` 同时匹配 `/blog` 和 `/blog/hello`。
 
-参数以字符串键对象的形式传给 `controller.execute(params, container)`。
+默认情况下，path 和 query 参数以**字符串键对象**的形式进入 `controller.execute(params, container)`。挂上 codec（下一节）即可校验并转换它们。
+
+## 路由参数类型化
+
+codec 把原始字符串参数变成经校验、已转换、**编译期类型化**的值。内置原语零依赖覆盖常见场景；任意 [Standard Schema](https://standardschema.dev)（zod、valibot、arktype……）也能用。
+
+```ts
+import { defineRoutes, int, list, oneOf, optional, str, withDefault } from "@finesoft/front";
+
+defineRoutes(framework, [
+    {
+        path: "/products/:id",
+        intentId: "product",
+        controller: new ProductController(),
+        params: { id: int({ min: 1 }) }, // :id 校验为正整数，转换为 number
+        query: {
+            page: withDefault(int({ min: 1 }), 1), // ?page= → number，缺失时默认 1
+            sort: optional(oneOf(["asc", "desc"] as const)), // 可选的 "asc" | "desc"
+            tags: list(str()), // ?tags=a&tags=b → string[]
+        },
+    },
+]);
+```
+
+### 内置 codec
+
+| codec                   | 输出       | 校验                                              |
+| ----------------------- | ---------- | ------------------------------------------------- |
+| `str(opts?)`            | `string`   | `minLength` / `maxLength` / `pattern`（`RegExp`） |
+| `int(opts?)`            | `number`   | 整数 + `min` / `max`                              |
+| `num(opts?)`            | `number`   | 有限数 + `min` / `max`                            |
+| `bool()`                | `boolean`  | `"true" \| "1" \| "false" \| "0"`                 |
+| `oneOf([...] as const)` | 字面量联合 | 成员检查                                          |
+| `uuid()`                | `string`   | UUID v1–v5                                        |
+| `list(item, opts?)`     | `T[]`      | 多值 query；每项过 `item` + `min`/`max` 个数      |
+
+修饰器包裹 codec（codec 保持可序列化纯数据，不用链式 `.optional()`）：
+
+- `optional(codec)` —— 输入缺失 → `undefined`；把该 key 渲染为**可选属性**（`page?: T`）。
+- `withDefault(codec, fallback)` —— 输入缺失 → `fallback`；key 保持必选。
+
+### 校验失败 = fall-through 到 404
+
+codec 校验失败意味着该路由**不匹配** —— 路由器继续尝试下一条，全不中时落到既有 404。**没有**单独的 `400` 通道。这让重叠路由可以按类型消歧：
+
+```ts
+defineRoutes(framework, [
+    { path: "/item/:id", intentId: "item-by-id", controller, params: { id: int() } },
+    { path: "/item/:slug", intentId: "item-by-slug", controller, params: { slug: str() } },
+]);
+// /item/42    → item-by-id   （int 匹配）
+// /item/hello → item-by-slug （int 拒绝 → fall-through 到 str）
+```
+
+### 编译期参数类型
+
+`InferParams` / `InferQuery` 直接从 codec 对象推导 Controller 的参数类型 —— 无需手写、也不必和路由保持同步：
+
+```ts
+import {
+    BaseController,
+    type InferParams,
+    type InferQuery,
+    int,
+    oneOf,
+    optional,
+} from "@finesoft/front";
+
+const params = { id: int() };
+const query = { sort: optional(oneOf(["asc", "desc"] as const)) };
+
+class ProductController extends BaseController<
+    InferParams<typeof params> & InferQuery<typeof query>, // { id: number; sort?: "asc" | "desc" }
+    ProductPage
+> {
+    readonly intentId = "product";
+    execute(params) {
+        // params.id: number, params.sort: "asc" | "desc" | undefined
+    }
+}
+```
+
+### `route()` —— 参数 key 安全
+
+数组对象形态本身已会检查 `params` 的每个 key 都出现在 `path` 中。`route(path, def)` helper 把同样的检查做成独立、可组合的条目：
+
+```ts
+route("/products/:id", { intentId: "product", params: { id: int() } }); // ✓
+route("/products/:id", { intentId: "product", params: { slug: str() } }); // ✗ 编译报错："slug" 不在 path 中
+```
+
+### `defineRoute()` —— 自动类型化的 handler
+
+`defineRoute(path, def)` 接受一个 **handler** 函数而非 Controller 类，并从 codec 自动推导其入参类型 —— 无需 `InferParams`。它复刻 `BaseController` 的 `try/catch → fallback`：
+
+```ts
+defineRoute("/products/:id", {
+    intentId: "product",
+    params: { id: int() },
+    query: { page: withDefault(int(), 1) },
+    handler: (params, container) => {
+        // params: { id: number; page: number } —— 从 codec 推导
+        return loadProduct(params.id, params.page);
+    },
+    fallback: (params, error) => errorPage(error), // 可选
+});
+```
+
+没有 `params` / `query` 的路由行为完全不变 —— 参数保持字符串，运行时无变化。
 
 ## 写一个 Controller
 
@@ -177,19 +287,20 @@ defineRoutes(framework, [
 
 ## 检查解析后的 match
 
-诊断或自定义路由时，可以直接调 `Router.resolve()`：
+诊断或自定义路由时，可以直接调 `Router.resolve()`。它是**异步**的（codec 可能异步校验），需 `await`：
 
 ```ts
-const match = framework.router.resolve("/products/42");
+const match = await framework.router.resolve("/products/42");
 // {
-//   intent: { intentId: "product", params: { id: "42" } },
+//   intent: { id: "product", params: { id: "42" } },
 //   action: { kind: "flow", url: "/products/42" },
 //   renderMode: "ssr",
-//   guards: { before: [...], after: [...] },
+//   beforeGuards: [...],
+//   afterGuards: [...],
 // }
 ```
 
-未命中返回 `null` —— 在服务端 404 逻辑里处理它。
+未命中时 resolve 出 `null` —— 在服务端 404 逻辑里处理它。
 
 ## 实时演示
 

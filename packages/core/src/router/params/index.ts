@@ -8,6 +8,8 @@ export type {
 } from "./standard";
 export { bool, int, num, oneOf, str, uuid } from "./primitives";
 export type { NumOptions, StrOptions } from "./primitives";
+export { isMultiValueSchema, list } from "./multi";
+export type { ListOptions, MultiValueSchema } from "./multi";
 export { optional, withDefault } from "./modifiers";
 export type {
     ExtractParamNames,

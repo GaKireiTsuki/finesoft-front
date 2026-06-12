@@ -5,7 +5,9 @@
 import { makeFlowAction, type FlowAction } from "../actions/types";
 import type { Intent } from "../intents/types";
 import type { AfterLoadGuard, BeforeLoadGuard } from "../middleware/types";
-import { runStandard, type ParamSchema, type StandardSchemaV1 } from "./params/standard";
+import type { QuerySchemaMap } from "./params/infer";
+import { isMultiValueSchema } from "./params/multi";
+import { runStandard, type ParamSchema } from "./params/standard";
 
 /** 路由匹配结果 */
 export interface RouteMatch {
@@ -24,7 +26,7 @@ export interface RouteAddOptions {
     beforeGuards?: BeforeLoadGuard[];
     afterGuards?: AfterLoadGuard[];
     paramCodecs?: Record<string, ParamSchema>;
-    queryCodecs?: Record<string, StandardSchemaV1<string, unknown>>;
+    queryCodecs?: QuerySchemaMap;
 }
 
 interface InternalRouteDefinition {
@@ -36,7 +38,7 @@ interface InternalRouteDefinition {
     beforeGuards?: BeforeLoadGuard[];
     afterGuards?: AfterLoadGuard[];
     paramCodecs?: Record<string, ParamSchema>;
-    queryCodecs?: Record<string, StandardSchemaV1<string, unknown>>;
+    queryCodecs?: QuerySchemaMap;
 }
 
 function createNullPrototypeRecord<V = string>(source?: Record<string, V>): Record<string, V> {
@@ -94,7 +96,7 @@ export class Router {
 
     /** 解析 URL → RouteMatch（含参数校验；校验失败则 fall-through 到下一条路由） */
     async resolve(urlOrPath: string): Promise<RouteMatch | null> {
-        const { path, queryParams } = this.parseUrl(urlOrPath);
+        const { path, queryParams, searchParams } = this.parseUrl(urlOrPath);
 
         for (const route of this.routes) {
             const match = path.match(route.regex);
@@ -127,7 +129,12 @@ export class Router {
             // —— query 参数：声明了 codec 的走校验 ——
             if (route.queryCodecs) {
                 for (const name of Object.keys(route.queryCodecs)) {
-                    const r = await runStandard(route.queryCodecs[name], queryParams[name]);
+                    const codec = route.queryCodecs[name];
+                    // 多值 codec（list）取该 key 的全部取值；单值 codec 取单值。
+                    const raw = isMultiValueSchema(codec)
+                        ? searchParams.getAll(name)
+                        : queryParams[name];
+                    const r = await runStandard(codec, raw);
                     if (!r.ok) {
                         this.debug?.(
                             `[Router] route "${route.pattern}" skipped: query param "${name}" failed validation: ${r.issues[0]?.message ?? "invalid"}`,
@@ -172,18 +179,26 @@ export class Router {
     private parseUrl(url: string): {
         path: string;
         queryParams: Record<string, string>;
+        searchParams: URLSearchParams;
     } {
         try {
             const parsed = new URL(url, "http://localhost");
             // 查询参数名称来自 URL，因此将它们保存在无原型对象中，以避免潜在的原型污染问题。
+            // queryParams 为单值（重复 key 取末值，供未声明 codec 的回填）；searchParams 保留
+            // 全部取值，供多值（list）codec 调 getAll 取数组。
             const params = createNullPrototypeRecord(
                 Object.fromEntries(parsed.searchParams) as Record<string, string>,
             );
-            return { path: parsed.pathname, queryParams: params };
+            return {
+                path: parsed.pathname,
+                queryParams: params,
+                searchParams: parsed.searchParams,
+            };
         } catch {
             return {
                 path: url.split("?")[0].split("#")[0],
                 queryParams: createNullPrototypeRecord(),
+                searchParams: new URLSearchParams(),
             };
         }
     }
