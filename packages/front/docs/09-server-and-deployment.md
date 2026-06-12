@@ -22,7 +22,7 @@ export default defineConfig({
             i18n: { messagesDir: "src/locales" },
             proxies: [{ prefix: "/api", target: "https://upstream.example" }],
             adapter: "auto",
-            isr: { routes: ["/blog/*"], ttl: 300 },
+            renderModes: { "/blog/*": "prerender" },
         }),
     ],
 });
@@ -30,13 +30,13 @@ export default defineConfig({
 
 ### Options
 
-| Option             | Type                      | Notes                                                   |
-| ------------------ | ------------------------- | ------------------------------------------------------- |
-| `ssr.entry`        | `string`                  | Path to your SSR entry (default `src/ssr.ts`).          |
-| `i18n.messagesDir` | `string`                  | Folder with `{locale}.json` files (default off).        |
-| `proxies`          | `ProxyRouteConfig[]`      | Declarative API forwarding. See below.                  |
-| `adapter`          | `"auto" \| "node" \| ...` | Target platform. `"auto"` detects from env vars.        |
-| `isr`              | `{ routes, ttl }`         | Incremental Static Regeneration for prerendered routes. |
+| Option             | Type                         | Notes                                                                          |
+| ------------------ | ---------------------------- | ------------------------------------------------------------------------------ |
+| `ssr.entry`        | `string`                     | Path to your SSR entry (default `src/ssr.ts`).                                 |
+| `i18n.messagesDir` | `string`                     | Folder with `{locale}.json` files (default off).                               |
+| `proxies`          | `ProxyRouteConfig[]`         | Declarative API forwarding. See below.                                         |
+| `adapter`          | `"auto" \| "node" \| ...`    | Target platform. `"auto"` detects from env vars.                               |
+| `renderModes`      | `Record<string, RenderMode>` | Per-route render-mode override (glob keys); `"prerender"` enables ISR caching. |
 
 ### What it does
 
@@ -64,7 +64,6 @@ const app = createServer({
     ssrEntry: "./dist/server/ssr.js",
     proxies: [{ prefix: "/api", target: "https://upstream.example" }],
     staticDir: "./dist/client",
-    isr: { routes: ["/blog/*"], ttl: 300 },
 });
 
 // app is a Hono instance — mount it however your runtime expects
@@ -149,32 +148,41 @@ This works for most CI environments — Vercel / Cloudflare / Netlify all set th
 
 ## ISR (Incremental Static Regeneration)
 
+Mark routes `prerender` — per route (`renderMode: "prerender"`) or per glob via the Vite plugin's `renderModes` (config-level wins over route-level):
+
 ```ts
-isr: {
-    routes: ["/blog/*", "/products/*"],
-    ttl: 300,  // seconds
-}
+finesoftFrontViteConfig({
+    ssr: { entry: "src/ssr.ts" },
+    renderModes: { "/blog/*": "prerender", "/products/*": "prerender" },
+});
 ```
 
-How it works:
+A `prerender` route is served two ways:
 
-1. First request to `/blog/hello-world`: render fully, cache the HTML, set expiry to now + 300s
-2. Subsequent requests within TTL: serve cached HTML directly
-3. After expiry: next request triggers re-render; concurrent requests get stale HTML until re-render finishes
+1. **Build-time static** — the static adapter renders each prerender route at build and writes `dist/<route>.html` (one per locale when i18n is on). Served as plain static files; no controller runs at request time.
+2. **Runtime cache** — the bundled server (`createServer`) and `vp preview` render a prerender route on its **first** request and store the HTML in an in-memory LRU (`ISR_CACHE_MAX = 1000` entries, evicted least-recently-used). Subsequent requests serve the cached HTML without re-running the controller.
 
-The cache is in-memory per server instance. For multi-instance deployments where consistency matters, put a CDN in front and use HTTP `Cache-Control` headers instead.
+> **No TTL, no background regeneration.** The runtime cache has no time-based expiry and no stale-while-revalidate — an entry lives until it is LRU-evicted or the process restarts. The "regenerate after N seconds" semantics live at the **CDN**, not in the framework (below). There is no `isr` config option and no programmatic invalidation API.
 
-Routes not matched by `isr.routes` always render fresh.
+### Stale-while-revalidate is delegated to the CDN
+
+Platform adapters set cache headers on prerender responses so the edge does the real ISR:
+
+| Adapter                   | Header on prerender responses                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| Netlify                   | `Netlify-CDN-Cache-Control: max-age=3600, stale-while-revalidate=3600, durable` (true SWR) |
+| Cloudflare                | `Cache-Control: public, max-age=3600`                                                      |
+| Node (self-host) / Vercel | none — relies on the in-memory LRU                                                         |
+
+The `3600`s window is a hard-coded per-adapter constant, not user-configurable. For multi-instance / multi-region deployments the CDN headers are what give you consistent caching; the in-memory LRU is per-instance single-server serving.
 
 ### Cache invalidation
 
-Programmatic invalidation is not exposed in the public API. To force a refresh:
+There is no programmatic invalidation API. To force a refresh:
 
-- Restart the server (loses entire cache)
-- Wait for TTL
-- Add a cache-busting query param the controller can ignore but that bypasses the cache key
-
-For production, push invalidation up to CDN level — the framework's in-memory cache is for single-instance serving.
+- Restart the server (clears the entire in-memory LRU)
+- Redeploy (rebuilds build-time static and resets caches)
+- On Netlify / Cloudflare, purge the CDN cache for the path
 
 ## Custom Hono middleware
 

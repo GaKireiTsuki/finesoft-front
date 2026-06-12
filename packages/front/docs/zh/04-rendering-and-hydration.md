@@ -193,21 +193,18 @@ adapter 直接服务这些静态文件。请求时不跑 Controller。
 
 ### 增量静态再生成（ISR）
 
-打包的服务器（`createServer`）和预览服务器（`vp preview`）支持按需缓存的再生成。通过 `finesoftFrontViteConfig` 配置：
+打包的服务器（`createServer`）和预览服务器（`vp preview`）会在运行时缓存 `prerender` 路由：路由在**首次**请求时渲染，HTML 存入内存 LRU（`ISR_CACHE_MAX = 1000` 条，按最近最少使用驱逐）。后续请求直接吐缓存、不再跑 controller。
+
+把路由标 `prerender`：路由级（`renderMode: "prerender"`）或经 Vite 插件按 glob 配置（配置级优先于路由级）：
 
 ```ts
 finesoftFrontViteConfig({
     ssr: { entry: "src/ssr.ts" },
-    isr: {
-        // 哪些路由按需再生成
-        routes: ["/blog/*"],
-        // 缓存 TTL（秒）
-        ttl: 300,
-    },
+    renderModes: { "/blog/*": "prerender" },
 });
 ```
 
-过期后的首个请求触发新一轮渲染；并发请求拿到陈旧版本直到新版生成完成。详见 [服务器与部署](./09-server-and-deployment.md#isr)。
+运行时缓存**无 TTL、无后台再生成** —— 条目存活到被 LRU 驱逐或进程重启为止。基于时间的 stale-while-revalidate 由平台 adapter 委托给 CDN（Netlify 发真正的 `stale-while-revalidate` 头；Cloudflare 发普通 `max-age`；node/Vercel 不发）。完整说明见 [服务器与部署](./09-server-and-deployment.md#isr增量静态再生成)。
 
 ## `PrefetchedIntents` —— SSR → CSR 的桥梁
 
