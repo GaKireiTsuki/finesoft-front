@@ -122,6 +122,52 @@ describe("History", () => {
         expect(log.info).toHaveBeenCalledWith("saving scroll position", 96);
     });
 
+    test("waits for popstate navigation to finish before restoring scroll", async () => {
+        generateUuid.mockReturnValueOnce("id-1");
+
+        const log = makeLogger();
+        const history = createHistory(log);
+        let finishNavigation: (() => void) | undefined;
+        const navigationFinished = new Promise<void>((resolve) => {
+            finishNavigation = resolve;
+        });
+
+        history.onPopState(() => navigationFinished);
+        history.replaceState({ page: "home" }, "/home");
+        scrollableElement.scrollTop = 96;
+        history.beforeTransition();
+
+        triggerPopState({ id: "id-1" }, "https://example.com/home");
+
+        expect(tryScroll).not.toHaveBeenCalled();
+
+        finishNavigation?.();
+        await flushMicrotasks();
+
+        expect(tryScroll).toHaveBeenCalledWith(log, expect.any(Function), 96);
+    });
+
+    test("saves the outgoing entry scroll before popstate so forward can restore it", async () => {
+        generateUuid.mockReturnValueOnce("id-home").mockReturnValueOnce("id-detail");
+
+        const log = makeLogger();
+        const history = createHistory(log);
+        history.onPopState(() => undefined);
+        history.replaceState({ page: "home" }, "/home");
+        history.pushState({ page: "detail" }, "/detail");
+
+        scrollableElement.scrollTop = 184;
+        triggerPopState({ id: "id-home" }, "https://example.com/home");
+        await flushMicrotasks();
+
+        tryScroll.mockClear();
+        scrollableElement.scrollTop = 32;
+        triggerPopState({ id: "id-detail" }, "https://example.com/detail");
+        await flushMicrotasks();
+
+        expect(tryScroll).toHaveBeenCalledWith(log, expect.any(Function), 184);
+    });
+
     test("falls back to zero scroll positions when no scrollable element is available", async () => {
         generateUuid.mockReturnValueOnce("id-1");
 

@@ -550,6 +550,47 @@ describe("registerFlowActionHandler", () => {
         );
     });
 
+    test("keeps uncached popstate pending until the target page is ready", async () => {
+        vi.useFakeTimers();
+        try {
+            const page = makePage("delayed");
+            const deferred = createDeferred<BasePage>();
+            const { framework } = makeFramework({
+                routeUrl: vi.fn(() => makeMatch("delayed")),
+                dispatch: vi.fn(() => deferred.promise),
+            });
+            const updateApp = vi.fn();
+
+            registerFlowActionHandler({
+                framework: framework as never,
+                log: makeLogger(),
+                callbacks: makeCallbacks(),
+                updateApp,
+                getScrollablePageElement: vi.fn(() => null),
+            });
+
+            const listener = HistoryMock.latest<{ page: BasePage }>().popListener;
+            const navigation = listener?.("https://app.example/delayed", undefined);
+            let navigationFinished = false;
+            void Promise.resolve(navigation).then(() => {
+                navigationFinished = true;
+            });
+
+            await vi.advanceTimersByTimeAsync(500);
+
+            expect(updateApp).toHaveBeenCalledTimes(1);
+            expect(navigationFinished).toBe(false);
+
+            deferred.resolve(page);
+            await navigation;
+
+            expect(navigationFinished).toBe(true);
+            await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(page);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     test("stops recursive redirects after the configured safety limit", async () => {
         const log = makeLogger();
         const updateApp = vi.fn();

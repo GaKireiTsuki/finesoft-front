@@ -32,6 +32,7 @@ export class History<State> {
     private readonly getScrollablePageElement: () => HTMLElement | null;
     private readonly persistInHistoryState: boolean;
     private currentStateId: string | undefined;
+    private popstateSequence = 0;
 
     constructor(log: Logger, options: HistoryOptions, sizeLimit = HISTORY_SIZE_LIMIT) {
         this.entries = new LruMap(sizeLimit);
@@ -70,21 +71,31 @@ export class History<State> {
         const { state } = window.history;
         if (!state) return;
 
-        const oldEntry = this.entries.get(state.id);
+        this.saveScrollPosition(state.id);
+    }
+
+    private saveScrollPosition(stateId: string | undefined): void {
+        if (!stateId) return;
+
+        const oldEntry = this.entries.get(stateId);
         if (!oldEntry) {
             this.log.info("current history state evicted from LRU, not saving scroll position");
             return;
         }
 
         const { scrollTop } = this;
-        this.entries.set(state.id, { ...oldEntry, scrollY: scrollTop });
+        this.entries.set(stateId, { ...oldEntry, scrollY: scrollTop });
         this.log.info("saving scroll position", scrollTop);
     }
 
     onPopState(listener: (url: string, state?: State) => void | Promise<void>): void {
         window.addEventListener("popstate", (event: PopStateEvent) => {
             cancelTryScroll();
-            this.currentStateId = event.state?.id;
+            this.saveScrollPosition(this.currentStateId);
+
+            const targetStateId = event.state?.id;
+            const sequence = ++this.popstateSequence;
+            this.currentStateId = targetStateId;
 
             if (!this.currentStateId) {
                 this.log.warn(
@@ -102,19 +113,32 @@ export class History<State> {
                 : undefined;
             const cachedState = entry?.state ?? embedded;
 
-            void Promise.resolve(listener(window.location.href, cachedState)).catch(
+            let navigation: void | Promise<void>;
+            try {
+                navigation = listener(window.location.href, cachedState);
+            } catch (error: unknown) {
+                this.log.error("onPopState listener error:", error);
+                return;
+            }
+
+            void Promise.resolve(navigation).then(
+                () => {
+                    if (
+                        sequence !== this.popstateSequence ||
+                        this.currentStateId !== targetStateId ||
+                        !entry
+                    ) {
+                        return;
+                    }
+
+                    const { scrollY } = entry;
+                    this.log.info("restoring scroll to", scrollY);
+                    tryScroll(this.log, () => this.getScrollablePageElement(), scrollY);
+                },
                 (error: unknown) => {
                     this.log.error("onPopState listener error:", error);
                 },
             );
-
-            if (!entry) {
-                return;
-            }
-
-            const { scrollY } = entry;
-            this.log.info("restoring scroll to", scrollY);
-            tryScroll(this.log, () => this.getScrollablePageElement(), scrollY);
         });
     }
 
