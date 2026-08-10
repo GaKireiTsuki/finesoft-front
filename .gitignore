@@ -19,6 +19,7 @@ reports/
 # vitepress cache (vitepress writes here regardless of cacheDir on some versions)
 **/.vitepress/cache/
 **/.vitepress/dist/
+**/.vitepress/.temp/
 
 # Editor directories and files
 .vscode/*

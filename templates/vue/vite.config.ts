@@ -1,9 +1,9 @@
 import { finesoftFrontViteConfig } from "@finesoft/front";
 import vue from "@vitejs/plugin-vue";
-import { defineConfig } from "vite-plus";
+import { defineConfig, lazyPlugins } from "vite-plus";
 
 export default defineConfig({
-    plugins: [
+    plugins: lazyPlugins(() => [
         vue(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
@@ -14,5 +14,5 @@ export default defineConfig({
                 },
             ],
         }),
-    ],
+    ]),
 });

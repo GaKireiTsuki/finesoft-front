@@ -1,9 +1,9 @@
 import { finesoftFrontViteConfig } from "@finesoft/front";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { defineConfig } from "vite-plus";
+import { defineConfig, lazyPlugins } from "vite-plus";
 
 export default defineConfig({
-    plugins: [
+    plugins: lazyPlugins(() => [
         svelte(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
@@ -11,5 +11,5 @@ export default defineConfig({
                 messagesDir: "src/locales",
             },
         }),
-    ],
+    ]),
 });

@@ -1,3 +1,5 @@
+export {};
+
 declare module "hono" {
     export class Hono {
         constructor(...args: any[]);

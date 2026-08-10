@@ -564,9 +564,7 @@ return { handle, controller, outlet };
 // 6.7 会话恢复 ...（保持不变，拿到 handle）...
 let sessionHandle: SessionHandle | undefined;
 if (config.session) {
-    sessionHandle = await activateSession({
-        /* ...原参数... */
-    });
+    sessionHandle = await activateSession({/* ...原参数... */});
     await config.onSessionReady?.(sessionHandle);
 }
 

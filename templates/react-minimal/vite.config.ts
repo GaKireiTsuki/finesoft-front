@@ -1,12 +1,12 @@
 import { finesoftFrontViteConfig } from "@finesoft/front";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite-plus";
+import { defineConfig, lazyPlugins } from "vite-plus";
 
 export default defineConfig({
-    plugins: [
+    plugins: lazyPlugins(() => [
         react(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.tsx" },
         }),
-    ],
+    ]),
 });

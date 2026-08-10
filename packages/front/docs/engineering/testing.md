@@ -183,9 +183,7 @@ describe("SSR pipeline", () => {
     });
 
     test("returns 302 when guard redirects", async () => {
-        const render = createSSRRender({
-            /* ... */
-        });
+        const render = createSSRRender({/* ... */});
         const result = await render("/admin");
 
         expect(result.status).toBe(302);

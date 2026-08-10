@@ -1,6 +1,6 @@
 import { finesoftFrontViteConfig } from "@finesoft/front";
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv } from "vite-plus";
+import { defineConfig, lazyPlugins, loadEnv } from "vite-plus";
 
 export default defineConfig(({ mode }) => {
     // Vite's loadEnv reads .env files but does NOT mutate process.env for
@@ -14,11 +14,11 @@ export default defineConfig(({ mode }) => {
     }
 
     return {
-        plugins: [
+        plugins: lazyPlugins(() => [
             react(),
             finesoftFrontViteConfig({
                 ssr: { entry: "src/ssr.tsx" },
             }),
-        ],
+        ]),
     };
 });

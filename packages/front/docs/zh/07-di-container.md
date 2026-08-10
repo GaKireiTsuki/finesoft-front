@@ -126,9 +126,7 @@ const logger = container.resolve(DEP_KEYS.LOGGER);
 框架在 `Framework.create()` 期间为这些 key 注册默认实现。要覆盖就在 framework 创建后再注册：
 
 ```ts
-const framework = Framework.create({
-    /* ... */
-});
+const framework = Framework.create({/* ... */});
 framework.container.register(DEP_KEYS.LOGGER, () => myCustomLogger);
 ```
 
@@ -195,9 +193,7 @@ scope.dispose()                        ← 框架清理
 ```ts
 import { Framework } from "@finesoft/front";
 
-const framework = Framework.create({
-    /* ... */
-});
+const framework = Framework.create({/* ... */});
 const testScope = framework.container.createScope();
 testScope.register("userApi", () => mockUserApi);
 

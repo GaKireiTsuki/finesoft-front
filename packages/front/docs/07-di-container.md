@@ -126,9 +126,7 @@ The constants:
 The framework registers default implementations for these during `Framework.create()`. Override them by registering after framework creation:
 
 ```ts
-const framework = Framework.create({
-    /* ... */
-});
+const framework = Framework.create({/* ... */});
 framework.container.register(DEP_KEYS.LOGGER, () => myCustomLogger);
 ```
 
@@ -195,9 +193,7 @@ Inject mocks at the scope level:
 ```ts
 import { Framework } from "@finesoft/front";
 
-const framework = Framework.create({
-    /* ... */
-});
+const framework = Framework.create({/* ... */});
 const testScope = framework.container.createScope();
 testScope.register("userApi", () => mockUserApi);
 

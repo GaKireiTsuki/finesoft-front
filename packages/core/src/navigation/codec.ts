@@ -289,7 +289,7 @@ function utf8Encode(input: string): Uint8Array {
 function utf8Decode(bytes: Uint8Array): string {
     if (typeof TextDecoder !== "undefined") return new TextDecoder().decode(bytes);
     let out = "";
-    for (let i = 0; i < bytes.length; ) {
+    for (let i = 0; i < bytes.length;) {
         const b0 = bytes[i++];
         if (b0 < 0x80) {
             out += String.fromCodePoint(b0);

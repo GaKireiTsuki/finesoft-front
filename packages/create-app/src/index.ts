@@ -43,7 +43,7 @@ const FRAMEWORKS: FrameworkOption[] = [
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-export function validateProjectName(value: string): string | undefined {
+export function validateProjectName(value: string | undefined): string | undefined {
     if (!value) return "Project name is required";
     if (/[^\w\-.]/.test(value)) return "Invalid project name";
 }

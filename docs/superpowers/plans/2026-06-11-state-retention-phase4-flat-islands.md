@@ -101,7 +101,7 @@ describe("flat islands（顶层 mountEntry，无 navigation）", () => {
         expect(visible()).toEqual([sessionEntryKey("a", {})]);
 
         // 正向导航 → B（spike 选定的导航入口；下例用 perform，按 Spike 结论调整）
-        await app /* 或返回的 handle / framework */;
+        await app; /* 或返回的 handle / framework */
         // …此处按 Spike 结论触发到 /b 的正向导航，并 await 提交…
 
         // 断言：B 挂载、A detach 保活

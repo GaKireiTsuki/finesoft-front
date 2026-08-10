@@ -8,6 +8,7 @@ describe("create-app CLI helpers", () => {
     });
 
     test("validates project names consistently", () => {
+        expect(validateProjectName(undefined)).toBe("Project name is required");
         expect(validateProjectName("")).toBe("Project name is required");
         expect(validateProjectName("bad name")).toBe("Invalid project name");
         expect(validateProjectName("my-app")).toBeUndefined();

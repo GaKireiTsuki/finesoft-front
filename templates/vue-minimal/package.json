@@ -9,10 +9,10 @@
     },
     "dependencies": {
         "@finesoft/front": "workspace:*",
-        "vue": "^3.5.0"
+        "vue": "^3.5.41"
     },
     "devDependencies": {
-        "@vitejs/plugin-vue": "^5.0.0",
+        "@vitejs/plugin-vue": "^6.0.8",
         "vite": "catalog:",
         "vite-plus": "catalog:"
     }
