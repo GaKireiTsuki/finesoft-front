@@ -7,6 +7,7 @@
  */
 
 import { stableStringify } from "@finesoft/core";
+import { deserializeNavigation } from "../navigation/serialization";
 import type { SessionSnapshot } from "./types";
 
 /** 把快照编码为确定性字符串（keys 排序），用作 `storage.set` 的值。 */
@@ -35,10 +36,31 @@ export function decodeSnapshot(
 
     if (!isPlainObject(parsed)) return undefined;
     if (parsed.version !== expectedVersion) return undefined;
-    if (typeof parsed.capturedAt !== "number") return undefined;
+    if (typeof parsed.capturedAt !== "number" || !Number.isFinite(parsed.capturedAt))
+        return undefined;
     if (!isPlainObject(parsed.slices)) return undefined;
     if (!isPlainObject(parsed.scoped)) return undefined;
+    if (Object.keys(parsed.scoped).some((key) => !key.trim())) return undefined;
 
+    if (parsed.url !== undefined && typeof parsed.url !== "string") return undefined;
+    if (parsed.navigation !== undefined) {
+        const nav = parsed.navigation;
+        if (!isPlainObject(nav)) return undefined;
+        if (nav.kind === undefined) {
+            if (
+                typeof nav.url !== "string" ||
+                typeof nav.entryId !== "string" ||
+                !nav.entryId.trim()
+            )
+                return undefined;
+        } else {
+            try {
+                deserializeNavigation(nav);
+            } catch {
+                return undefined;
+            }
+        }
+    }
     return parsed as unknown as SessionSnapshot;
 }
 

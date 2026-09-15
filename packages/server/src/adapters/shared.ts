@@ -129,6 +129,7 @@ export interface PrerenderResult {
 export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderResult[]> {
     const { fs, path, root, vite } = ctx;
     const { pathToFileURL } = await dynamicImport("node:url");
+    const importVersion = ctx.buildId ? `?finesoft-build=${encodeURIComponent(ctx.buildId)}` : "";
 
     const routesExport = ctx.bootstrapEntry ?? "src/lib/bootstrap.ts";
 
@@ -153,7 +154,7 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
         const routesPath = pathToFileURL(
             path.resolve(root, "dist/server/_routes_prerender.mjs"),
         ).href;
-        const routesMod = await dynamicImport(routesPath);
+        const routesMod = await dynamicImport(routesPath + importVersion);
         routes = routesMod.routes ?? routesMod.default?.routes ?? routesMod.default ?? [];
 
         // 清理临时文件
@@ -196,7 +197,7 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
 
     // ── 3. 加载 SSR 模块 ──
     const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
-    const ssrModule = await dynamicImport(ssrPath);
+    const ssrModule = await dynamicImport(ssrPath + importVersion);
 
     // ── 4. 渲染每个 URL ──
     const results: PrerenderResult[] = [];

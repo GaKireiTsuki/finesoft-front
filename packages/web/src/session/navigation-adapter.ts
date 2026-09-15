@@ -76,7 +76,7 @@ export function createUrlSessionAdapter(opts: UrlAdapterOptions): SessionNavigat
     return {
         capture(): SessionSnapshot["navigation"] {
             const entry = opts.currentEntry?.();
-            return { url: opts.currentUrl(), ...(entry ? { entryId: entry.entryId } : {}) };
+            return entry ? { url: opts.currentUrl(), entryId: entry.entryId } : undefined;
         },
         apply(navigation: SessionSnapshot["navigation"]): void | Promise<void> {
             if (!isUrlLocation(navigation)) return undefined;

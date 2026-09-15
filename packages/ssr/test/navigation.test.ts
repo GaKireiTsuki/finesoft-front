@@ -1,3 +1,4 @@
+import { markPublic } from "@finesoft/web";
 import { leaf, treeShape } from "../../web/test/helpers/navigation";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
@@ -48,7 +49,9 @@ function makeEchoController(intentId: string): IntentController<BasePage> {
     return {
         intentId,
         perform(intent) {
-            return page(intentId, { params: intent.params ?? {} });
+            return markPublic(page(intentId, { params: intent.params ?? {} }), {
+                params: { itemId: true },
+            });
         },
     };
 }
@@ -101,7 +104,8 @@ describe("ssrRenderNavigation", () => {
 
         // serverData: home destination (matches single-page shape) + the tree sentinel
         expect(result.serverData).toHaveLength(2);
-        expect(dataForIntent(result.serverData, "home")).toBe(home);
+        expect(dataForIntent(result.serverData, "home")).toEqual(home);
+        expect(dataForIntent(result.serverData, "home")).not.toBe(home);
 
         // tree round-trips out of the sentinel
         const restored = extractNavigationTree(result.serverData);
@@ -298,7 +302,13 @@ describe("ssrRenderNavigation", () => {
             // mirror navigationTreeSentinel shape (marked public is not required for parse-back)
             {
                 intent: { id: NAVIGATION_TREE_INTENT_ID },
-                data: { __finesoftNavigationTree: true, tree: serializeNavigation(tree) },
+                data: markPublic(
+                    { __finesoftNavigationTree: true, tree: serializeNavigation(tree) },
+                    {
+                        __finesoftNavigationTree: true,
+                        tree: { kind: "codec", encode: () => serializeNavigation(tree) },
+                    },
+                ),
             },
         ];
         const serialized = serializeServerData(serverData);
@@ -308,7 +318,7 @@ describe("ssrRenderNavigation", () => {
                 .replaceAll("\\u003C", "<")
                 .replaceAll("\\u003E", ">")
                 .replaceAll("\\u002F", "/"),
-        ) as { intent: { id: string }; data: unknown }[];
+        ).payload as { intent: { id: string }; data: unknown }[];
         const restored = extractNavigationTree(parsed as never);
         expect(restored).toEqual(tree);
     });

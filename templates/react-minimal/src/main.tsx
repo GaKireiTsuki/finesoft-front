@@ -36,6 +36,17 @@ const nameStore = createNameStore();
 /** 全局切片（app-wide）：用户名字 —— 跨 tab、跨重载都在（对标 SwiftUI @SceneStorage）。 */
 const profileProvider: SessionStateProvider = {
     key: "profile",
+    version: 1,
+    decode: (data) => {
+        if (
+            typeof data !== "object" ||
+            data === null ||
+            !("name" in data) ||
+            typeof data.name !== "string"
+        )
+            throw Error("invalid-profile-state");
+        return { name: data.name };
+    },
     capture: () => ({ name: nameStore.get() }),
     restore: (data) => nameStore.set((data as { name?: string }).name ?? ""),
 };

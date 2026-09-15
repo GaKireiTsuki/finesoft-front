@@ -54,7 +54,7 @@ describe("createAppHandle", () => {
         );
         void app.push("detail", { id: "1" });
         expect(nav.push).toHaveBeenCalledWith("detail", { id: "1" });
-        app.save();
+        void app.save();
         expect(session.save).toHaveBeenCalledTimes(1);
         app.getSnapshot();
         expect(nav.getSnapshot).toHaveBeenCalled();

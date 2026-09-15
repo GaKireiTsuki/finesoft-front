@@ -1,3 +1,4 @@
+import { materializeServerData } from "./server-data";
 import type { SecureFetchOptions } from "@finesoft/core";
 /**
  * ssrRender — 通用 SSR 渲染管线
@@ -217,7 +218,7 @@ async function ssrRenderInternal(
             html: result.html,
             head: result.head,
             css: result.css,
-            serverData,
+            serverData: materializeServerData(serverData),
             renderMode: loaded.kind === "page" ? loaded.match?.renderMode : match?.renderMode,
             ...(loaded.kind === "page" && loaded.match?.cache === "public"
                 ? { cache: "public" as const }

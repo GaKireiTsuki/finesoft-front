@@ -1,3 +1,4 @@
+import { materializeServerData } from "./server-data";
 /**
  * ssrRenderNavigation — 结构化导航的 SSR 渲染管线
  *
@@ -284,7 +285,7 @@ export async function ssrRenderNavigation(
             renderApp,
             page: primary.page,
             snapshot,
-            serverData: buildServerData(snapshot),
+            serverData: materializeServerData(buildServerData(snapshot)),
             renderMode: fallbackRenderMode,
             status: primary.status,
         });
@@ -446,8 +447,7 @@ function activeLeafIntent(tree: NavigationNode): import("@finesoft/web").LeafNod
  * 把快照组装成 `serverData`：
  * - 每个可见目标 → `{ intent: { id, params }, data: page }`（与单页 SSR 完全一致）。
  * - 末尾追加 **导航树哨兵**：`{ intent: { id: NAVIGATION_TREE_INTENT_ID }, data: payload }`，
- *   `payload` 用 `markPublic(..., true)` 标记全字段公开，避免被 `serializeServerData`
- *   裁剪或触发未标注告警——它承载的是结构数据而非 page。
+ *   `payload` 使用明确的导航树 codec，独立于业务 Page 的公开字段。
  */
 function buildServerData(snapshot: NavigationSnapshot): PrefetchedIntent[] {
     const out: PrefetchedIntent[] = [];
@@ -468,10 +468,16 @@ function navigationTreeSentinel(tree: NavigationNode): PrefetchedIntent {
         __finesoftNavigationTree: true,
         tree: serializeNavigation(tree),
     };
-    // markPublic 写的是非枚举 symbol，不进 JSON；标 true = 全字段透传，绕开白名单裁剪。
+    // The tree has its own validated protocol codec, not a blanket Page field exemption.
     return {
         intent: { id: NAVIGATION_TREE_INTENT_ID },
-        data: markPublic(payload as unknown as BasePage, true),
+        data: markPublic(payload, {
+            __finesoftNavigationTree: true,
+            tree: {
+                kind: "codec",
+                encode: (value) => serializeNavigation(deserializeNavigation(value)),
+            },
+        }),
     };
 }
 

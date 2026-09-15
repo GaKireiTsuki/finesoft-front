@@ -23,6 +23,8 @@ export {
     getPublicFields,
     isPublicMarked,
     markPublic,
+    type PublicProjection,
+    type PublicValueCodec,
 } from "./models/page";
 export { safeErrorPage, type SafeErrorPageOptions } from "./models/safe-error-page";
 export type { BaseItem, BaseShelf } from "./models/shelf";
@@ -134,6 +136,7 @@ export {
     SESSION_DEFAULT_KEY,
     SESSION_DEFAULT_VERSION,
     SessionError,
+    StorageUnavailableError,
     sessionEntryKey,
 } from "./session/index";
 export type {
@@ -144,6 +147,12 @@ export type {
     SessionStateProvider,
     SessionStore,
     SessionStoreOptions,
+    AsyncStorage,
+    SessionSlice,
+    SessionFailure,
+    SessionWriteResult,
+    SessionLoadResult,
+    SessionRestoreResult,
     SessionUrlLocation,
     UrlAdapterOptions,
 } from "./session/index";
@@ -164,3 +173,12 @@ export { resolveConfiguredMessages } from "./i18n/messages";
 export type { MessagesLoader, MessagesLoaderContext } from "./i18n/messages";
 
 export * from "./application";
+
+export {
+    FRAMEWORK_PROTOCOL_VERSION,
+    NAVIGATION_WIRE_INTENT,
+    getFrameworkBuildId,
+    decodeWireEnvelope,
+    type WireEnvelope,
+    type WireDecodeResult,
+} from "./protocol";

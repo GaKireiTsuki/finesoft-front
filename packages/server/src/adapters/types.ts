@@ -9,6 +9,8 @@ import type { ProxyRouteConfig } from "../proxy";
 
 /** 适配器上下文 — 由 vite-plugin 的 closeBundle 构造后传入 adapter.build() */
 export interface AdapterContext {
+    /** Automatically shared client/SSR build identity. */
+    buildId?: string;
     /** 项目根路径 */
     root: string;
     /** SSR 入口文件相对路径（如 "src/ssr.ts"） */

@@ -1,4 +1,4 @@
-import { BaseController, makeFlowAction } from "@finesoft/front";
+import { markPublic, BaseController, makeFlowAction } from "@finesoft/front";
 import type { HomePage, ProductItem, ProductShelf } from "../models/product";
 
 const MOCK_PRODUCTS: ProductItem[] = [
@@ -41,13 +41,32 @@ export class HomeController extends BaseController<Record<string, string>, HomeP
             items: MOCK_PRODUCTS,
         };
 
-        return {
-            id: "home",
-            pageType: "home",
-            title: "Home",
-            description: "Welcome to Finesoft Front Demo",
-            url: "/",
-            shelves: [shelf],
-        };
+        return markPublic(
+            {
+                id: "home",
+                pageType: "home",
+                title: "Home",
+                description: "Welcome to Finesoft Front Demo",
+                url: "/",
+                shelves: [shelf],
+            },
+            {
+                shelves: {
+                    id: true,
+                    shelfType: true,
+                    title: true,
+                    isHorizontal: true,
+                    seeAllAction: { kind: true, url: true },
+                    items: {
+                        id: true,
+                        itemType: true,
+                        name: true,
+                        price: true,
+                        imageUrl: true,
+                        clickAction: { kind: true, url: true },
+                    },
+                },
+            },
+        );
     }
 }

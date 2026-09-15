@@ -1,42 +1,26 @@
-/**
- * Session — 会话编排器（SessionStore）
- *
- * 组装 / 落盘 / 读取 / 恢复一份会话快照，并持有导航作用域状态（`scope`）。对外只暴露
- * `SessionStore` 接口，对内编排三方：导航适配器（`navigation`）、全局切片 provider、以及
- * 快照编解码（`snapshot.ts`）。
- *
- * - `capture()`：组装当前快照 —— `navigation?.capture()` + 遍历 providers 收 `slices`
- *   + 快照 `scope` 当前的 `scoped` map；不落盘。
- * - `persist()` / `save()`：编码后写入 `storage`。
- * - `load()`：从 `storage` 解码 + 校验 version / `maxAgeMs`；任一不符 → `undefined`。
- * - `restore()`：先 `navigation?.apply()`（可能异步），再回填 `scope`，再按 key 把 slice
- *   派回对应 provider。
- *
- * 错误隔离（spec §5）：单个 provider 的 `capture()` / `restore()` 抛错经 `onError` 上报并跳过，
- * 不中断整体；导航 `adapter.apply()` 的同步抛错与异步拒绝同样隔离（`onError` + 跳过 slice 回填），
- * 因 `decodeSnapshot` 只浅校验快照顶层、不校验 `navigation` 子字段，畸形 nav 不得冒泡崩 boot；
- * `persist` 的 Storage 配额 / 不可用错亦吞掉 + `onError`。`scope` 的 prune
- * 不在 store 内部自动触发 —— 由 bridge 在导航提交后用 `adapter.presentKeys()` 调（core 不订阅导航）。
- */
-
 import { decodeSnapshot, encodeSnapshot } from "./snapshot";
 import { createNavigationScopedState } from "./scoped-state";
-import { SESSION_DEFAULT_KEY, SESSION_DEFAULT_VERSION } from "./types";
+import {
+    SESSION_DEFAULT_KEY,
+    SESSION_DEFAULT_VERSION,
+    SessionError,
+    StorageUnavailableError,
+} from "./types";
 import type {
     NavigationScopedState,
     SessionErrorContext,
+    SessionFailure,
+    SessionLoadResult,
+    SessionRestoreResult,
+    SessionSlice,
     SessionSnapshot,
     SessionStateProvider,
     SessionStore,
     SessionStoreOptions,
+    SessionWriteResult,
 } from "./types";
 
-/**
- * 创建会话编排器。
- *
- * `scope` 是一个 `createNavigationScopedState()` 实例，由 store 持有；`restore` 用快照
- * 的 `scoped` 重建其内容。时钟 `now` 注入（默认 `() => Date.now()`），`capturedAt` 由它产出。
- */
+/** One ordered persistence owner; implicit saves capture when their queue slot starts. */
 export function createSessionStore(options: SessionStoreOptions): SessionStore {
     const {
         storage,
@@ -47,133 +31,165 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
         now = () => Date.now(),
         onError,
     } = options;
-
     const providers = new Map<string, SessionStateProvider>();
     let scope: NavigationScopedState = createNavigationScopedState();
-
-    function report(error: unknown, ctx: SessionErrorContext): void {
-        onError?.(error, ctx);
+    let queue = Promise.resolve();
+    let closed = false;
+    function report(ctx: SessionErrorContext): void {
+        // Never forward arbitrary decoder/storage exceptions into default diagnostics.
+        try {
+            onError?.(new SessionError(ctx.code ?? "session-failed"), ctx);
+        } catch {
+            /* observer isolation */
+        }
     }
-
-    function captureSlices(): Record<string, unknown> {
-        const slices: Record<string, unknown> = {};
+    function failure(cause: unknown, phase: SessionErrorContext["phase"]): SessionFailure {
+        const unavailable = cause instanceof StorageUnavailableError;
+        report({ phase, code: unavailable ? "storage-unavailable" : "storage-failed" });
+        return unavailable ? { status: "unavailable" } : { status: "failed", cause };
+    }
+    function enqueue<T>(work: () => Promise<T>): Promise<T | { status: "closed" }> {
+        if (closed) return Promise.resolve({ status: "closed" });
+        const result = queue.then(work);
+        queue = result.then(
+            () => {},
+            () => {},
+        );
+        return result;
+    }
+    function capture(): SessionSnapshot {
+        const slices: Record<string, SessionSlice> = Object.create(null);
         for (const provider of providers.values()) {
             try {
-                slices[provider.key] = provider.capture();
-            } catch (error) {
-                report(error, { phase: "capture", key: provider.key });
+                slices[provider.key] = { version: provider.version, data: provider.capture() };
+            } catch {
+                report({ phase: "capture", key: provider.key, code: "slice-failed" });
             }
         }
-        return slices;
-    }
-
-    function scopedSnapshot(): Record<string, unknown> {
-        const scoped: Record<string, unknown> = {};
-        for (const entryKey of scope.keys()) {
-            scoped[entryKey] = scope.get(entryKey);
-        }
-        return scoped;
-    }
-
-    function capture(): SessionSnapshot {
+        const scoped = Object.fromEntries(scope.keys().map((id) => [id, scope.get(id)]));
         return {
             version,
             navigation: navigation?.capture(),
-            // 可比 URL（适配器在浏览器侧记录当时的 location）——供恢复门控精确匹配；
-            // 适配器不提供时为 undefined，门控回退旧策略（见 defaultShouldRestore）。
             url: navigation?.captureUrl?.(),
-            slices: captureSlices(),
-            scoped: scopedSnapshot(),
+            slices,
+            scoped,
             capturedAt: now(),
         };
     }
-
-    function persist(snapshot: SessionSnapshot = capture()): void {
+    async function read(): Promise<SessionLoadResult> {
         try {
-            storage.set(key, encodeSnapshot(snapshot));
-        } catch (error) {
-            report(error, { phase: "persist" });
+            const raw = await storage.get(key);
+            if (raw === undefined) return { status: "missing" };
+            const snapshot = decodeSnapshot(raw, version);
+            if (!snapshot) return { status: "invalid" };
+            if (maxAgeMs !== undefined && now() - snapshot.capturedAt > maxAgeMs)
+                return { status: "expired" };
+            return { status: "loaded", snapshot };
+        } catch (cause) {
+            return failure(cause, "load");
         }
     }
-
-    function load(): SessionSnapshot | undefined {
-        let raw: string | undefined;
-        try {
-            raw = storage.get(key);
-        } catch (error) {
-            report(error, { phase: "load" });
-            return undefined;
-        }
-        const snapshot = decodeSnapshot(raw, version);
-        if (snapshot === undefined) return undefined;
-        if (maxAgeMs !== undefined && now() - snapshot.capturedAt > maxAgeMs) {
-            return undefined;
-        }
-        return snapshot;
-    }
-
-    function restoreSlices(slices: SessionSnapshot["slices"]): void {
-        for (const provider of providers.values()) {
-            const data = slices[provider.key];
-            if (data === undefined) continue;
+    function persist(snapshot?: SessionSnapshot): Promise<SessionWriteResult> {
+        return enqueue(async () => {
             try {
-                provider.restore(data);
-            } catch (error) {
-                report(error, { phase: "restore", key: provider.key });
+                await storage.set(key, encodeSnapshot(snapshot ?? capture()));
+                return { status: "saved" as const };
+            } catch (cause) {
+                return failure(cause, "persist");
             }
-        }
+        });
     }
-
-    function restore(snapshot: SessionSnapshot | undefined = load()): void | Promise<void> {
-        if (snapshot === undefined) return undefined;
-        scope = createNavigationScopedState({ ...snapshot.scoped });
-
-        // `decodeSnapshot` 只浅校验顶层形态，不校验 `navigation` 子字段；被篡改 / 跨版本写入的
-        // 畸形 navigation 会让 adapter.apply（如 `deserializeNavigation` 抛 NavigationError）在此
-        // 抛错或返回 rejected Promise。同步抛与异步拒绝都隔离（onError + 跳过 slice 回填），
-        // 对齐 provider 隔离的安全默认 —— 旧态恢复失败绝不冒泡崩 startBrowserApp（spec §5/§3.3）。
-        let applied: void | Promise<void>;
-        try {
-            applied = navigation?.apply(snapshot.navigation);
-        } catch (error) {
-            report(error, { phase: "restore" });
-            return undefined;
-        }
-        if (applied instanceof Promise) {
-            return applied.then(
-                () => {
-                    restoreSlices(snapshot.slices);
-                },
-                (error: unknown) => {
-                    report(error, { phase: "restore" });
-                },
-            );
-        }
-        restoreSlices(snapshot.slices);
-        return undefined;
-    }
-
     return {
-        register(provider: SessionStateProvider): () => void {
+        register(provider): () => void {
+            if (closed) throw new SessionError("session-closed");
+            if (providers.has(provider.key)) throw new SessionError("duplicate-provider-key");
+            if (
+                !provider.key ||
+                !Number.isInteger(provider.version) ||
+                provider.version < 1 ||
+                typeof provider.decode !== "function"
+            )
+                throw new SessionError("invalid-provider-schema");
             providers.set(provider.key, provider);
             return () => {
-                if (providers.get(provider.key) === provider) {
-                    providers.delete(provider.key);
-                }
+                if (providers.get(provider.key) === provider) providers.delete(provider.key);
             };
         },
-        get scope(): NavigationScopedState {
+        get scope() {
             return scope;
         },
         capture,
         persist,
-        load,
-        restore,
-        clear(): void {
-            storage.delete(key);
+        save: () => persist(),
+        load: () => enqueue(read),
+        restore(snapshot): Promise<SessionRestoreResult> {
+            return enqueue(async () => {
+                if (snapshot === undefined) {
+                    const loaded = await read();
+                    if (loaded.status !== "loaded") return loaded;
+                    snapshot = loaded.snapshot;
+                }
+                // Direct restore calls pass the same decoder boundary as persisted input.
+                let valid: SessionSnapshot | undefined;
+                try {
+                    valid = decodeSnapshot(encodeSnapshot(snapshot), version);
+                } catch {
+                    /* invalid */
+                }
+                if (!valid) {
+                    report({ phase: "restore", code: "navigation-invalid" });
+                    return { status: "invalid" };
+                }
+                try {
+                    await navigation?.apply(valid.navigation);
+                } catch (cause) {
+                    report({ phase: "restore", code: "navigation-invalid" });
+                    return { status: "failed", cause };
+                }
+                scope = createNavigationScopedState({ ...valid.scoped });
+                const discarded: string[] = [];
+                for (const provider of providers.values()) {
+                    if (!Object.hasOwn(valid.slices, provider.key)) continue;
+                    const slice = valid.slices[provider.key] as Partial<SessionSlice> | null;
+                    try {
+                        if (
+                            !slice ||
+                            !Number.isInteger(slice.version) ||
+                            (slice.version !== provider.version && !provider.migrate)
+                        ) {
+                            discarded.push(provider.key);
+                            report({
+                                phase: "restore",
+                                key: provider.key,
+                                code: "slice-incompatible",
+                            });
+                            continue;
+                        }
+                        const data =
+                            slice.version === provider.version
+                                ? slice.data
+                                : provider.migrate!(slice.data, slice.version!);
+                        await provider.restore(provider.decode(data));
+                    } catch {
+                        discarded.push(provider.key);
+                        report({ phase: "restore", key: provider.key, code: "slice-failed" });
+                    }
+                }
+                return discarded.length ? { status: "partial", discarded } : { status: "restored" };
+            });
         },
-        save(): void {
-            persist();
+        clear: () =>
+            enqueue(async () => {
+                try {
+                    await storage.delete(key);
+                    return { status: "cleared" as const };
+                } catch (cause) {
+                    return failure(cause, "clear");
+                }
+            }),
+        dispose(): Promise<void> {
+            closed = true;
+            return queue;
         },
     };
 }

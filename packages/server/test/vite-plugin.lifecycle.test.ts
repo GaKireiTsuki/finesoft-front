@@ -129,7 +129,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             config(config: Record<string, unknown>): Record<string, unknown>;
         };
 
-        expect(plugin.config({ build: { outDir: "dist/custom" } })).toEqual({
+        expect(plugin.config({ build: { outDir: "dist/custom" } })).toMatchObject({
             appType: "custom",
             define: {
                 __FINESOFT_I18N_LOADER_SPECIFIER__: "undefined",
@@ -146,7 +146,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             load(id: string): Promise<string | null>;
         };
 
-        expect(plugin.config({ build: { outDir: "dist/custom-client" } })).toEqual({
+        expect(plugin.config({ build: { outDir: "dist/custom-client" } })).toMatchObject({
             appType: "custom",
             define: {
                 __FINESOFT_I18N_LOADER_SPECIFIER__: '"virtual:finesoft-front/i18n-loader"',
@@ -893,6 +893,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         await plugin.closeBundle();
 
         expect(vite.build).toHaveBeenNthCalledWith(1, {
+            define: { __FINESOFT_BUILD_ID__: expect.any(String) },
             root: "/project",
             build: {
                 ssr: "src/custom-ssr.ts",
@@ -905,6 +906,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             css: { modules: true },
         });
         expect(vite.build).toHaveBeenNthCalledWith(2, {
+            define: { __FINESOFT_BUILD_ID__: expect.any(String) },
             root: "/project",
             build: {
                 ssr: "src/setup.ts",

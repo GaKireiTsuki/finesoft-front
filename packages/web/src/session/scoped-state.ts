@@ -1,8 +1,7 @@
 /**
  * Session — 导航作用域状态（SwiftUI push/pop 生命周期的核心）
  *
- * 状态按**条目身份键** `entryKey = intent + " " + stableStringify(params)` 存入 `Map`，
- * 与 controller 的目标键同源、跨重载稳定。每次导航提交后，框架按**树中实际存在的全部条目**
+ * 状态按实际 EntryId 存入 Map；序列化/恢复保留该 ID，不由业务参数推导。每次导航提交后，框架按**树中实际存在的全部条目**
  * （注意「存在」而非「可见」）prune —— 身份不在树里的条目状态被丢弃，得到 SwiftUI `@State` 语义：
  *
  *   A → push B：present `{A, B}` → A 状态保留（仍在栈、只是不可见），B 拿到自己的作用域。
@@ -17,7 +16,7 @@ import { entryKey } from "../navigation/keys";
 import { collectAllLeaves } from "../navigation/operations";
 import type { NavigationNode } from "../navigation/index";
 import type { RouteParams } from "../router/types";
-import type { NavigationScopedState } from "./types";
+import { SessionError, type NavigationScopedState } from "./types";
 
 /**
  * 导航条目身份键：`intent + " " + stableStringify(params)`。
@@ -54,6 +53,7 @@ export function createNavigationScopedState(
             return store.get(entryKey);
         },
         set(entryKey: string, data: unknown): void {
+            if (!entryKey.trim()) throw new SessionError("invalid-entry-id");
             store.set(entryKey, data);
         },
         delete(entryKey: string): void {

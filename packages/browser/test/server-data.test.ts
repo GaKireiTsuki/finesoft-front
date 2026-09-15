@@ -1,100 +1,81 @@
+import { expect, test, vi } from "vite-plus/test";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
-
-import {
-    createPrefetchedIntentsFromDom,
-    deserializeServerData,
-    SERVER_DATA_ID,
-} from "../src/server-data";
-
-afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+import { createPrefetchedIntentsFromDom, deserializeServerData } from "../src/server-data";
+const payload = [
+    { entryId: "home-1", intent: { id: "home", params: {} }, data: { title: "Home" } },
+];
+function source(value: unknown) {
+    const removeChild = vi.fn();
+    return {
+        removeChild,
+        buildId: "build-a",
+        script: {
+            textContent: JSON.stringify(value),
+            parentNode: { removeChild },
+        } as unknown as HTMLScriptElement,
+    };
+}
+test("explicit per-instance sources never query global document; each consumes only its own script", () => {
+    const a = source({ protocolVersion: 1, buildId: "build-a", payload });
+    const b = source({
+        protocolVersion: 1,
+        buildId: "build-a",
+        payload: [{ ...payload[0], entryId: "home-2" }],
+    });
+    const cache = createPrefetchedIntentsFromDom(a);
+    expect(cache.get({ id: "home", params: {} }, "home-1")).toEqual({ title: "Home" });
+    expect(b.removeChild).not.toHaveBeenCalled();
+    expect(deserializeServerData(b)).toEqual({
+        status: "ready",
+        data: [{ ...payload[0], entryId: "home-2" }],
+    });
+});
+test("missing, invalid JSON and mismatches explicitly fall back to fresh load", () => {
+    expect(deserializeServerData({ script: null })).toEqual({
+        status: "fresh-load",
+        code: "missing",
+    });
+    const invalid = source(null);
+    invalid.script.textContent = "bad json";
+    expect(deserializeServerData(invalid)).toEqual({ status: "fresh-load", code: "invalid-json" });
+    const onFallback = vi.fn();
+    const cache = createPrefetchedIntentsFromDom({
+        ...source({ protocolVersion: 1, buildId: "old", payload }),
+        onFallback,
+    });
+    expect(cache.size).toBe(0);
+    expect(onFallback).toHaveBeenCalledWith("build-mismatch");
 });
 
-describe("server data helpers", () => {
-    test("returns undefined when no server data script is present", () => {
-        vi.stubGlobal("document", {
-            getElementById: vi.fn(() => null),
-        });
-
-        expect(deserializeServerData()).toBeUndefined();
+test("a changed build rejects hydration while preserving independently versioned persisted drafts", async () => {
+    const { createSessionStore } = await import("@finesoft/web");
+    const restore = vi.fn();
+    const stored = JSON.stringify({
+        version: 1,
+        capturedAt: 1,
+        scoped: {},
+        slices: { draft: { version: 3, data: "kept" } },
     });
-
-    test("deserializes valid embedded server data and removes the script", () => {
-        const removeChild = vi.fn();
-        const script = {
-            textContent: JSON.stringify([
-                {
-                    intent: { id: "home", params: { page: "1" } },
-                    data: { title: "Home" },
-                },
-            ]),
-            parentNode: { removeChild },
-        };
-
-        vi.stubGlobal("document", {
-            getElementById: vi.fn((id: string) => (id === SERVER_DATA_ID ? script : null)),
-        });
-
-        expect(deserializeServerData()).toEqual([
-            {
-                intent: { id: "home", params: { page: "1" } },
-                data: { title: "Home" },
-            },
-        ]);
-        expect(removeChild).toHaveBeenCalledWith(script);
+    const store = createSessionStore({
+        storage: { get: async () => stored, set: async () => {}, delete: async () => {} },
     });
-
-    test("returns undefined for invalid JSON payloads", () => {
-        const script = {
-            textContent: "{not-json}",
-            parentNode: { removeChild: vi.fn() },
-        };
-
-        vi.stubGlobal("document", {
-            getElementById: vi.fn(() => script),
-        });
-
-        expect(deserializeServerData()).toBeUndefined();
+    store.register({
+        key: "draft",
+        version: 3,
+        capture: () => "",
+        decode: (value) => {
+            if (typeof value !== "string") throw Error("invalid");
+            return value;
+        },
+        restore,
     });
-
-    test("creates PrefetchedIntents instances from DOM data", () => {
-        const removeChild = vi.fn();
-        const script = {
-            textContent: JSON.stringify([
-                {
-                    intent: { id: "product", params: { a: "1", b: "2" } },
-                    data: { title: "Product" },
-                },
-            ]),
-            parentNode: { removeChild },
-        };
-
-        vi.stubGlobal("document", {
-            getElementById: vi.fn(() => script),
-        });
-
-        const prefetched = createPrefetchedIntentsFromDom();
-
-        expect(prefetched.has({ id: "product", params: { b: "2", a: "1" } })).toBe(true);
-        expect(prefetched.get({ id: "product", params: { a: "1", b: "2" } })).toEqual({
-            title: "Product",
-        });
-    });
-
-    test("returns an empty cache when the embedded payload is not an array", () => {
-        vi.stubGlobal("document", {
-            getElementById: vi.fn(() => ({
-                textContent: JSON.stringify({ invalid: true }),
-                parentNode: { removeChild: vi.fn() },
-            })),
-        });
-
-        const prefetched = createPrefetchedIntentsFromDom();
-
-        expect(prefetched.size).toBe(0);
-    });
+    expect(
+        createPrefetchedIntentsFromDom(
+            source({ protocolVersion: 1, buildId: "old-build", payload }),
+        ).size,
+    ).toBe(0);
+    expect(await store.restore()).toEqual({ status: "restored" });
+    expect(restore).toHaveBeenCalledWith("kept");
+    await store.dispose();
 });

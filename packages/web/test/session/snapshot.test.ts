@@ -25,7 +25,10 @@ describe("encode/decode snapshot", () => {
     });
 
     test("round-trips a flat url location", () => {
-        const s = snap({ navigation: { url: "/posts/7" }, slices: { q: "x" } });
+        const s = snap({
+            navigation: { entryId: "fixture-flat", url: "/posts/7" },
+            slices: { q: "x" },
+        });
         expect(decodeSnapshot(encodeSnapshot(s), 1)).toEqual(s);
     });
 

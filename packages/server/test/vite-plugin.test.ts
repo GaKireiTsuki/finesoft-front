@@ -58,3 +58,14 @@ describe("finesoftFrontViteConfig", () => {
         expect(code).toContain('locale + ".json"');
     });
 });
+
+test("build identity is automatic, inherited by subbuilds, and configurable for custom hosts", () => {
+    const first = finesoftFrontViteConfig().config({});
+    const next = finesoftFrontViteConfig().config({});
+    expect(first.define.__FINESOFT_BUILD_ID__).not.toBe(next.define.__FINESOFT_BUILD_ID__);
+    const paired = finesoftFrontViteConfig().config({ define: first.define });
+    expect(paired.define.__FINESOFT_BUILD_ID__).toBe(first.define.__FINESOFT_BUILD_ID__);
+    expect(
+        finesoftFrontViteConfig({ buildId: "release-id" }).config({}).define.__FINESOFT_BUILD_ID__,
+    ).toBe('"release-id"');
+});

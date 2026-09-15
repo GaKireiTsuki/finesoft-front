@@ -4,9 +4,8 @@
  * 具体页面类型由应用层定义并扩展此接口。
  *
  * SSR prefetch 数据序列化时的可见性由 `FINESOFT_PUBLIC` symbol 控制 —— 见
- * `markPublic` / `isPublicMarked`。没有 marker 时 `serializeServerData` 仍按全字段
- * 序列化（向后兼容），但会在 dev 启动后打印一次告警，下一个 major 会改为只序列化
- * `BasePage` 的标准字段（id/pageType/title/description/url）。
+ * `markPublic` / `isPublicMarked`。没有 marker 时只序列化 BasePage 标准字段。
+ * 嵌套对象需独立 markPublic、递归 projection 或 codec；true 仅选择本层字段。
  */
 
 export interface BasePage {
@@ -47,11 +46,19 @@ export const BASE_PAGE_FIELDS = ["id", "pageType", "title", "description", "url"
  * );
  * ```
  *
- * 也可以传 `true` 表示「所有字段都安全」—— 当作 opt-out，等价于不调用本函数。
+ * `true` 选择本层字段；对象/数组仍需独立标记、递归 projection 或 codec。
  */
-export function markPublic<P extends BasePage>(
+export interface PublicValueCodec {
+    readonly kind: "codec";
+    encode(value: unknown): unknown;
+}
+export interface PublicProjection {
+    readonly [field: string]: true | PublicProjection | PublicValueCodec;
+}
+
+export function markPublic<P extends object>(
     page: P,
-    publicFields: readonly (keyof P)[] | true,
+    publicFields: readonly (keyof P)[] | true | PublicProjection,
 ): P {
     if (publicFields === true) {
         Object.defineProperty(page, FINESOFT_PUBLIC, {
@@ -63,7 +70,11 @@ export function markPublic<P extends BasePage>(
         return page;
     }
     Object.defineProperty(page, FINESOFT_PUBLIC, {
-        value: Object.freeze([...publicFields]),
+        value: Object.freeze(
+            Array.isArray(publicFields)
+                ? [...publicFields]
+                : { ...(publicFields as PublicProjection) },
+        ),
         enumerable: false,
         configurable: true,
         writable: false,
@@ -80,12 +91,13 @@ export function isPublicMarked(page: unknown): boolean {
     );
 }
 
-/** 取出 `markPublic` 写入的字段白名单；`true` 表示全开放，`null` 表示未标注。 */
-export function getPublicFields(page: unknown): readonly string[] | true | null {
+/** 取出 `markPublic` 写入的字段白名单；`true` 表示本层字段，`null` 表示未标注。 */
+export function getPublicFields(page: unknown): readonly string[] | true | PublicProjection | null {
     if (typeof page !== "object" || page === null) return null;
     const v = (page as Record<symbol, unknown>)[FINESOFT_PUBLIC];
     if (v === undefined) return null;
     if (v === true) return true;
     if (Array.isArray(v)) return v as readonly string[];
+    if (typeof v === "object" && v !== null) return v as PublicProjection;
     return null;
 }

@@ -1,4 +1,4 @@
-import { BaseController, makeFlowAction } from "@finesoft/front";
+import { markPublic, BaseController, makeFlowAction } from "@finesoft/front";
 import type { ProductItem, SearchPage } from "../models/product";
 
 const ALL_PRODUCTS: ProductItem[] = [
@@ -45,14 +45,27 @@ export class SearchController extends BaseController<{ q?: string }, SearchPage>
             ? ALL_PRODUCTS.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
             : ALL_PRODUCTS;
 
-        return {
-            id: "search",
-            pageType: "search",
-            title: query ? `Search: ${query}` : "All Products",
-            description: `${results.length} result(s)`,
-            url: "/search",
-            query,
-            results,
-        };
+        return markPublic(
+            {
+                id: "search",
+                pageType: "search",
+                title: query ? `Search: ${query}` : "All Products",
+                description: `${results.length} result(s)`,
+                url: "/search",
+                query,
+                results,
+            },
+            {
+                query: true,
+                results: {
+                    id: true,
+                    itemType: true,
+                    name: true,
+                    price: true,
+                    imageUrl: true,
+                    clickAction: { kind: true, url: true },
+                },
+            },
+        );
     }
 }

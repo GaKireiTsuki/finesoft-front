@@ -5,7 +5,7 @@ import { type BasePage } from "@finesoft/web";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index"));
 
-import { __resetUnmarkedPageWarning, serializeServerData } from "../src/server-data";
+import { serializeServerData } from "../src/server-data";
 
 interface ProfilePage extends BasePage {
     email?: string;
@@ -48,25 +48,11 @@ describe("serializeServerData — markPublic allowlist", () => {
         expect(out).toContain("atk_x");
     });
 
-    test("unmarked page is still fully serialized (back-compat) but warns once", () => {
-        // The "warn once" guard is a module-level flag; reset it so this assertion
-        // doesn't depend on whether an earlier test already tripped the warning.
-        __resetUnmarkedPageWarning();
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-        try {
-            const page: ProfilePage = {
-                id: "p",
-                pageType: "profile",
-                title: "Alice",
-                apiToken: "still-leaks-back-compat",
-            };
-            const out = serializeServerData([{ intent: { id: "profile" }, data: page }]);
-            expect(out).toContain("still-leaks-back-compat");
-            expect(warn).toHaveBeenCalled();
-            expect(String(warn.mock.calls[0][0])).toContain("markPublic");
-        } finally {
-            warn.mockRestore();
-        }
+    test("unmarked page emits only base fields without private diagnostics", () => {
+        const page = { id: "p", pageType: "profile", title: "Alice", apiToken: "SECRET" };
+        expect(serializeServerData([{ intent: { id: "profile" }, data: page }])).not.toContain(
+            "SECRET",
+        );
     });
 
     test("onUnmarkedPage='base-fields' keeps only BasePage fields", () => {

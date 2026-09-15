@@ -22,6 +22,8 @@ const GENERATED_I18N_LOADER_ID = "virtual:finesoft-front/i18n-loader";
 const RESOLVED_GENERATED_I18N_LOADER_ID = `\0${GENERATED_I18N_LOADER_ID}`;
 
 export interface FinesoftFrontViteOptions {
+    /** Optional reproducible build identity; otherwise generated for each paired build. */
+    buildId?: string;
     /** SSR 配置 */
     ssr?: {
         /** SSR 入口文件路径（默认 "src/ssr.ts"） */
@@ -149,6 +151,7 @@ async function resolveMessagesDir(root: string, messagesDir: string): Promise<st
 export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) {
     const ssrEntry = options.ssr?.entry ?? "src/ssr.ts";
     let root = process.cwd();
+    let buildId = options.buildId ?? crypto.randomUUID();
     let resolvedCommand: string | undefined;
     let resolvedResolve: unknown;
     let resolvedCss: unknown;
@@ -159,12 +162,16 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         name: "finesoft-front",
 
         config(userConfig: Record<string, any>) {
+            const inherited = userConfig.define?.__FINESOFT_BUILD_ID__;
+            if (typeof inherited === "string") buildId = JSON.parse(inherited);
             const generatedI18nLoaderSpecifier = options.i18n?.messagesDir
                 ? JSON.stringify(GENERATED_I18N_LOADER_ID)
                 : "undefined";
             const overrides: Record<string, any> = {
                 appType: "custom",
+                ssr: { noExternal: ["@finesoft/front", "@finesoft/web", "@finesoft/ssr"] },
                 define: {
+                    __FINESOFT_BUILD_ID__: JSON.stringify(buildId),
                     __FINESOFT_I18N_LOADER_SPECIFIER__: generatedI18nLoaderSpecifier,
                 },
             };
@@ -426,6 +433,7 @@ export async function loadMessages(locale) {
                 console.log("\n  Building SSR bundle...\n");
                 await vite.build({
                     root,
+                    define: { __FINESOFT_BUILD_ID__: JSON.stringify(buildId) },
                     build: {
                         ssr: ssrEntry,
                         outDir: "dist/server",
@@ -442,6 +450,7 @@ export async function loadMessages(locale) {
                     console.log("  Building setup module...\n");
                     await vite.build({
                         root,
+                        define: { __FINESOFT_BUILD_ID__: JSON.stringify(buildId) },
                         build: {
                             ssr: options.setup,
                             outDir: "dist/server",
@@ -465,6 +474,7 @@ export async function loadMessages(locale) {
 
                     const ctx = {
                         root,
+                        buildId,
                         ssrEntry,
                         setupPath: typeof options.setup === "string" ? options.setup : undefined,
                         bootstrapEntry: options.bootstrapEntry,
@@ -475,7 +485,17 @@ export async function loadMessages(locale) {
                         defaultLocale: options.defaultLocale,
                         resolvedResolve,
                         resolvedCss,
-                        vite,
+                        vite: {
+                            ...vite,
+                            build: (config: Record<string, any>) =>
+                                vite.build({
+                                    ...config,
+                                    define: {
+                                        ...config.define,
+                                        __FINESOFT_BUILD_ID__: JSON.stringify(buildId),
+                                    },
+                                }),
+                        },
                         fs,
                         path,
                         generateSSREntry(opts: any) {

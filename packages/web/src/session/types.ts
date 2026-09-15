@@ -11,7 +11,37 @@
  *   的「位置作用域」语义 —— 条目离树即被 prune 丢弃（见 `scoped-state.ts`）。
  */
 
-import type { Storage } from "@finesoft/core";
+/** Asynchronous session persistence. A missing key resolves undefined; failures reject. */
+export interface AsyncStorage {
+    get(key: string): Promise<string | undefined>;
+    set(key: string, value: string): Promise<void>;
+    delete(key: string): Promise<void>;
+}
+export class StorageUnavailableError extends Error {
+    constructor() {
+        super("storage-unavailable");
+        this.name = "StorageUnavailableError";
+    }
+}
+export type SessionFailure =
+    | { readonly status: "failed"; readonly cause: unknown }
+    | { readonly status: "unavailable" }
+    | { readonly status: "closed" };
+export type SessionWriteResult = { readonly status: "saved" | "cleared" } | SessionFailure;
+export type SessionLoadResult =
+    | { readonly status: "loaded"; readonly snapshot: SessionSnapshot }
+    | { readonly status: "missing" | "invalid" | "expired" }
+    | SessionFailure;
+export type SessionRestoreResult =
+    | { readonly status: "restored" }
+    | { readonly status: "partial"; readonly discarded: readonly string[] }
+    | { readonly status: "skipped" }
+    | Exclude<SessionLoadResult, { status: "loaded" }>;
+export interface SessionSlice {
+    readonly version: number;
+    readonly data: unknown;
+}
+
 import type { SerializedNavigation } from "../navigation/index";
 
 /** 会话快照在 Storage 中的默认键。 */
@@ -22,7 +52,7 @@ export const SESSION_DEFAULT_VERSION = 1;
 
 /** 扁平单页的导航位置：一个 URL（区别于结构化树的 `SerializedNavigation`）。 */
 export interface SessionUrlLocation {
-    readonly entryId?: string;
+    readonly entryId: string;
     readonly url: string;
 }
 
@@ -45,7 +75,7 @@ export interface SessionSnapshot {
      * 它让结构化导航也能像扁平一样「重载同深链即恢复、改去别的深链则跳过」（对称）。
      */
     readonly url?: string;
-    /** 全局切片（app-wide）：`provider.key` → 该 provider `capture()` 的 JSON 值。 */
+    /** 全局切片（app-wide）：`provider.key` → `{ version, data }`。 */
     readonly slices: Readonly<Record<string, unknown>>;
     /** 导航作用域状态：`entryKey` → 该导航条目的状态袋；条目离树即被 prune 丢弃。 */
     readonly scoped: Readonly<Record<string, unknown>>;
@@ -56,12 +86,13 @@ export interface SessionSnapshot {
 /**
  * 判别 `navigation` 是否为扁平 URL 位置。
  *
- * `SerializedNavigation` 始终带 `kind`、从不带 `url` 字段，故 `url` 是无歧义判别位。
+ * `SerializedNavigation` 带 `kind`；URL 位置不带 kind，但必须保留 EntryId。
  */
 export function isUrlLocation(nav: SessionSnapshot["navigation"]): nav is SessionUrlLocation {
     return (
         nav != null &&
         typeof nav === "object" &&
+        !("kind" in nav) &&
         "url" in nav &&
         typeof (nav as SessionUrlLocation).url === "string"
     );
@@ -70,16 +101,21 @@ export function isUrlLocation(nav: SessionSnapshot["navigation"]): nav is Sessio
 /**
  * 全局状态切片 Provider。
  *
- * 同步、JSON 安全。框架不解释切片内容 —— 它只搬运。应用控制捕获什么
+ * capture 同步且 JSON 安全；decode 校验当前 schema，migration 按切片独立执行。应用控制捕获什么
  * （敏感字段在 `capture()` 中自行排除）。
  */
 export interface SessionStateProvider<T = unknown> {
     /** 切片唯一键（快照里 `slices` 的 key）。 */
     readonly key: string;
+    readonly version: number;
+    /** Validate current-version data. Throw to discard this slice. */
+    decode(data: unknown): T;
+    /** Migrate old data; decoder always validates the result. */
+    migrate?(data: unknown, fromVersion: number): unknown;
     /** 捕获当前切片状态，必须返回 JSON 安全的同步值。 */
     capture(): T;
     /** 用持久化的切片数据恢复（应用自行 setState / 填表单 / 滚动）。 */
-    restore(data: T): void;
+    restore(data: T): void | Promise<void>;
 }
 
 /**
@@ -122,14 +158,20 @@ export interface SessionNavigationAdapter {
 
 /** 会话错误上下文：标记出错所处阶段，供 `onError` 上报。 */
 export interface SessionErrorContext {
-    readonly phase: "capture" | "restore" | "persist" | "load";
+    readonly phase: "capture" | "restore" | "persist" | "load" | "clear";
+    readonly code?:
+        | "slice-failed"
+        | "slice-incompatible"
+        | "navigation-invalid"
+        | "storage-failed"
+        | "storage-unavailable";
     readonly key?: string;
 }
 
 /** `createSessionStore` 选项。 */
 export interface SessionStoreOptions {
-    /** 持久化存储（`DEP_KEYS.STORAGE`）。 */
-    readonly storage: Storage;
+    /** 异步持久化存储（独立于同步环境 Storage）。 */
+    readonly storage: AsyncStorage;
     /** 快照键；默认 `SESSION_DEFAULT_KEY`。 */
     readonly key?: string;
     /** 快照版本；默认 `SESSION_DEFAULT_VERSION`，不符即丢弃。 */
@@ -140,7 +182,7 @@ export interface SessionStoreOptions {
     readonly navigation?: SessionNavigationAdapter;
     /** 注入时钟（测试 / SSR 安全）；默认 `() => Date.now()`。 */
     readonly now?: () => number;
-    /** 错误回调；默认 no-op，应用可接 EventRecorder。 */
+    /** 错误回调；默认 no-op，仅接收安全错误码与阶段/key，不接收私有异常。 */
     readonly onError?: (error: unknown, ctx: SessionErrorContext) => void;
 }
 
@@ -153,15 +195,17 @@ export interface SessionStore {
     /** 组装当前快照（nav + slices + scoped），不落盘。 */
     capture(): SessionSnapshot;
     /** 落盘（省略参数则先 `capture`）。 */
-    persist(snapshot?: SessionSnapshot): void;
-    /** 从 Storage 读取并校验（version / maxAge / 畸形 → `undefined`）。 */
-    load(): SessionSnapshot | undefined;
+    persist(snapshot?: SessionSnapshot): Promise<SessionWriteResult>;
+    /** 读取并校验，返回 loaded/missing/invalid/expired/failed/unavailable/closed。 */
+    load(): Promise<SessionLoadResult>;
     /** 恢复：应用 nav + 回填 scoped + 派发各 slice 给对应 provider（省略则先 `load`）。 */
-    restore(snapshot?: SessionSnapshot): void | Promise<void>;
+    restore(snapshot?: SessionSnapshot): Promise<SessionRestoreResult>;
     /** 清除持久化快照。 */
-    clear(): void;
+    clear(): Promise<SessionWriteResult>;
     /** 手动逃生口 = `capture` + `persist`。 */
-    save(): void;
+    save(): Promise<SessionWriteResult>;
+    /** Stop new work and await all registered operations. */
+    dispose(): Promise<void>;
 }
 
 /** 会话错误：序列化 / 编排过程中需要显式标识的错误类型。 */

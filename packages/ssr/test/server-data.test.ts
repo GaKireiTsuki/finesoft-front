@@ -11,7 +11,7 @@ describe("serializeServerData", () => {
             {
                 intent: { id: "page" },
                 data: {
-                    html: "</script><script>alert(1)</script>\u2028\u2029<>",
+                    title: "</script><script>alert(1)</script>\u2028\u2029<>",
                 },
             },
         ]);

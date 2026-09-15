@@ -18,7 +18,11 @@ export {
     type SSRRenderNavigationResult,
 } from "./navigation";
 export { ssrRender, type SSRContext, type SSRRenderOptions, type SSRRenderResult } from "./render";
-export { serializeServerData, type SerializeServerDataOptions } from "./server-data";
+export {
+    materializeServerData,
+    serializeServerData,
+    type SerializeServerDataOptions,
+} from "./server-data";
 
 export { renderIslandsHtml, type RenderEntry } from "./islands";
 

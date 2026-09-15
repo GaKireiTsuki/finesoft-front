@@ -8,11 +8,10 @@
  *   —— 这正是「pop B 后 B 的作用域状态消失」的落点（离树条目被丢弃，对标 SwiftUI `@State`
  *   push/pop 生命周期）—— 再防抖落盘（默认 `SESSION_DEFAULT_DEBOUNCE_MS`，合并连续导航）。
  * - **生命周期落盘**：`window` 的 `pagehide` 与 `document` 的 `visibilitychange`
- *   （仅 `visibilityState === "hidden"`）立即落盘并取消挂起的防抖 —— 比 `beforeunload`
- *   在移动端更可靠（标签切到后台 / 被系统回收前能抓到末态）。
+ *   （仅 `visibilityState === "hidden"`）请求异步保存；浏览器关闭不保证其完成。
  * - **boot 恢复**：`restore(currentUrl)` 读快照，命中且通过 `shouldRestore` 门控才整体应用
  *   （nav + slices 一个布尔门）。默认策略 `defaultShouldRestore` 遵循「显式深链优先」。
- * - **dispose**：反订阅导航 + 解绑全部监听 + 清挂起定时器，幂等无残留。
+ * - **dispose**：反订阅、解绑、提交挂起保存，等已登记存储工作完成。
  *
  * 纯附加：不配 session 的应用永远不会构造 bridge，原有启动路径字节级不变。
  */
@@ -23,6 +22,8 @@ import type {
     SessionNavigationAdapter,
     SessionSnapshot,
     SessionStore,
+    SessionRestoreResult,
+    SessionWriteResult,
 } from "@finesoft/web";
 
 /** 导航变更后自动落盘的默认防抖窗口（ms）：合并连续导航，避免每跳一屏写一次。 */
@@ -30,6 +31,8 @@ export const SESSION_DEFAULT_DEBOUNCE_MS = 500;
 
 /** `createSessionBridge` 选项。 */
 export interface SessionBridgeOptions {
+    /** Standard starters pause automatic saves until hydration and persisted restore finish. */
+    readonly deferPersistenceUntilRestore?: boolean;
     /** 会话编排器（core）。 */
     readonly store: SessionStore;
     /** 导航适配器；导航变更时用其 `presentKeys()` 驱动 scoped prune。 */
@@ -46,18 +49,18 @@ export interface SessionBridgeOptions {
 export interface SessionHandle {
     /**
      * 导航作用域状态（每屏 per-entry）。应用渲染某屏时用 `scope.get(entryKey)` /
-     * `set(entryKey, data)` 读写（`entryKey = sessionEntryKey(intent, params)`）。
+     * `set(entryKey, data)` 读写（`entryKey = EntryId`）。
      * 始终委托当前 store 的 scope —— restore 会重建 scope map，经此 getter 取到的恒是最新实例。
      */
     readonly scope: NavigationScopedState;
     /** boot 时调用：读快照，通过门控则整体恢复（nav + slices + scoped）。 */
-    restore(currentUrl: string): void | Promise<void>;
+    restore(currentUrl: string): Promise<SessionRestoreResult>;
     /** 手动落盘（= `store.save()`）。 */
-    save(): void;
+    save(): Promise<SessionWriteResult>;
     /** 清除持久化快照（= `store.clear()`）。 */
-    clear(): void;
+    clear(): Promise<SessionWriteResult>;
     /** 反订阅导航 + 解绑全部监听 + 清挂起定时器（幂等）。 */
-    dispose(): void;
+    dispose(): Promise<void>;
 }
 
 /** 剥离 query / hash，仅取路径部分（用于「根入口」判定）。 */
@@ -103,6 +106,8 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
     const debounceMs = options.debounceMs ?? SESSION_DEFAULT_DEBOUNCE_MS;
     const shouldRestore = options.shouldRestore ?? defaultShouldRestore;
 
+    let disposed: Promise<void> | undefined;
+    let restoring = options.deferPersistenceUntilRestore ?? false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     function cancelTimer(): void {
@@ -114,17 +119,19 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
 
     /** 立即落盘并取消挂起的防抖（生命周期事件用）。 */
     function flush(): void {
+        if (disposed || restoring) return;
         cancelTimer();
-        store.save();
+        void store.save();
     }
 
     /** 导航变更：先 prune 离树作用域，再防抖落盘。 */
     function onNavigationChange(): void {
+        if (disposed || restoring) return;
         store.scope.prune(adapter.presentKeys());
         cancelTimer();
         timer = setTimeout(() => {
             timer = undefined;
-            store.save();
+            void store.save();
         }, debounceMs);
     }
 
@@ -143,24 +150,37 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
         get scope(): NavigationScopedState {
             return store.scope;
         },
-        restore(currentUrl: string): void | Promise<void> {
-            const snapshot = store.load();
-            if (snapshot !== undefined && shouldRestore(snapshot, currentUrl)) {
-                return store.restore(snapshot);
+        async restore(currentUrl: string): Promise<SessionRestoreResult> {
+            if (disposed) return { status: "closed" };
+            restoring = true;
+            cancelTimer();
+            try {
+                const loaded = await store.load();
+                if (disposed) return { status: "closed" };
+                if (loaded.status !== "loaded") return loaded;
+                if (!shouldRestore(loaded.snapshot, currentUrl)) return { status: "skipped" };
+                return await store.restore(loaded.snapshot);
+            } finally {
+                restoring = false;
             }
-            return undefined;
         },
-        save(): void {
-            store.save();
+        save(): Promise<SessionWriteResult> {
+            return store.save();
         },
-        clear(): void {
-            store.clear();
+        clear(): Promise<SessionWriteResult> {
+            cancelTimer();
+            return store.clear();
         },
-        dispose(): void {
+        dispose(): Promise<void> {
+            if (disposed) return disposed;
+            // Flush a pending debounce before closing the queue. Browsers cannot guarantee unload completion.
+            if (timer !== undefined) flush();
             cancelTimer();
             unsubscribeNavigation?.();
             window.removeEventListener("pagehide", flush);
             document.removeEventListener("visibilitychange", onVisibilityChange);
+            disposed = store.dispose();
+            return disposed;
         },
     };
 }

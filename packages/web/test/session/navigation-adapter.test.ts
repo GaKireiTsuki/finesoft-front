@@ -48,7 +48,7 @@ describe("createNavigationSessionAdapter (structured)", () => {
     test("apply ignores a url location (structured app always has a tree)", async () => {
         const { controller, hydrated } = fakeController(leaf("home"));
         const adapter = createNavigationSessionAdapter(controller);
-        await adapter.apply({ url: "/x" });
+        await adapter.apply({ entryId: "fixture-flat", url: "/x" });
         expect(hydrated).toHaveLength(0);
     });
 
@@ -89,16 +89,17 @@ describe("createUrlSessionAdapter (flat)", () => {
     test("capture returns the current url location", () => {
         const adapter = createUrlSessionAdapter({
             currentUrl: () => "/posts/7",
+            currentEntry: () => ({ entryId: "fixture-flat" }),
             navigate: () => {},
         });
-        expect(adapter.capture()).toEqual({ url: "/posts/7" });
+        expect(adapter.capture()).toEqual({ entryId: "fixture-flat", url: "/posts/7" });
     });
 
     test("apply navigates to the url location", async () => {
         const navigate = vi.fn();
         const adapter = createUrlSessionAdapter({ currentUrl: () => "/", navigate });
-        await adapter.apply({ url: "/posts/7" });
-        expect(navigate).toHaveBeenCalledWith("/posts/7");
+        await adapter.apply({ entryId: "fixture-flat", url: "/posts/7" });
+        expect(navigate).toHaveBeenCalledWith("/posts/7", "fixture-flat");
     });
 
     test("apply ignores a structured navigation (flat adapter only knows urls)", async () => {
@@ -135,6 +136,7 @@ describe("createUrlSessionAdapter (flat)", () => {
     test("captureUrl returns the current url (so flat snapshots carry a comparable url)", () => {
         const adapter = createUrlSessionAdapter({
             currentUrl: () => "/posts/7",
+            currentEntry: () => ({ entryId: "fixture-flat" }),
             navigate: () => {},
         });
         expect(adapter.captureUrl?.()).toBe("/posts/7");

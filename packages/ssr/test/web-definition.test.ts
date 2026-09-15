@@ -249,3 +249,60 @@ test("SSR and browser tree producers preserve the shared seven-stage guard order
     await framework.dispose();
     await render.dispose();
 });
+
+test("flat and tree producers materialize declared getters before execution disposal", async () => {
+    const { markPublic, createActiveLeafCodec } = await import("@finesoft/web");
+    const { createSSRNavigationRender } = await import("../src/navigation");
+    for (const structured of [false, true]) {
+        let closed = false;
+        const order: string[] = [];
+        const definition = defineWebApp({
+            id: "materialization",
+            controllers: [
+                {
+                    id: "home",
+                    handler: (_params, ctx) => {
+                        ctx.onDispose(() => {
+                            order.push("dispose");
+                            closed = true;
+                        });
+                        return markPublic(
+                            {
+                                id: "home",
+                                pageType: "home",
+                                title: "Home",
+                                get profile() {
+                                    if (closed) throw Error("request-closed");
+                                    order.push("project");
+                                    return { name: "Public", secret: "PRIVATE" };
+                                },
+                            },
+                            { profile: { name: true } },
+                        );
+                    },
+                },
+            ],
+            routes: [{ path: "/", intentId: "home" }],
+            getErrorPage: (status, message) => ({
+                id: String(status),
+                pageType: "error",
+                title: message,
+            }),
+        });
+        const options = { definition, renderApp: () => ({ html: "Home", head: "", css: "" }) };
+        const render = structured
+            ? createSSRNavigationRender({
+                  ...options,
+                  navigation: { codec: createActiveLeafCodec() },
+              })
+            : createSSRRender(options);
+        const output = await render("/");
+        expect(closed).toBe(true);
+        expect(order).toEqual(["project", "dispose"]);
+        const wire = serializeServerData(output.serverData);
+        expect(wire).toContain("Public");
+        expect(wire).not.toContain("PRIVATE");
+        expect(order).toEqual(["project", "dispose"]);
+        await render.dispose();
+    }
+});

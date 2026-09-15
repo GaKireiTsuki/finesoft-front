@@ -359,11 +359,11 @@ describe("startBrowserApp", () => {
         // 在根 URL (`/`) 上 boot：defaultShouldRestore 对扁平快照放行（atRoot 或同 URL）。
         const sessionStorage = fakeWebStorage();
         sessionStorage.setItem(
-            "__finesoft_session__",
+            "__finesoft_session__:app",
             JSON.stringify({
                 version: 1,
-                navigation: { url: "/" },
-                slices: { draft: "half-typed" },
+                navigation: { entryId: "fixture-flat", url: "/" },
+                slices: { draft: { version: 1, data: "half-typed" } },
                 scoped: {},
                 capturedAt: 1,
             }),
@@ -390,6 +390,11 @@ describe("startBrowserApp", () => {
                 providers: [
                     {
                         key: "draft",
+                        version: 1,
+                        decode: (value: unknown) => {
+                            if (typeof value !== "string") throw Error("invalid-draft");
+                            return value;
+                        },
                         capture: () => "",
                         restore: (data) => {
                             restored.push(data);
@@ -409,12 +414,12 @@ describe("startBrowserApp", () => {
         // 预置快照：restore 会把 slices.draft 派回 provider。
         // 当前 URL 是 "/"，defaultShouldRestore 在 atRoot 时放行。
         const storage = makeCoreStorage();
-        storage.set(
-            "__finesoft_session__",
+        await storage.set(
+            "__finesoft_session__:app",
             JSON.stringify({
                 version: 1,
-                navigation: { url: "/" },
-                slices: { draft: "saved-value" },
+                navigation: { entryId: "fixture-flat", url: "/" },
+                slices: { draft: { version: 1, data: "saved-value" } },
                 scoped: {},
                 capturedAt: Date.now(),
             }),
@@ -445,6 +450,11 @@ describe("startBrowserApp", () => {
                 providers: [
                     {
                         key: "draft",
+                        version: 1,
+                        decode: (value: unknown) => {
+                            if (typeof value !== "string") throw Error("invalid-draft");
+                            return value;
+                        },
                         capture: () => "",
                         restore: () => {
                             order.push("restore");
@@ -678,7 +688,7 @@ describe("startBrowserApp — domRestore（islands + session）", () => {
             capturedAt: Date.now(),
         };
         const storage = makeCoreStorage();
-        storage.set("__finesoft_session__", JSON.stringify(snapshot));
+        await storage.set("__finesoft_session__:app", JSON.stringify(snapshot));
 
         // Build FakeElement tree: #app → chrome + <main data-fs-outlet>.
         const appRoot = new FakeElement("div");
@@ -749,7 +759,7 @@ describe("startBrowserApp — domRestore（islands + session）", () => {
             capturedAt: Date.now(),
         };
         const storage = makeCoreStorage();
-        storage.set("__finesoft_session__", JSON.stringify(snapshot));
+        await storage.set("__finesoft_session__:app", JSON.stringify(snapshot));
 
         const appRoot = new FakeElement("div");
         appRoot.setAttribute("id", "app");
@@ -835,7 +845,7 @@ describe("startBrowserApp — flat-islands + session", () => {
 
     async function bootFlatIslandsSession(): Promise<{
         handle: import("../src/session-bridge").SessionHandle;
-        storage: import("@finesoft/core").Storage;
+        storage: import("@finesoft/web").AsyncStorage;
         callbacks: ReturnType<typeof makeCallbacks>;
     }> {
         const { leaf, BaseController } = {
@@ -895,8 +905,8 @@ describe("startBrowserApp — flat-islands + session", () => {
 
     test("会话快照包含当前 URL（flat-islands session 在 mount 前建，用 URL 适配器）", async () => {
         const { handle, storage } = await bootFlatIslandsSession();
-        handle.save();
-        const raw = storage.get("__finesoft_session__");
+        await handle.save();
+        const raw = await storage.get("__finesoft_session__:app");
         expect(raw).toBeDefined();
         const snapshot = JSON.parse(raw as string) as {
             navigation?: { kind?: string; url?: string };
@@ -904,7 +914,8 @@ describe("startBrowserApp — flat-islands + session", () => {
         };
         // flat-islands + session：session-core 在 mount 前建，flat-islands controller 尚未存在，
         // 退 URL 适配器（capture 返回 { url } 而非 stack 树）。未用组合，接受此行为。
-        expect(snapshot.navigation?.url).toBe("/");
+        // This temporary starter has no current EntryId; never invent a persisted identity.
+        expect(snapshot.navigation).toBeUndefined();
         // capture 时刻的可比 URL 也应记录（供 defaultShouldRestore 精确匹配）。
         expect(snapshot.url).toBe("/");
     });
@@ -943,11 +954,11 @@ function fakeWebStorage(): Storage {
  * 区别于上面的 `fakeWebStorage`（浏览器 Web Storage 接口）：本函数实现 core 的
  * `Storage` 接口（`get`/`set`/`delete`），直接传给 `BrowserSessionConfig.storage`。
  */
-function makeCoreStorage(): import("@finesoft/core").Storage {
+function makeCoreStorage(): import("@finesoft/web").AsyncStorage {
     const m = new Map<string, string>();
     return {
-        get: (k: string) => m.get(k),
-        set: (k: string, v: string) => void m.set(k, v),
-        delete: (k: string) => void m.delete(k),
+        get: async (k: string) => m.get(k),
+        set: async (k: string, v: string) => void m.set(k, v),
+        delete: async (k: string) => void m.delete(k),
     };
 }

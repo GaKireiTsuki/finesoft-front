@@ -23,7 +23,7 @@ import type {
     SessionStateProvider,
 } from "@finesoft/web";
 import type { BasePage } from "@finesoft/web";
-import type { Logger, Storage, TranslationMessages } from "@finesoft/core";
+import type { Logger, TranslationMessages } from "@finesoft/core";
 import {
     createActiveLeafCodec,
     createNavigationController,
@@ -95,7 +95,9 @@ export interface BrowserSessionConfig {
     /** 全局状态切片 provider；启动时全部注册。 */
     readonly providers?: readonly SessionStateProvider[];
     /** 快照存储；缺省 `createWebStorage("session")`（标签级，关闭即清）。 */
-    readonly storage?: Storage;
+    readonly storage?: import("@finesoft/web").AsyncStorage;
+    /** Stable across reloads and unique for each app instance. */
+    readonly persistenceKey?: string;
     /** 快照版本；缺省 `SESSION_DEFAULT_VERSION`，不符即整份丢弃。 */
     readonly version?: number;
     /** 快照最大存活时长（ms）；省略 = 不过期。 */
@@ -107,6 +109,9 @@ export interface BrowserSessionConfig {
 }
 
 export interface BrowserAppConfig {
+    /** Custom bundler hook; standard Vite builds inject this automatically. */
+    readonly buildId?: string;
+    readonly serverDataSource?: HTMLScriptElement | null;
     /** 注册 controllers 和路由的引导函数 */
     bootstrap: (framework: Framework) => void;
 
@@ -221,7 +226,13 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     } = config;
 
     // 1. 从 DOM 提取 PrefetchedIntents 缓存
-    const prefetchedIntents = createPrefetchedIntentsFromDom();
+    const prefetchedIntents = createPrefetchedIntentsFromDom({
+        buildId: config.buildId,
+        script:
+            config.serverDataSource === undefined
+                ? document.getElementById("serialized-server-data")
+                : config.serverDataSource,
+    });
 
     const initialUrl = window.location.pathname + window.location.search;
     const locale = resolveBrowserLocale(frameworkConfig.locale);
@@ -308,6 +319,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
         sessionHandle = activateSessionCore({
             framework,
             session: config.session,
+            persistenceId: mountId,
             navController: navCore?.controller,
             flatNavigation,
         });
@@ -551,6 +563,7 @@ function createNavigationEmitter(): FlatNavigationEmitter {
 function activateSessionCore(args: {
     framework: Framework;
     session: BrowserSessionConfig;
+    persistenceId: string;
     navController: NavigationController | undefined;
     flatNavigation: FlatNavigationEmitter | undefined;
 }): SessionHandle {
@@ -574,6 +587,7 @@ function activateSessionCore(args: {
     const store = createSessionStore({
         storage: session.storage ?? createWebStorage("session"),
         navigation: adapter,
+        key: session.persistenceKey ?? `__finesoft_session__:${args.persistenceId}`,
         version: session.version,
         maxAgeMs: session.maxAgeMs,
     });
@@ -583,6 +597,7 @@ function activateSessionCore(args: {
     }
 
     return createSessionBridge({
+        deferPersistenceUntilRestore: true,
         store,
         adapter,
         subscribeNavigation,

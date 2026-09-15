@@ -168,7 +168,7 @@ function parseNode(data: unknown, path: string): NavigationNode {
 }
 
 function parseLeaf(data: Record<string, unknown>, path: string): NavigationNode {
-    if (typeof data.entryId !== "string" || !data.entryId)
+    if (typeof data.entryId !== "string" || !data.entryId.trim())
         throw new NavigationError(`Invalid entry ID at ${path}`);
     if (data.url !== undefined && typeof data.url !== "string")
         throw new NavigationError(`Invalid URL at ${path}`);

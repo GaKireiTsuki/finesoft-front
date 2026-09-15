@@ -1,4 +1,4 @@
-import { BaseController, type BasePage } from "@finesoft/front";
+import { markPublic, BaseController, type BasePage } from "@finesoft/front";
 
 /** 一个 feed 项。 */
 export interface FeedItem {
@@ -21,13 +21,16 @@ export class HomeController extends BaseController<Record<string, string>, FeedP
     readonly intentId = "home";
 
     execute(): FeedPage {
-        return {
-            id: "home",
-            pageType: "home",
-            url: "/",
-            title: "Feed",
-            description: "Tap an item to push a detail screen.",
-            items: ITEMS,
-        };
+        return markPublic(
+            {
+                id: "home",
+                pageType: "home",
+                url: "/",
+                title: "Feed",
+                description: "Tap an item to push a detail screen.",
+                items: ITEMS,
+            },
+            { items: { id: true, title: true } },
+        );
     }
 }

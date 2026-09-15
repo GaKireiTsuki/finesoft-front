@@ -1,114 +1,152 @@
-/**
- * serializeServerData — 将 PrefetchedIntents 数据序列化为安全的 JSON
- *
- * 输出可安全嵌入 `<script type="application/json">` 标签：HTML 特殊字符全部
- * Unicode-escape；行分隔符避免破坏 JS 解析；marker 字段按白名单裁剪 page 对象。
- */
-
-import { BASE_PAGE_FIELDS, getPublicFields, type PrefetchedIntent } from "@finesoft/web";
-
-const LINE_SEPARATOR = "\u2028";
-const PARAGRAPH_SEPARATOR = "\u2029";
-
-const HTML_REPLACEMENTS: Record<string, string> = {
-    "<": "\\u003C",
-    ">": "\\u003E",
-    "/": "\\u002F",
-    [LINE_SEPARATOR]: "\\u2028",
-    [PARAGRAPH_SEPARATOR]: "\\u2029",
-};
-
-// 构造 regex 时用 \uXXXX 转义，避免源码中直接写 U+2028 字面量 —— 部分 parser
-// （oxc/swc）会把它当 line terminator 报语法错。
-const HTML_ESCAPE_PATTERN = new RegExp("[<>/\\u2028\\u2029]", "g");
-
-let unmarkedPageWarned = false;
-
-/** @internal Test-only: reset the once-per-process unmarked-page warning flag. */
-export function __resetUnmarkedPageWarning(): void {
-    unmarkedPageWarned = false;
-}
+import {
+    BASE_PAGE_FIELDS,
+    getPublicFields,
+    FRAMEWORK_PROTOCOL_VERSION,
+    getFrameworkBuildId,
+    type PrefetchedIntent,
+    type PublicProjection,
+    type PublicValueCodec,
+} from "@finesoft/web";
 
 export interface SerializeServerDataOptions {
-    /**
-     * 没有 `markPublic` 标注的 page 怎么处理：
-     *
-     * - `"all"` (默认): 全字段序列化 + dev 启动后打印一次告警。向后兼容。
-     * - `"base-fields"`: 只保留 BasePage 标准字段 (id/pageType/title/description/url)。
-     *   下一个 major 会成为默认。
-     * - `"strict"`: 直接抛错。CI / 类型严格的场景用。
-     */
-    onUnmarkedPage?: "all" | "base-fields" | "strict";
+    readonly buildId?: string;
+    readonly onUnmarkedPage?: "base-fields" | "strict";
 }
-
+const MATERIALIZED = Symbol("materialized-public-data");
+/** Copy declared public data now; never keep request-backed objects/getters in a response. */
+export function materializeServerData(
+    data: PrefetchedIntent[],
+    options: SerializeServerDataOptions = {},
+): PrefetchedIntent[] {
+    if ((data as unknown as Record<symbol, unknown>)[MATERIALIZED]) return data;
+    const result = data.map((entry) => {
+        if (options.onUnmarkedPage === "strict" && getPublicFields(entry.data) === null)
+            throw Error("markPublic-required");
+        try {
+            return {
+                ...(entry.entryId ? { entryId: entry.entryId } : {}),
+                // Intent is an explicit framework protocol DTO, independently of Page field policy.
+                intent: {
+                    id: entry.intent.id,
+                    ...(entry.intent.params === undefined
+                        ? {}
+                        : { params: cloneJson(entry.intent.params, new Set()) }),
+                } as PrefetchedIntent["intent"],
+                data: project(entry.data, undefined, true, new Set()),
+            };
+        } catch {
+            // Do not let an arbitrary codec/getter exception reach default server diagnostics.
+            throw Error("public-materialization-failed");
+        }
+    });
+    Object.defineProperty(result, MATERIALIZED, { value: true });
+    return result;
+}
+/** The shared response assembler remains the single HTML-safe wire serializer owner. */
 export function serializeServerData(
     data: PrefetchedIntent[],
     options: SerializeServerDataOptions = {},
 ): string {
-    const mode = options.onUnmarkedPage ?? "all";
-    const sanitized = data.map((entry) => sanitizeIntent(entry, mode));
-    const json = JSON.stringify(sanitized);
-    return json.replace(HTML_ESCAPE_PATTERN, (match) => HTML_REPLACEMENTS[match] ?? match);
+    const json = JSON.stringify({
+        protocolVersion: FRAMEWORK_PROTOCOL_VERSION,
+        buildId: options.buildId ?? getFrameworkBuildId(),
+        payload: materializeServerData(data, options),
+    });
+    const escapes: Record<string, string> = {
+        "<": "\\u003C",
+        ">": "\\u003E",
+        "/": "\\u002F",
+        "&": "\\u0026",
+        "\u2028": "\\u2028",
+        "\u2029": "\\u2029",
+    };
+    return json.replace(/[<>/&\u2028\u2029]/g, (value) => escapes[value]!);
 }
-
-function sanitizeIntent(
-    entry: PrefetchedIntent,
-    mode: "all" | "base-fields" | "strict",
-): PrefetchedIntent {
-    const page = entry.data;
-    const marker = getPublicFields(page);
-
-    if (marker === true) return entry; // 显式 opt-out，原样
-    if (Array.isArray(marker)) {
-        return {
-            ...entry,
-            data: pick(page as Record<string, unknown>, marker) as typeof entry.data,
-        };
-    }
-
-    // 未标注 —— 按 onUnmarkedPage 决定
-    if (mode === "strict") {
-        throw new Error(
-            `[serializeServerData] page for intent "${entry.intent.id}" has no markPublic marker; ` +
-                `wrap it with markPublic(page, ["field", ...]) to declare client-visible fields.`,
-        );
-    }
-    if (mode === "base-fields") {
-        return {
-            ...entry,
-            data: pick(page as Record<string, unknown>, BASE_PAGE_FIELDS) as typeof entry.data,
-        };
-    }
-    warnUnmarkedPageOnce(entry.intent.id);
-    return entry;
-}
-
-function pick(obj: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    for (const f of fields) {
-        if (f in obj) out[f] = obj[f];
-    }
-    return out;
-}
-
-function warnUnmarkedPageOnce(intentId: string): void {
-    if (unmarkedPageWarned) return;
-    unmarkedPageWarned = true;
-    if (!isDev()) return;
-    console.warn(
-        `[finesoft/ssr] Page for intent "${intentId}" was serialized without markPublic(); all fields ` +
-            `(including any sensitive data) are exposed in the SSR HTML. Wrap your page with ` +
-            `markPublic(page, ["field", ...]) to declare client-visible fields explicitly. ` +
-            `The next major version will default to BasePage-only fields when no marker is present.`,
+function scalar(value: unknown): boolean {
+    return (
+        value === null ||
+        value === undefined ||
+        typeof value === "string" ||
+        typeof value === "boolean" ||
+        (typeof value === "number" && Number.isFinite(value))
     );
 }
-
-function isDev(): boolean {
+function isCodec(value: PublicProjection | PublicValueCodec): value is PublicValueCodec {
+    return value.kind === "codec" && typeof value.encode === "function";
+}
+function project(
+    value: unknown,
+    declaration: true | PublicProjection | PublicValueCodec | undefined,
+    base: boolean,
+    ancestors: Set<object>,
+): unknown {
+    if (declaration && declaration !== true && isCodec(declaration))
+        return cloneJson(declaration.encode(value), new Set());
+    if (scalar(value)) return value;
+    if (typeof value !== "object" || value === null) throw Error("invalid-public-value");
+    if (ancestors.has(value)) throw Error("cyclic-public-value");
+    ancestors.add(value);
     try {
-        const env = (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env
-            ?.NODE_ENV;
-        return env !== "production";
-    } catch {
-        return false;
+        if (Array.isArray(value)) {
+            if (!declaration || declaration === true) {
+                // An undeclared array does not grant permission to enumerate its contents.
+                if (!value.every((item) => getPublicFields(item) !== null)) return [];
+            }
+            return value.map((item) => project(item, declaration, false, ancestors));
+        }
+        const marker = declaration && declaration !== true ? declaration : getPublicFields(value);
+        const projection =
+            marker && marker !== true && !Array.isArray(marker)
+                ? (marker as PublicProjection)
+                : undefined;
+        const fields =
+            marker === true
+                ? Object.keys(value)
+                : [
+                      ...(base ? BASE_PAGE_FIELDS : []),
+                      ...(Array.isArray(marker)
+                          ? marker
+                          : projection
+                            ? Object.keys(projection)
+                            : []),
+                  ];
+        const result: Record<string, unknown> = Object.create(null);
+        for (const field of new Set(fields)) {
+            if (!(field in value)) continue;
+            const item = project(
+                (value as Record<string, unknown>)[field],
+                projection?.[field],
+                false,
+                ancestors,
+            );
+            if (item !== undefined) result[field] = item;
+        }
+        return result;
+    } finally {
+        ancestors.delete(value);
+    }
+}
+/** Explicit codecs may emit JSON records/arrays; methods, class instances and cycles are rejected. */
+function cloneJson(value: unknown, ancestors: Set<object>): unknown {
+    if (scalar(value)) return value;
+    if (typeof value !== "object" || value === null || ancestors.has(value))
+        throw Error("invalid-codec-value");
+    if (
+        !Array.isArray(value) &&
+        Object.getPrototypeOf(value) !== Object.prototype &&
+        Object.getPrototypeOf(value) !== null
+    )
+        throw Error("invalid-codec-value");
+    ancestors.add(value);
+    try {
+        if (Array.isArray(value)) return value.map((item) => cloneJson(item, ancestors));
+        const result: Record<string, unknown> = Object.create(null);
+        for (const field of Object.keys(value)) {
+            const item = cloneJson((value as Record<string, unknown>)[field], ancestors);
+            if (item !== undefined) result[field] = item;
+        }
+        return result;
+    } finally {
+        ancestors.delete(value);
     }
 }

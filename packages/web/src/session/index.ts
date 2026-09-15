@@ -5,6 +5,13 @@
 // ===== Types =====
 export {
     isUrlLocation,
+    StorageUnavailableError,
+    type AsyncStorage,
+    type SessionSlice,
+    type SessionFailure,
+    type SessionWriteResult,
+    type SessionLoadResult,
+    type SessionRestoreResult,
     SESSION_DEFAULT_KEY,
     SESSION_DEFAULT_VERSION,
     SessionError,

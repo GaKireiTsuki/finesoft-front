@@ -76,10 +76,17 @@ function makeStore(
         scope,
         capture: vi.fn(() => snap()),
         persist: vi.fn(),
-        load: vi.fn(over.load ?? (() => undefined)),
-        restore: vi.fn(over.restore ?? (() => undefined)),
-        clear: vi.fn(),
-        save: vi.fn(),
+        load: vi.fn(async () => {
+            const snapshot = over.load?.();
+            return snapshot ? { status: "loaded", snapshot } : { status: "missing" };
+        }),
+        restore: vi.fn(async (snapshot?: SessionSnapshot) => {
+            await over.restore?.(snapshot);
+            return { status: "restored" };
+        }),
+        clear: vi.fn(async () => ({ status: "cleared" })),
+        save: vi.fn(async () => ({ status: "saved" })),
+        dispose: vi.fn(async () => {}),
     };
 }
 
@@ -128,8 +135,8 @@ beforeEach(() => {
 // createSessionBridge —— 自动捕获（防抖 + 生命周期事件）
 // =====================================================================
 
-describe("createSessionBridge — auto-capture", () => {
-    test("nav change debounces save (fires once after debounceMs)", () => {
+describe("createSessionBridge — auto-capture", async () => {
+    test("nav change debounces save (fires once after debounceMs)", async () => {
         const win = makeEventTarget();
         const doc = makeEventTarget();
         vi.stubGlobal("window", win);
@@ -157,10 +164,10 @@ describe("createSessionBridge — auto-capture", () => {
         vi.advanceTimersByTime(1);
         expect(store.save).toHaveBeenCalledTimes(1); // 三次合并为一次
 
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("uses SESSION_DEFAULT_DEBOUNCE_MS when debounceMs omitted", () => {
+    test("uses SESSION_DEFAULT_DEBOUNCE_MS when debounceMs omitted", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
 
@@ -181,10 +188,10 @@ describe("createSessionBridge — auto-capture", () => {
         vi.advanceTimersByTime(1);
         expect(store.save).toHaveBeenCalledTimes(1);
 
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("nav change prunes scope to presentKeys (pop B drops B before save)", () => {
+    test("nav change prunes scope to presentKeys (pop B drops B before save)", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
 
@@ -210,10 +217,10 @@ describe("createSessionBridge — auto-capture", () => {
         expect(store.scope.get("A {}")).toEqual({ scroll: 10 });
         expect(store.scope.get("B {}")).toBeUndefined();
 
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("pagehide flushes immediately and cancels the pending debounce", () => {
+    test("pagehide flushes immediately and cancels the pending debounce", async () => {
         const win = makeEventTarget();
         vi.stubGlobal("window", win);
         vi.stubGlobal("document", makeEventTarget());
@@ -238,10 +245,10 @@ describe("createSessionBridge — auto-capture", () => {
         vi.advanceTimersByTime(1000);
         expect(store.save).toHaveBeenCalledTimes(1);
 
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("visibilitychange flushes only when document is hidden", () => {
+    test("visibilitychange flushes only when document is hidden", async () => {
         const doc = makeEventTarget() as ReturnType<typeof makeEventTarget> & {
             visibilityState: string;
         };
@@ -263,7 +270,7 @@ describe("createSessionBridge — auto-capture", () => {
         doc.dispatch("visibilitychange");
         expect(store.save).toHaveBeenCalledTimes(1); // 隐藏 → 立即落盘
 
-        bridge.dispose();
+        await bridge.dispose();
     });
 });
 
@@ -271,7 +278,7 @@ describe("createSessionBridge — auto-capture", () => {
 // restore + shouldRestore 门控矩阵
 // =====================================================================
 
-describe("createSessionBridge — restore gate", () => {
+describe("createSessionBridge — restore gate", async () => {
     function bridgeWith(loaded: SessionSnapshot | undefined): {
         store: ReturnType<typeof makeStore>;
         bridge: SessionHandle;
@@ -283,58 +290,58 @@ describe("createSessionBridge — restore gate", () => {
         return { store, bridge };
     }
 
-    test("no persisted snapshot → restore not called", () => {
+    test("no persisted snapshot → restore not called", async () => {
         const { store, bridge } = bridgeWith(undefined);
-        void bridge.restore("/anything");
+        await bridge.restore("/anything");
         expect(store.restore).not.toHaveBeenCalled();
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("flat snapshot: same url → restored", () => {
-        const s = snap({ navigation: { url: "/posts/7" } });
+    test("flat snapshot: same url → restored", async () => {
+        const s = snap({ navigation: { entryId: "fixture-flat", url: "/posts/7" } });
         const { store, bridge } = bridgeWith(s);
-        void bridge.restore("/posts/7");
+        await bridge.restore("/posts/7");
         expect(store.restore).toHaveBeenCalledWith(s);
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("flat snapshot: different deep-link url → NOT restored", () => {
-        const s = snap({ navigation: { url: "/posts/7" } });
+    test("flat snapshot: different deep-link url → NOT restored", async () => {
+        const s = snap({ navigation: { entryId: "fixture-flat", url: "/posts/7" } });
         const { store, bridge } = bridgeWith(s);
-        void bridge.restore("/posts/99");
+        await bridge.restore("/posts/99");
         expect(store.restore).not.toHaveBeenCalled();
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("flat snapshot: at root / → restored", () => {
-        const s = snap({ navigation: { url: "/posts/7" } });
+    test("flat snapshot: at root / → restored", async () => {
+        const s = snap({ navigation: { entryId: "fixture-flat", url: "/posts/7" } });
         const { store, bridge } = bridgeWith(s);
-        void bridge.restore("/?ref=x#frag");
+        await bridge.restore("/?ref=x#frag");
         expect(store.restore).toHaveBeenCalledWith(s);
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("structured snapshot: at root / → restored", () => {
+    test("structured snapshot: at root / → restored", async () => {
         const s = snap({
             navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
         });
         const { store, bridge } = bridgeWith(s);
-        void bridge.restore("/");
+        await bridge.restore("/");
         expect(store.restore).toHaveBeenCalledWith(s);
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("structured snapshot: at non-root /x → NOT restored", () => {
+    test("structured snapshot: at non-root /x → NOT restored", async () => {
         const s = snap({
             navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
         });
         const { store, bridge } = bridgeWith(s);
-        void bridge.restore("/x");
+        await bridge.restore("/x");
         expect(store.restore).not.toHaveBeenCalled();
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("structured snapshot with url: same deep link → restored", () => {
+    test("structured snapshot with url: same deep link → restored", async () => {
         const s = snap({
             navigation: {
                 kind: "leaf",
@@ -345,12 +352,12 @@ describe("createSessionBridge — restore gate", () => {
             url: "/item/1",
         });
         const { store, bridge } = bridgeWith(s);
-        void bridge.restore("/item/1");
+        await bridge.restore("/item/1");
         expect(store.restore).toHaveBeenCalledWith(s);
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("structured snapshot with url: different deep link → NOT restored", () => {
+    test("structured snapshot with url: different deep link → NOT restored", async () => {
         const s = snap({
             navigation: {
                 kind: "leaf",
@@ -361,21 +368,21 @@ describe("createSessionBridge — restore gate", () => {
             url: "/item/1",
         });
         const { store, bridge } = bridgeWith(s);
-        void bridge.restore("/item/2");
+        await bridge.restore("/item/2");
         expect(store.restore).not.toHaveBeenCalled();
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("slices-only snapshot (no navigation) → restored regardless of url", () => {
+    test("slices-only snapshot (no navigation) → restored regardless of url", async () => {
         const s = snap({ slices: { theme: "dark" } });
         const { store, bridge } = bridgeWith(s);
-        void bridge.restore("/deep/link");
+        await bridge.restore("/deep/link");
         expect(store.restore).toHaveBeenCalledWith(s);
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("custom shouldRestore overrides the default policy", () => {
-        const s = snap({ navigation: { url: "/posts/7" } });
+    test("custom shouldRestore overrides the default policy", async () => {
+        const s = snap({ navigation: { entryId: "fixture-flat", url: "/posts/7" } });
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore({ load: () => s });
@@ -384,9 +391,9 @@ describe("createSessionBridge — restore gate", () => {
             adapter: makeAdapter(() => []),
             shouldRestore: () => true, // 始终恢复，即便深链不匹配
         });
-        void bridge.restore("/posts/99");
+        await bridge.restore("/posts/99");
         expect(store.restore).toHaveBeenCalledWith(s);
-        bridge.dispose();
+        await bridge.dispose();
     });
 
     test("restore forwards the async restore Promise", async () => {
@@ -403,7 +410,7 @@ describe("createSessionBridge — restore gate", () => {
         const bridge = build({ store, adapter: makeAdapter(() => []) });
         await bridge.restore("/");
         expect(resolved).toBe(true);
-        bridge.dispose();
+        await bridge.dispose();
     });
 });
 
@@ -411,22 +418,22 @@ describe("createSessionBridge — restore gate", () => {
 // 手动逃生口 + dispose
 // =====================================================================
 
-describe("createSessionBridge — handle + dispose", () => {
-    test("save/clear delegate to the store", () => {
+describe("createSessionBridge — handle + dispose", async () => {
+    test("save/clear delegate to the store", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore();
         const bridge = build({ store, adapter: makeAdapter(() => []) });
 
-        bridge.save();
+        await bridge.save();
         expect(store.save).toHaveBeenCalledTimes(1);
-        bridge.clear();
+        await bridge.clear();
         expect(store.clear).toHaveBeenCalledTimes(1);
 
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("dispose removes listeners, unsubscribes nav, and clears the timer", () => {
+    test("dispose removes listeners, unsubscribes nav, and clears the timer", async () => {
         const win = makeEventTarget();
         const doc = makeEventTarget();
         vi.stubGlobal("window", win);
@@ -450,7 +457,7 @@ describe("createSessionBridge — handle + dispose", () => {
         expect(doc.listenerCount("visibilitychange")).toBe(1);
 
         onChange?.(); // 排一个挂起的防抖
-        bridge.dispose();
+        await bridge.dispose();
 
         // 取消订阅 + 解绑全部监听 + 清挂起定时器。
         expect(unsub).toHaveBeenCalledTimes(1);
@@ -458,12 +465,12 @@ describe("createSessionBridge — handle + dispose", () => {
         expect(doc.listenerCount("visibilitychange")).toBe(0);
 
         vi.advanceTimersByTime(1000);
-        expect(store.save).not.toHaveBeenCalled(); // 挂起的防抖已清
+        expect(store.save).toHaveBeenCalledTimes(1); // pending debounce flushed before shutdown
 
         // dispose 后再 dispatch 事件无副作用。
         win.dispatch("pagehide");
         doc.dispatch("visibilitychange");
-        expect(store.save).not.toHaveBeenCalled();
+        expect(store.save).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -471,16 +478,16 @@ describe("createSessionBridge — handle + dispose", () => {
 // defaultShouldRestore（直接单测策略边界）
 // =====================================================================
 
-describe("defaultShouldRestore", () => {
-    test("flat: same url true, different false, root true", () => {
-        const s = snap({ navigation: { url: "/a/b" } });
+describe("defaultShouldRestore", async () => {
+    test("flat: same url true, different false, root true", async () => {
+        const s = snap({ navigation: { entryId: "fixture-flat", url: "/a/b" } });
         expect(defaultShouldRestore(s, "/a/b")).toBe(true); // 全等命中（重载同 URL）
         expect(defaultShouldRestore(s, "/a/c")).toBe(false); // 不同深链 → 跳过
         expect(defaultShouldRestore(s, "/")).toBe(true); // 根入口 → 恢复
         expect(defaultShouldRestore(s, "/?q=1#h")).toBe(true); // 根判定剥离 query/hash
     });
 
-    test("structured (no url): root true, non-root false（旧快照回退策略）", () => {
+    test("structured (no url): root true, non-root false（旧快照回退策略）", async () => {
         const s = snap({
             navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
         });
@@ -488,7 +495,7 @@ describe("defaultShouldRestore", () => {
         expect(defaultShouldRestore(s, "/x")).toBe(false);
     });
 
-    test("structured with comparable url: same true, different false, root true（与扁平对称）", () => {
+    test("structured with comparable url: same true, different false, root true（与扁平对称）", async () => {
         const s = snap({
             navigation: {
                 kind: "leaf",
@@ -504,14 +511,14 @@ describe("defaultShouldRestore", () => {
         expect(defaultShouldRestore(s, "/?q=1#h")).toBe(true); // 根判定剥离 query/hash
     });
 
-    test("snapshot.url 优先于 nav.url（带 url 字段时以它为准）", () => {
+    test("snapshot.url 优先于 nav.url（带 url 字段时以它为准）", async () => {
         // url 与 nav.url 不一致时，门控以 snapshot.url 为准（它是 capture 时刻的真实位置）。
-        const s = snap({ navigation: { url: "/stale" }, url: "/item/9" });
+        const s = snap({ navigation: { entryId: "fixture-flat", url: "/stale" }, url: "/item/9" });
         expect(defaultShouldRestore(s, "/item/9")).toBe(true);
         expect(defaultShouldRestore(s, "/stale")).toBe(false);
     });
 
-    test("no navigation: always true", () => {
+    test("no navigation: always true", async () => {
         const s = snap({ slices: { a: 1 } });
         expect(defaultShouldRestore(s, "/anything/deep")).toBe(true);
     });
@@ -521,8 +528,8 @@ describe("defaultShouldRestore", () => {
 // createSessionBridge —— scope 暴露（导航作用域读写）
 // =====================================================================
 
-describe("createSessionBridge — scope handle", () => {
-    test("handle.scope 委托 store.scope（读写互通）", () => {
+describe("createSessionBridge — scope handle", async () => {
+    test("handle.scope 委托 store.scope（读写互通）", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore();
@@ -531,10 +538,10 @@ describe("createSessionBridge — scope handle", () => {
         bridge.scope.set("home {}", { q: "hi" });
         expect(store.scope.get("home {}")).toEqual({ q: "hi" });
         expect(bridge.scope.get("home {}")).toEqual({ q: "hi" });
-        bridge.dispose();
+        await bridge.dispose();
     });
 
-    test("handle.scope 始终取最新 store.scope 实例（restore 重建后不失效）", () => {
+    test("handle.scope 始终取最新 store.scope 实例（restore 重建后不失效）", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore();
@@ -549,6 +556,49 @@ describe("createSessionBridge — scope handle", () => {
         };
         (store as { scope: unknown }).scope = fresh;
         expect(bridge.scope.get("anything")).toBe("restored");
-        bridge.dispose();
+        await bridge.dispose();
     });
+});
+
+test("startup pause prevents hydration events from overwriting persisted drafts and disposal awaits pending writes", async () => {
+    vi.useRealTimers();
+    const { createSessionStore } = await import("@finesoft/web");
+    const win = makeEventTarget(),
+        doc = makeEventTarget();
+    vi.stubGlobal("window", win);
+    vi.stubGlobal("document", doc);
+    let releaseWrite!: () => void;
+    const set = vi.fn(async () => {
+        await new Promise<void>((resolve) => {
+            releaseWrite = resolve;
+        });
+    });
+    const store = createSessionStore({
+        storage: { get: async () => undefined, set, delete: async () => {} },
+    });
+    let navigation!: () => void;
+    const bridge = createSessionBridge({
+        store,
+        adapter: makeAdapter(() => []),
+        debounceMs: 0,
+        deferPersistenceUntilRestore: true,
+        subscribeNavigation: (callback) => {
+            navigation = callback;
+            return () => {};
+        },
+    });
+    navigation();
+    win.dispatch("pagehide");
+    expect(set).not.toHaveBeenCalled();
+    expect(await bridge.restore("/")).toEqual({ status: "missing" });
+    navigation();
+    let closed = false;
+    const closing = bridge.dispose().then(() => {
+        closed = true;
+    });
+    await vi.waitFor(() => expect(set).toHaveBeenCalledTimes(1));
+    expect(closed).toBe(false);
+    releaseWrite();
+    await closing;
+    expect(await bridge.save()).toEqual({ status: "closed" });
 });
