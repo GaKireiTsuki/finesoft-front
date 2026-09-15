@@ -174,15 +174,15 @@ export default createWorkerHandler({ runtime, endpoints });
 
 ## 原有责任如何收敛
 
-| 原位置                                    | 现在的单一所有者                 | 应用仍需声明                 |
-| ----------------------------------------- | -------------------------------- | ---------------------------- |
-| Framework/IntentDispatcher 的分散业务装配 | Core Runtime/Execution           | 操作、实现、提供者和业务策略 |
-| URL、树、SSR 的分散页面策略               | Web PageLoader                   | 路由与导航目标、守卫         |
-| 三套模板各自 mount/update/hydrate         | Browser starter + 对应原生适配器 | UI 组件、视图表和所选策略    |
-| Node、生成包装、静态 HTML 各自注入        | shared SSR handler/host          | 页面渲染器、模板和主机配置   |
-| 全栈根入口的环境混入                      | 明确的公开子入口                 | 只安装所选环境/UI peers      |
+| 原位置                                    | 现在的单一所有者                      | 应用仍需声明                 |
+| ----------------------------------------- | ------------------------------------- | ---------------------------- |
+| Framework/IntentDispatcher 的分散业务装配 | Core Runtime/Execution                | 操作、实现、提供者和业务策略 |
+| URL、树、SSR 的分散页面策略               | Web NavigationController / PageLoader | 路由与导航目标、守卫         |
+| 三套模板各自 mount/update/hydrate         | Browser starter + 对应原生适配器      | UI 组件、视图表和所选策略    |
+| Node、生成包装、静态 HTML 各自注入        | shared SSR handler/host               | 页面渲染器、模板和主机配置   |
+| 全栈根入口的环境混入                      | 明确的公开子入口                      | 只安装所选环境/UI peers      |
 
-静态 adapter 现在读取 built `render.routes`，动态路径通过 `dynamicRoutes`，替代发现模块通过显式 `routesExport`。发现/渲染失败会使构建失败，输出前先完成全部渲染。纯 HTML 不能表达非 200 状态、重定向、Set-Cookie 或自定义 HTTP 响应头，因此明确拒绝这些结果；需要它们时选择 request host。共享 HTML 缓存仍先运行当次 guards/render，再判断公开 HTML 能否复用，不能描述成跳过页面业务。
+静态 adapter 现在读取 built `render.routes`，动态路径通过 `dynamicRoutes`，替代发现模块通过显式 `routesExport`。每次构建按 buildId 加载独立 SSR / routesExport 模块，防止同进程重建复用已释放 renderer 或旧路由。发现/渲染失败会使构建失败，输出前先完成全部渲染。纯 HTML 不能表达非 200 状态、重定向、Set-Cookie 或自定义 HTTP 响应头，因此明确拒绝这些结果；需要它们时选择 request host。共享 HTML 缓存仍先运行当次 guards/render，再判断公开 HTML 能否复用，不能描述成跳过页面业务。
 
 ## 成本与限制
 
