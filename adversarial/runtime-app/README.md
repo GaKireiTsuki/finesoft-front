@@ -29,7 +29,8 @@ Worker, then call `runtime.execute(inspect, n, {identity: "fixture-authorized", 
 it before returning. A response with a body keeps it alive until the consumer reads EOF, cancels
 the body, aborts the request, or encounters a read failure. Consumers must consume or cancel
 bodies they abandon. Producers must cooperate with cancellation and await their own I/O cleanup
-in their stream's `cancel` callback. Cancellation does not roll back writes.
+in their stream's `cancel` callback. Pending reads cannot release the scope ahead of that callback.
+Cancellation does not roll back writes.
 
 `runManagedTask(context, async taskContext => {...})` registers work while the request is being
 handled. A supported host is required before the callback starts. The callback gets a separate
@@ -39,12 +40,18 @@ lifetime. Await all work in the callback; do not return streams or leave detache
 The host's `waitUntil` receives a promise that includes task scope disposal on success or failure.
 Response completion/cancellation releases request resources without cancelling managed work.
 Nested task scheduling is deliberately unsupported. Node's `startNodeHandler().dispose()` stops
-accepting connections, drains active responses and managed tasks, then disposes an explicitly
-transferred runtime. Hosts retaining their own runtime must drain registered tasks before disposing
+accepting connections, drains full handler/response lifetimes (including disconnected encoders) and
+managed tasks, then disposes an explicitly
+transferred runtime. `onTaskError(error)` reports callback and cleanup failures and is awaited during
+drain; the default reporter uses `console.error`. If both fail, it receives an AggregateError containing
+both failures. Hosts retaining their own runtime must drain registered tasks before disposing
 it. Worker tasks inherit the host's limits and shutdown behavior; this is not a durable queue.
 
 `createSSRHandler` owns only portable HTML response assembly and its bounded public HTML cache.
-Its `render` callback owns application execution; Task 4 must use the Runtime for policies/data
+Its `render` callback owns application execution. Hosts that load modules per request may provide
+`loadModule(request)` instead of static render/serializeServerData callbacks. The shared handler
+selects the serializer from that invocation's module only when HTML data injection requires it.
+Task 4 must use the Runtime for policies/data
 and finish request execution before returning its materialized HTML result. The SSR handler calls
 render on every request, including cache hits, so current guards cannot be bypassed. Shared HTML
 caching requires `cache: "public"`, prerender mode, status 200 and no response metadata. Requests

@@ -53,6 +53,8 @@ export function defineEndpoint<I, O>(options: EndpointOptions<I, O>): HttpEndpoi
 export interface HttpHost {
     /** The host must retain the supplied promise, including its resource cleanup. */
     waitUntil(promise: Promise<unknown>): void;
+    /** Retain the complete invocation, including encoding, body consumption/cancel and cleanup. */
+    trackRequest?(completion: Promise<void>): void;
 }
 export interface HttpHandlerOptions {
     readonly runtime: RuntimeHandle;
@@ -109,7 +111,13 @@ export function createHttpHandler(options: HttpHandlerOptions): HttpHandler {
         const signal = AbortSignal.any([request.signal, abort.signal]);
         let execution: ExecutionHandle | undefined;
         let acceptingTasks = true;
+        let complete!: () => void;
+        const completion = new Promise<void>((resolve) => {
+            complete = resolve;
+        });
+        let responseOwnsCompletion = false;
         try {
+            host?.trackRequest?.(completion);
             const invocation = await options.context?.(request, bindings);
             const requestBindings = { ...bindings, ...invocation?.bindings };
             // Callback and bindings are created for every request; the runtime captures no host.
@@ -122,9 +130,27 @@ export function createHttpHandler(options: HttpHandlerOptions): HttpHandler {
                     bindings: { ...requestBindings, [TASK_BINDING]: undefined },
                 });
                 let registered = false;
-                const work = Promise.resolve()
-                    .then(() => (registered ? task(taskExecution.context) : undefined))
-                    .finally(() => taskExecution.dispose());
+                const work = Promise.resolve().then(async () => {
+                    let failed = false;
+                    let taskError: unknown;
+                    try {
+                        if (registered) await task(taskExecution.context);
+                    } catch (error) {
+                        failed = true;
+                        taskError = error;
+                    }
+                    try {
+                        await taskExecution.dispose();
+                    } catch (error) {
+                        if (failed)
+                            throw new AggregateError(
+                                [taskError, error],
+                                "Managed task and cleanup failed",
+                            );
+                        throw error;
+                    }
+                    if (failed) throw taskError;
+                });
                 // A synchronous host rejection skips the callback but still observes scope cleanup.
                 try {
                     host.waitUntil(work);
@@ -145,7 +171,9 @@ export function createHttpHandler(options: HttpHandlerOptions): HttpHandler {
                 throw new ExecutionError("cancelled");
             }
             acceptingTasks = false;
-            return await ownResponse(response, execution, abort, signal);
+            const ownedResponse = await ownResponse(response, execution, abort, signal, complete);
+            responseOwnsCompletion = true;
+            return ownedResponse;
         } catch (error) {
             acceptingTasks = false;
             try {
@@ -154,6 +182,8 @@ export function createHttpHandler(options: HttpHandlerOptions): HttpHandler {
                 /* Cleanup details remain private. */
             }
             return publicError(signal.aborted ? new ExecutionError("cancelled") : error);
+        } finally {
+            if (!responseOwnsCompletion) complete();
         }
     };
 }
@@ -163,33 +193,41 @@ async function ownResponse(
     execution: ExecutionHandle,
     abort: AbortController,
     signal: AbortSignal,
+    complete: () => void,
 ): Promise<Response> {
     if (!response.body) {
         await execution.dispose();
+        complete();
         return response;
     }
     const reader = response.body.getReader();
     let finished: Promise<void> | undefined;
     let controller: ReadableStreamDefaultController<Uint8Array>;
-    const finish = () =>
-        (finished ??= (async () => {
+    // Set the terminal promise before calling reader.cancel: that call can settle a pending read
+    // immediately, while the source's asynchronous cancellation is still using scoped resources.
+    const finish = (cancellation?: { reason: unknown }) => {
+        if (finished) return finished;
+        finished = Promise.resolve().then(async () => {
             signal.removeEventListener("abort", onAbort);
+            try {
+                if (cancellation) await reader.cancel(cancellation.reason);
+            } catch {
+                /* Cancellation details are private; scope cleanup must still complete. */
+            }
             try {
                 await execution.dispose();
             } catch {
                 /* Resource cleanup failures are not public body data. */
+            } finally {
+                complete();
             }
-        })());
+        });
+        return finished;
+    };
     const onAbort = () => {
-        void (async () => {
-            try {
-                await reader.cancel(signal.reason);
-            } catch {
-                /* Still release the scope. */
-            }
-            await finish();
-            controller.error(new ExecutionError("cancelled"));
-        })();
+        void finish({ reason: signal.reason }).then(() =>
+            controller.error(new ExecutionError("cancelled")),
+        );
     };
     const body = new ReadableStream<Uint8Array>(
         {
@@ -217,12 +255,9 @@ async function ownResponse(
             },
             async cancel(reason) {
                 signal.removeEventListener("abort", onAbort);
+                const completion = finish({ reason });
                 abort.abort(reason);
-                try {
-                    await reader.cancel(reason);
-                } finally {
-                    await finish();
-                }
+                await completion;
             },
         },
         { highWaterMark: 0 },

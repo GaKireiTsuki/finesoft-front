@@ -375,3 +375,39 @@ function writeTempFile(root: string, relativePath: string, content: string): str
     writeFileSync(filePath, content);
     return filePath;
 }
+
+test.each(["redirect", "csr"] as const)(
+    "Node SSR does not serialize a %s response",
+    async (mode) => {
+        const root = createTempServerRoot({
+            "index.html": "<html><!--ssr-body--><!--ssr-data--></html>",
+        });
+        const serializeServerData = vi.fn(() => {
+            throw new Error("serializer must not run");
+        });
+        const app = createSSRApp({
+            root,
+            isProduction: false,
+            vite: {
+                transformIndexHtml: (_url: string, html: string) => html,
+                ssrLoadModule: async () => ({
+                    render: async () => ({
+                        html: "",
+                        head: "",
+                        css: "",
+                        serverData: undefined,
+                        ...(mode === "redirect"
+                            ? { redirect: { url: "/login", status: 307 } }
+                            : { renderMode: "csr" }),
+                    }),
+                    serializeServerData,
+                }),
+                ssrFixStacktrace: () => {},
+            } as never,
+        });
+        const response = await app.request("https://test/");
+        expect(response.status).toBe(mode === "redirect" ? 307 : 200);
+        expect(serializeServerData).not.toHaveBeenCalled();
+        if (mode === "redirect") expect(response.headers.get("location")).toBe("/login");
+    },
+);

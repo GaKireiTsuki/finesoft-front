@@ -158,3 +158,76 @@ test.each(["complete", "cancel", "error", "abort"] as const)(
         await runtime.dispose();
     },
 );
+
+test.each(["abort", "cancel"] as const)(
+    "pending read waits for asynchronous source %s before releasing scope",
+    async (mode) => {
+        const events: string[] = [];
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const operation = defineOperation({
+            id: "pending-cancel",
+            kind: "query",
+            handler: (_: undefined, ctx) => {
+                ctx.onDispose(() => {
+                    events.push("dispose");
+                });
+                return new Response(
+                    new ReadableStream<Uint8Array>(
+                        {
+                            async cancel() {
+                                events.push("cancel-start");
+                                await gate;
+                                events.push("cancel-end");
+                            },
+                        },
+                        { highWaterMark: 0 },
+                    ),
+                );
+            },
+        });
+        const runtime = createRuntime({
+            app: defineApp({ id: "cancel", operations: [operation] }),
+        });
+        const handler = createHttpHandler({
+            runtime,
+            endpoints: [
+                defineEndpoint({
+                    method: "GET",
+                    path: "/",
+                    operation,
+                    decode: () => undefined,
+                    encode: (response) => response,
+                }),
+            ],
+        });
+        const abort = new AbortController();
+        const response = await handler(new Request("https://test/", { signal: abort.signal }));
+        const reader = response.body!.getReader();
+        const reading = reader.read().then(
+            () => {
+                events.push("read-done");
+            },
+            () => {
+                events.push("read-rejected");
+            },
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+        const cancellation =
+            mode === "cancel" ? reader.cancel() : (abort.abort(), Promise.resolve());
+        await new Promise((resolve) => setImmediate(resolve));
+        try {
+            expect(events).not.toContain("dispose");
+            if (mode === "abort") expect(events).not.toContain("read-rejected");
+        } finally {
+            release();
+            await cancellation;
+            await reading;
+            await new Promise((resolve) => setImmediate(resolve));
+            await runtime.dispose();
+        }
+        expect(events.indexOf("cancel-end")).toBeLessThan(events.indexOf("dispose"));
+    },
+);

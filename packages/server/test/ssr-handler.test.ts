@@ -108,3 +108,34 @@ test("a warmed public cache cannot skip current request guards or replay into a 
     expect(response.headers.getSetCookie()).toEqual(["session=private"]);
     expect(await response.text()).toContain("personal");
 });
+
+test("per-request module selection retains each serializer and skips it on an HTML cache hit", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const serialized: string[] = [];
+    const handler = createSSRHandler({
+        template,
+        loadModule: (request) => {
+            const name = new URL(request.url).pathname;
+            return {
+                render: async () => {
+                    if (name === "/first") await gate;
+                    return { ...base, renderMode: "prerender", cache: "public" };
+                },
+                serializeServerData: (data) => {
+                    serialized.push(name);
+                    return JSON.stringify({ name, data });
+                },
+            };
+        },
+    });
+    const first = handler(new Request("https://test/first"));
+    const second = await handler(new Request("https://test/second"));
+    release();
+    expect(await (await first).text()).toContain('"name":"/first"');
+    expect(await second.text()).toContain('"name":"/second"');
+    await handler(new Request("https://test/second"));
+    expect(serialized).toEqual(["/second", "/first"]);
+});

@@ -9,11 +9,8 @@ export function createWorkerHandler(options: HttpHandlerOptions) {
             bindings: Readonly<Record<string, unknown>> = {},
             context?: HttpHost,
         ): Promise<Response> {
-            return handler(
-                request,
-                bindings,
-                context && { waitUntil: (promise) => context.waitUntil(promise) },
-            );
+            // Calls in the handler use host.method(), retaining the original host receiver.
+            return handler(request, bindings, context);
         },
     };
 }

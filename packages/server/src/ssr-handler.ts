@@ -34,7 +34,7 @@ export interface SSRCache {
     get(key: string): string | null | undefined | Promise<string | null | undefined>;
     set(key: string, html: string): void | Promise<void>;
 }
-export interface SSRHandlerOptions extends SSRModule {
+interface SSRHandlerBaseOptions {
     template: string | ((request: Request) => string | Promise<string>);
     renderModes?: Record<string, string>;
     defaultLocale?: string;
@@ -49,6 +49,14 @@ export interface SSRHandlerOptions extends SSRModule {
     onError?: (error: unknown) => void;
     publicCacheHeaders?: Record<string, string>;
 }
+/** Load a module per invocation when the host selects its renderer/serializer dynamically. */
+export type SSRHandlerOptions = SSRHandlerBaseOptions &
+    (
+        | SSRModule
+        | {
+              loadModule: (request: Request) => SSRModule | Promise<SSRModule>;
+          }
+    );
 export function matchRenderModeOverride(
     url: string,
     renderModes?: Record<string, string>,
@@ -101,7 +109,8 @@ export function createSSRHandler(options: SSRHandlerOptions) {
             if (override === "csr") return respond(injectCSRShell(template, defaultLocale));
             const publicRequest =
                 !request.headers.has("cookie") && !request.headers.has("authorization");
-            const result = await options.render(url, {
+            const module = "loadModule" in options ? await options.loadModule(request) : options;
+            const result = await module.render(url, {
                 request,
                 bindings,
                 safeFetch: options.safeFetch,
@@ -142,7 +151,7 @@ export function createSSRHandler(options: SSRHandlerOptions) {
                           html: result.html,
                           head: result.head,
                           css: result.css,
-                          serializedData: options.serializeServerData(result.serverData),
+                          serializedData: module.serializeServerData(result.serverData),
                           slots: result.slots,
                           locale,
                       });

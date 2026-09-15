@@ -106,13 +106,7 @@ export function createSSRApp(options: SSRAppOptions): Hono<{ Bindings: Record<st
     const handler = createSSRHandler({
         template: (request) =>
             readTemplate(new URL(request.url).pathname + new URL(request.url).search),
-        render: async (url, context) => {
-            const module = await loadSSRModule();
-            const result = await module.render(url, context);
-            return { ...result, serverData: module.serializeServerData(result.serverData) };
-        },
-        // Serialization remains module-specific; the rendered result travels with its serializer.
-        serializeServerData: (data) => String(data),
+        loadModule: () => loadSSRModule(),
         renderModes,
         defaultLocale,
         fetch: parentFetch,
