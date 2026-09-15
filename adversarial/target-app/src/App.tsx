@@ -1,4 +1,4 @@
-import type { Action, BasePage } from "@finesoft/front";
+import type { Action, BasePage } from "@finesoft/front/browser";
 
 interface AppProps {
     page?: BasePage | null;

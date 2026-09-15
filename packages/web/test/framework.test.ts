@@ -1,10 +1,10 @@
+import { fixtureDefinition } from "./helpers/definition";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { ACTION_KINDS } from "../src/actions/types";
 import { DEP_KEYS } from "@finesoft/core";
 import { Framework } from "../src/framework";
 import { next, redirect } from "../src/middleware/types";
 import { PrefetchedIntents } from "../src/prefetched-intents/prefetched-intents";
-import type { Router } from "../src/router/router";
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -20,23 +20,34 @@ describe("Framework", () => {
             }),
         };
         const framework = Framework.create({
+            definition: fixtureDefinition([{ path: "/", intentId: "cached", controller }]),
             prefetchedIntents: PrefetchedIntents.fromArray([
                 {
+                    entryId: "cached-entry",
                     intent: { id: "cached", params: { page: "1" } },
                     data: page,
                 },
             ]),
         });
-        framework.registerIntent(controller);
 
-        await expect(framework.dispatch({ id: "cached", params: { page: "1" } })).resolves.toBe(
-            page,
-        );
+        await expect(
+            framework.dispatch(
+                { id: "cached", params: { page: "1" } },
+                undefined,
+                undefined,
+                "cached-entry",
+            ),
+        ).resolves.toBe(page);
         expect(controller.perform).not.toHaveBeenCalled();
     });
 
     test("creates routes, dispatches intents, performs actions, and exposes configured services", async () => {
+        const controller = {
+            intentId: "home",
+            perform: vi.fn(() => makePage("home")),
+        };
         const framework = Framework.create({
+            definition: fixtureDefinition([{ path: "/", intentId: "home", controller }]),
             locale: "en-US",
             platform: {
                 os: "macos",
@@ -46,14 +57,7 @@ describe("Framework", () => {
                 isTouch: false,
             },
             _resolvedMessages: { hello: "Hello" },
-            setupRoutes(router: Router) {
-                router.add("/", "home");
-            },
         } as never);
-        const controller = {
-            intentId: "home",
-            perform: vi.fn(() => makePage("home")),
-        };
         const actionHandler = vi.fn();
         const metrics = {
             record: vi.fn(),
@@ -61,7 +65,6 @@ describe("Framework", () => {
             recordEvent: vi.fn(),
         };
 
-        framework.registerIntent(controller);
         framework.onAction(ACTION_KINDS.EXTERNAL_URL, actionHandler);
         framework.container.register(DEP_KEYS.METRICS, () => metrics);
 
@@ -97,7 +100,7 @@ describe("Framework", () => {
     });
 
     test("runs global and route-level guards in order", async () => {
-        const framework = Framework.create();
+        const framework = Framework.create({ definition: fixtureDefinition() });
         const beforeGlobal = vi.fn(async () => next());
         const beforeRoute = vi.fn(async () => redirect("/login"));
         const afterGlobal = vi.fn(async () => next());
@@ -144,7 +147,7 @@ describe("Framework", () => {
     });
 
     test("disposes the container", async () => {
-        const framework = Framework.create();
+        const framework = Framework.create({ definition: fixtureDefinition() });
 
         await framework.dispose();
 

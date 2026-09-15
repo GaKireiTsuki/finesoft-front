@@ -1,5 +1,4 @@
 import type { TranslationMessages } from "@finesoft/core";
-import { resolveGeneratedMessages } from "./generated-loader";
 export type { TranslationMessages } from "@finesoft/core";
 export interface MessagesLoaderContext {
     readonly runtime: "server" | "browser";
@@ -35,5 +34,5 @@ export async function resolveConfiguredMessages(
         return loadMessages(locale, context);
     }
 
-    return resolveGeneratedMessages(locale, context);
+    return undefined;
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BasePage } from "@finesoft/front";
+import type { BasePage } from "@finesoft/front/browser";
 
 defineProps<{ page: BasePage }>();
 </script>

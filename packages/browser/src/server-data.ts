@@ -1,5 +1,4 @@
 import { PrefetchedIntents, decodeWireEnvelope, type WireDecodeResult } from "@finesoft/web";
-export const SERVER_DATA_ID = "serialized-server-data";
 export interface ServerDataSource {
     /** An explicitly selected script, scoped by the caller to this app instance. */
     readonly script: Pick<HTMLScriptElement, "textContent" | "parentNode"> | null;

@@ -40,6 +40,30 @@
         "./core": {
             "types": "./dist/core.d.mts",
             "import": "./dist/core.mjs"
+        },
+        "./renderers/react/browser": {
+            "types": "./dist/renderers/react/browser.d.mts",
+            "import": "./dist/renderers/react/browser.mjs"
+        },
+        "./renderers/react/server": {
+            "types": "./dist/renderers/react/server.d.mts",
+            "import": "./dist/renderers/react/server.mjs"
+        },
+        "./renderers/vue/browser": {
+            "types": "./dist/renderers/vue/browser.d.mts",
+            "import": "./dist/renderers/vue/browser.mjs"
+        },
+        "./renderers/vue/server": {
+            "types": "./dist/renderers/vue/server.d.mts",
+            "import": "./dist/renderers/vue/server.mjs"
+        },
+        "./renderers/svelte/browser": {
+            "types": "./dist/renderers/svelte/browser.d.mts",
+            "import": "./dist/renderers/svelte/browser.mjs"
+        },
+        "./renderers/svelte/server": {
+            "types": "./dist/renderers/svelte/server.d.mts",
+            "import": "./dist/renderers/svelte/server.mjs"
         }
     },
     "scripts": {
@@ -57,8 +81,13 @@
         "@finesoft/web": "workspace:*",
         "@hono/node-server": "^2.1.0",
         "@types/node": "catalog:",
+        "@types/react": "^19.2.18",
+        "@types/react-dom": "^19.2.4",
         "dotenv": "^17.4.2",
         "hono": "^4.13.1",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8",
+        "svelte": "^5.55.1",
         "vite": "catalog:",
         "vite-plus": "catalog:",
         "vue": "^3.5.41"

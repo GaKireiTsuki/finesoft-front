@@ -1,4 +1,4 @@
-import { BaseController, type BasePage, type Container, markPublic } from "@finesoft/front";
+import { BaseController, type BasePage, type Container, markPublic } from "@finesoft/front/browser";
 import { timingSafeEqual } from "node:crypto";
 import { TRACED_USER } from "../middleware/trace-user";
 

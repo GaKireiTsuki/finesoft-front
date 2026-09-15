@@ -1,4 +1,4 @@
-import { markPublic, BaseController, makeFlowAction } from "@finesoft/front";
+import { markPublic, BaseController, makeFlowAction } from "@finesoft/front/browser";
 import type { ProductItem, SearchPage } from "../models/product";
 
 const ALL_PRODUCTS: ProductItem[] = [

@@ -14,7 +14,7 @@ export { registerActionHandlers, type ActionHandlerDependencies } from "./action
 export {
     startBrowserApp,
     type BrowserAppConfig,
-    type BrowserNavigationConfig,
+    type BrowserAppHandle,
     type BrowserSessionConfig,
 } from "./start-app";
 
@@ -26,15 +26,8 @@ export {
 } from "./navigation-bridge";
 
 // ===== Navigation Islands =====
-export {
-    createIslandOrchestrator,
-    type IslandHandle,
-    type IslandOrchestrator,
-    type IslandOrchestratorOptions,
-    type MountEntry,
-    type ResolvedEntry,
-} from "./navigation-islands";
-export { createAppHandle, type AppHandle } from "./app-handle";
+export type { ResolvedEntry } from "@finesoft/web";
+export type { BrowserRenderer, RenderContext, ViewHandle } from "./renderer";
 export { resolveIslandsShell, type IslandsShell } from "./islands-shell";
 
 // ===== Session =====
@@ -61,7 +54,6 @@ export { createPrefetchedIntentsFromDom, deserializeServerData } from "./server-
 export { BaseController, HttpClient, HttpError } from "@finesoft/core";
 export { Framework } from "@finesoft/web";
 export {
-    defineRoutes,
     isExternalUrlAction,
     isFlowAction,
     makeExternalUrlAction,

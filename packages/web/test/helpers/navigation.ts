@@ -1,5 +1,7 @@
 import { leaf as createLeaf } from "../../src/navigation/nodes";
-import { entryKey } from "../../src/navigation/keys";
+import { stableStringify } from "@finesoft/core";
+export const fixtureEntryId = (intent: string, params: RouteParams) =>
+    `${intent} ${stableStringify(params)}`;
 import type { RouteParams } from "../../src/router/types";
 
 /** Structural fixtures intentionally name their existing entries. Identity allocation is tested separately. */
@@ -8,7 +10,7 @@ export function leaf(
     params: RouteParams = {},
     options: { entryId?: string; url?: string } = {},
 ) {
-    return createLeaf(intent, params, { entryId: entryKey(intent, params), ...options });
+    return createLeaf(intent, params, { entryId: fixtureEntryId(intent, params), ...options });
 }
 
 /** Compare tree topology/targets independently of automatically allocated entry identity. */

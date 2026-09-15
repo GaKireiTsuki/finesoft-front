@@ -55,11 +55,18 @@ function keyOf(container: HTMLElement): string | undefined {
 
 export function createDomRestore(options: DomRestoreOptions): DomRestore {
     const { scope } = options;
+    let disposed = false;
+    const frames = new Set<number>();
     const schedule =
         options.schedule ??
         ((cb: () => void) => {
-            if (typeof requestAnimationFrame === "function") requestAnimationFrame(cb);
-            else cb();
+            if (typeof requestAnimationFrame === "function") {
+                const id = requestAnimationFrame(() => {
+                    frames.delete(id);
+                    cb();
+                });
+                frames.add(id);
+            } else cb();
         });
 
     function collect(container: HTMLElement): DomState {
@@ -109,7 +116,13 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
                 if (typeof val === "boolean") {
                     (el as HTMLInputElement).checked = val;
                 } else {
-                    el.value = val;
+                    // Bypass a UI runtime's per-element value tracker, then send the native edit event.
+                    const descriptor = Object.getOwnPropertyDescriptor(
+                        Object.getPrototypeOf(el),
+                        "value",
+                    );
+                    if (descriptor?.set) descriptor.set.call(el, val);
+                    else el.value = val;
                 }
                 el.dispatchEvent(new Event("input", { bubbles: true }));
                 el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -137,7 +150,9 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
         if (!key) return;
         const dom = (scope.get(key) as { __dom?: DomState } | undefined)?.__dom;
         if (!dom) return;
-        schedule(() => apply(container, dom));
+        schedule(() => {
+            if (!disposed) apply(container, dom);
+        });
     }
 
     let boundOutlet: HTMLElement | undefined;
@@ -147,6 +162,16 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
         return (target as HTMLElement | null)?.closest<HTMLElement>("[data-fs-entry]") ?? undefined;
     }
 
+    const onReset = (e: Event): void => {
+        const container = containerOf(e.target);
+        const key = container && keyOf(container);
+        if (!key) return;
+        const bag = scope.get(key) as Record<string, unknown> | undefined;
+        if (bag) {
+            const { __dom: _discard, ...rest } = bag;
+            scope.set(key, rest);
+        }
+    };
     const onEnter = (e: Event): void => {
         const c = containerOf(e.target);
         if (c) restoreEntry(c);
@@ -161,6 +186,7 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
     };
     const flushVisible = (): void => {
         if (!boundOutlet) return;
+        if (boundOutlet.hasAttribute("data-fs-entry")) captureEntry(boundOutlet);
         for (const c of boundOutlet.querySelectorAll<HTMLElement>("[data-fs-entry]"))
             captureEntry(c);
     };
@@ -169,8 +195,10 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
     };
 
     function attach(outlet: HTMLElement): void {
+        disposed = false;
         boundOutlet = outlet;
         outlet.addEventListener("fs:enter", onEnter);
+        outlet.addEventListener("fs:reset", onReset);
         outlet.addEventListener("fs:conceal", onConceal);
         outlet.addEventListener("input", onEdit, true);
         outlet.addEventListener("change", onEdit, true);
@@ -178,12 +206,17 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
         document.addEventListener("visibilitychange", onVisibility);
         // boot catch-up: islands may already be mounted (fs:enter already fired) when attach runs;
         // restore each one now (scope was restored by the session layer just before attach).
+        if (outlet.hasAttribute("data-fs-entry")) restoreEntry(outlet);
         for (const c of outlet.querySelectorAll<HTMLElement>("[data-fs-entry]")) restoreEntry(c);
     }
 
     function dispose(): void {
+        disposed = true;
+        for (const id of frames) cancelAnimationFrame(id);
+        frames.clear();
         if (!boundOutlet) return;
         boundOutlet.removeEventListener("fs:enter", onEnter);
+        boundOutlet.removeEventListener("fs:reset", onReset);
         boundOutlet.removeEventListener("fs:conceal", onConceal);
         boundOutlet.removeEventListener("input", onEdit, true);
         boundOutlet.removeEventListener("change", onEdit, true);

@@ -18,16 +18,16 @@ describe("PrefetchedIntents hydration with codec-converted params", () => {
         // SSR 侧：以 number 参数存入预取结果
         const ssrIntent = { id: "product", params: { id: 42 } };
         const cache = PrefetchedIntents.fromArray([
-            { intent: ssrIntent, data: { title: "Widget" } },
+            { entryId: "entry-a", intent: ssrIntent, data: { title: "Widget" } },
         ]);
 
         // CSR 侧：另一个对象身份、但解析结果等价的 intent
         const csrIntent = { id: "product", params: { id: 42 } };
 
-        expect(cache.has(csrIntent)).toBe(true);
-        expect(cache.get(csrIntent)).toEqual({ title: "Widget" });
+        expect(cache.has(csrIntent, "entry-a")).toBe(true);
+        expect(cache.get(csrIntent, "entry-a")).toEqual({ title: "Widget" });
         // 一次性消费后即失效
-        expect(cache.has(csrIntent)).toBe(false);
+        expect(cache.has(csrIntent, "entry-a")).toBe(false);
     });
 
     test("a number param does not collide with the same value as a string", () => {
@@ -36,10 +36,10 @@ describe("PrefetchedIntents hydration with codec-converted params", () => {
         const stringIntent = { id: "product", params: { id: "42" } };
 
         const cache = PrefetchedIntents.fromArray([
-            { intent: numberIntent, data: { kind: "number" } },
+            { entryId: "entry-a", intent: numberIntent, data: { kind: "number" } },
         ]);
 
-        expect(cache.has(stringIntent)).toBe(false);
-        expect(cache.has(numberIntent)).toBe(true);
+        expect(cache.has(stringIntent, "entry-a")).toBe(false);
+        expect(cache.has(numberIntent, "entry-a")).toBe(true);
     });
 });

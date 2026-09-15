@@ -1,4 +1,4 @@
-import { makeFlowAction, mapEach, type Mapper } from "@finesoft/front";
+import { makeFlowAction, mapEach, type Mapper } from "@finesoft/front/browser";
 import type { ProductItem } from "../models/product";
 
 /** Raw API response shape */

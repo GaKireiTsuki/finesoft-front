@@ -4,7 +4,7 @@ import {
     type Container,
     DEP_KEYS,
     HostGuardError,
-} from "@finesoft/front";
+} from "@finesoft/front/browser";
 
 interface ShareParams extends Record<string, string | undefined> {
     next?: string;

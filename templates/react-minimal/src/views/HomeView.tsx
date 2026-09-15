@@ -1,8 +1,14 @@
-import type { AppHandle, BasePage } from "@finesoft/front";
+import type { BrowserAppHandle, BasePage } from "@finesoft/front/browser";
 import type { FeedPage } from "../lib/controllers/home";
 
 /** Home（feed）：列表项点击 push 进 detail。 */
-export default function HomeView({ page, controller }: { page: BasePage; controller?: AppHandle }) {
+export default function HomeView({
+    page,
+    controller,
+}: {
+    page: BasePage;
+    controller?: BrowserAppHandle;
+}) {
     const feed = page.pageType === "home" ? (page as FeedPage) : null;
     return (
         <section>
@@ -14,7 +20,9 @@ export default function HomeView({ page, controller }: { page: BasePage; control
                         <li key={item.id}>
                             <button
                                 style={{ width: "100%", textAlign: "left" }}
-                                onClick={() => void controller?.push("detail", { id: item.id })}
+                                onClick={() =>
+                                    void controller?.navigation?.push("detail", { id: item.id })
+                                }
                             >
                                 {item.title} →
                             </button>

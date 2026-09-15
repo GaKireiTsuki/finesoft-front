@@ -29,7 +29,6 @@ export interface SSRRenderOptions {
     /** Framework 配置（含路由注册等） */
     frameworkConfig: FrameworkConfig;
     /** 注册 controllers 和路由的引导函数 */
-    bootstrap?: (framework: Framework) => void;
     /** 获取错误页面 */
     getErrorPage: (status: number, message: string) => BasePage;
     /** 应用层渲染函数（如 Svelte SSR render / Vue renderToString） */
@@ -110,7 +109,6 @@ async function ssrRenderInternal(
     const {
         url,
         frameworkConfig,
-        bootstrap,
         getErrorPage,
         renderApp,
         ssrContext,
@@ -151,7 +149,6 @@ async function ssrRenderInternal(
         ...mergedConfig,
         _resolvedMessages: resolvedMessages,
     } as InternalSSRFrameworkConfig);
-    bootstrap?.(framework);
     const execution = framework.createExecution({
         signal: ssrContext?.request?.signal,
         identity: ssrContext?.identity,

@@ -27,7 +27,9 @@ export interface WebAppDefinition {
     readonly app?: AppDefinition;
     readonly controllers?: readonly PageControllerDefinition[];
     readonly routes: readonly Omit<RouteDefinition, "controller">[];
-    readonly navigation?: NavigationNode;
+    readonly navigation?: NavigationNode | ((url: string) => NavigationNode | undefined);
+    readonly navigationCodec?: import("../navigation/codec").NavigationCodec;
+    readonly loadMessages?: import("../i18n/messages").MessagesLoader;
     readonly getErrorPage: (status: number, message: string) => BasePage;
     readonly frameworkConfig?: Omit<
         FrameworkConfig,

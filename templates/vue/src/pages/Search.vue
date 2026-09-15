@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import ProductCard from "../components/ProductCard.vue";
 import type { SearchPage } from "../lib/models/product";
 

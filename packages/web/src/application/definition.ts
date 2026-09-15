@@ -71,7 +71,10 @@ export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
         ...input,
         routes,
         controllers,
-        navigation: input.navigation && freezeSnapshot(structuredClone(input.navigation)),
+        navigation:
+            typeof input.navigation === "function"
+                ? input.navigation
+                : input.navigation && freezeSnapshot(structuredClone(input.navigation)),
         beforeLoad: input.beforeLoad && Object.freeze([...input.beforeLoad]),
         afterLoad: input.afterLoad && Object.freeze([...input.afterLoad]),
         frameworkConfig: input.frameworkConfig && Object.freeze({ ...input.frameworkConfig }),

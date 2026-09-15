@@ -1,3 +1,4 @@
+import { fixtureEntryId } from "../helpers/navigation";
 import { leaf } from "../helpers/navigation";
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
@@ -6,7 +7,7 @@ import {
 } from "../../src/session/navigation-adapter";
 import { stack, tabs } from "../../src/navigation/nodes";
 import { serializeNavigation } from "../../src/navigation/serialization";
-import { collectLeafKeys, sessionEntryKey } from "../../src/session/scoped-state";
+import { collectLeafKeys } from "../../src/session/scoped-state";
 import type { NavigationController } from "../../src/navigation/controller";
 import type { NavigationNode } from "../../src/navigation/types";
 
@@ -80,7 +81,7 @@ describe("createNavigationSessionAdapter (structured)", () => {
         const adapter = createNavigationSessionAdapter(controller);
         expect([...adapter.presentKeys()].sort()).toEqual(collectLeafKeys(tree).sort());
         expect([...adapter.presentKeys()].sort()).toEqual(
-            [sessionEntryKey("A", {}), sessionEntryKey("B", {}), sessionEntryKey("Y", {})].sort(),
+            [fixtureEntryId("A", {}), fixtureEntryId("B", {}), fixtureEntryId("Y", {})].sort(),
         );
     });
 });
@@ -116,13 +117,13 @@ describe("createUrlSessionAdapter (flat)", () => {
         expect(navigate).not.toHaveBeenCalled();
     });
 
-    test("presentKeys is a single entry from currentIntent when provided", () => {
+    test("presentKeys is a single entry from currentEntry when provided", () => {
         const adapter = createUrlSessionAdapter({
             currentUrl: () => "/posts/7",
             navigate: () => {},
-            currentIntent: () => ({ intent: "post", params: { id: 7 } }),
+            currentEntry: () => ({ entryId: "post-entry" }),
         });
-        expect([...adapter.presentKeys()]).toEqual([sessionEntryKey("post", { id: 7 })]);
+        expect([...adapter.presentKeys()]).toEqual(["post-entry"]);
     });
 
     test("presentKeys falls back to the current url when no currentIntent", () => {
@@ -130,7 +131,7 @@ describe("createUrlSessionAdapter (flat)", () => {
             currentUrl: () => "/posts/7",
             navigate: () => {},
         });
-        expect([...adapter.presentKeys()]).toEqual(["/posts/7"]);
+        expect([...adapter.presentKeys()]).toEqual([]);
     });
 
     test("captureUrl returns the current url (so flat snapshots carry a comparable url)", () => {

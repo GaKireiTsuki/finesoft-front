@@ -109,6 +109,7 @@ export async function createServer(config: ServerConfig = {}): Promise<ServerIns
         vite,
         runtime,
         ownsVite: true,
+        disposeApp: () => ssrApp.dispose(),
         ssrEntryPath: ssr?.ssrEntryPath,
     });
 

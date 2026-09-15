@@ -15,7 +15,7 @@
  * @example
  * ```ts
  * export const render = createSSRRender({
- *     bootstrap,
+ *     definition,
  *     getErrorPage: (status, message) => safeErrorPage({ status, publicMessage: message }),
  *     renderApp(page) { ... },
  * });

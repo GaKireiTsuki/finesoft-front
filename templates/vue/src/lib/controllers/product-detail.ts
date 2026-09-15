@@ -5,7 +5,7 @@ import {
     DEP_KEYS,
     type Logger,
     type LoggerFactory,
-} from "@finesoft/front";
+} from "@finesoft/front/browser";
 import type { ProductPage } from "../models/product";
 
 export class ProductDetailController extends BaseController<{ id: number }, ProductPage> {

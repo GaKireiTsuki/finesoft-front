@@ -1,4 +1,4 @@
-import { markPublic, BaseController } from "@finesoft/front";
+import { markPublic, BaseController } from "@finesoft/front/browser";
 import type { AboutPage } from "../models/product";
 
 export class AboutController extends BaseController<Record<string, string>, AboutPage> {

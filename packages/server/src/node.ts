@@ -9,6 +9,7 @@ export interface NodeHandlerOptions {
     bindings?: Readonly<Record<string, unknown>>;
     /** Passing a runtime explicitly transfers its shutdown responsibility to this host. */
     runtime?: RuntimeHandle;
+    disposeApp?: () => Promise<void>;
     /** Explicit full-error observer, awaited during drain. Default/fallback diagnostics contain only a safe failure code. */
     onTaskError?: (error: unknown) => void | Promise<void>;
 }
@@ -79,7 +80,11 @@ export async function startNodeHandler(options: NodeHandlerOptions): Promise<Nod
                 // Socket closure can precede a cooperative encoder/cancellation callback settling.
                 while (requests.size) await Promise.all(requests);
                 while (tasks.size) await Promise.all(tasks);
-                await options.runtime?.dispose();
+                try {
+                    await options.disposeApp?.();
+                } finally {
+                    await options.runtime?.dispose();
+                }
             })()),
     };
 }

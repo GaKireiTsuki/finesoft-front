@@ -1,3 +1,4 @@
+import { fixtureDefinition } from "../../web/test/helpers/definition";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { BasePage, Framework } from "@finesoft/web";
 
@@ -13,7 +14,7 @@ import { createSSRRender } from "../src/create-render";
 
 describe("createSSRRender", () => {
     test("forwards render configuration to ssrRender", async () => {
-        const bootstrap = vi.fn();
+        const definition = fixtureDefinition();
         const getErrorPage = vi.fn((status: number, message: string) => ({
             id: `error-${status}`,
             pageType: "error",
@@ -36,7 +37,7 @@ describe("createSSRRender", () => {
         ssrRender.mockResolvedValue(expected);
 
         const render = createSSRRender({
-            bootstrap,
+            definition,
             getErrorPage,
             renderApp,
             frameworkConfig: { locale: "en-US" },
@@ -47,8 +48,11 @@ describe("createSSRRender", () => {
         await expect(render("/home", ssrContext as never)).resolves.toBe(expected);
         expect(ssrRender).toHaveBeenCalledWith({
             url: "/home",
-            frameworkConfig: { locale: "en-US" },
-            bootstrap,
+            frameworkConfig: expect.objectContaining({
+                locale: "en-US",
+                definition,
+                runtime: expect.any(Object),
+            }),
             getErrorPage,
             renderApp: expect.any(Function),
             ssrContext,
@@ -65,6 +69,7 @@ describe("createSSRRender", () => {
             forwardedRenderApp({ id: "home", pageType: "home", title: "Home" }, {} as Framework),
         ).resolves.toEqual({ html: "<main>ok</main>", head: "", css: "" });
         expect(renderApp).toHaveBeenCalled();
+        await render.dispose();
     });
 
     test("defaults frameworkConfig to an empty object", async () => {
@@ -76,16 +81,20 @@ describe("createSSRRender", () => {
         });
 
         const render = createSSRRender({
-            bootstrap: vi.fn(),
+            definition: fixtureDefinition(),
             getErrorPage: vi.fn(),
             renderApp: vi.fn(),
         });
 
         await render("/");
+        await render.dispose();
 
         expect(ssrRender).toHaveBeenCalledWith(
             expect.objectContaining({
-                frameworkConfig: {},
+                frameworkConfig: expect.objectContaining({
+                    definition: expect.any(Object),
+                    runtime: expect.any(Object),
+                }),
             }),
         );
     });

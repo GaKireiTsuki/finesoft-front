@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { BasePage } from "@finesoft/front";
+import type { BasePage } from "@finesoft/front/browser";
 import type { FeedPage } from "../lib/controllers/home";
-import type { AppController } from "../main";
+import type { AppController } from "../instance";
 
 const { page, controller } = defineProps<{ page: BasePage; controller?: AppController }>();
 const feed = computed(() => (page.pageType === "home" ? (page as FeedPage) : null));
@@ -16,7 +16,7 @@ const feed = computed(() => (page.pageType === "home" ? (page as FeedPage) : nul
             <li v-for="item in feed.items" :key="item.id">
                 <button
                     style="width: 100%; text-align: left"
-                    @click="controller?.push('detail', { id: item.id })"
+                    @click="controller?.navigation?.push('detail', { id: item.id })"
                 >
                     {{ item.title }} →
                 </button>

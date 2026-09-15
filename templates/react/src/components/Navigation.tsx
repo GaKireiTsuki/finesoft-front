@@ -1,5 +1,5 @@
-import type { Action } from "@finesoft/front";
-import { makeExternalUrlAction, makeFlowAction } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
+import { makeExternalUrlAction, makeFlowAction } from "@finesoft/front/browser";
 
 const links = [
     { label: "Home", action: makeFlowAction("/"), path: "/" },

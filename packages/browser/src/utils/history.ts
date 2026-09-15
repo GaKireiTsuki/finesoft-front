@@ -33,6 +33,12 @@ export class History<State> {
     private readonly persistInHistoryState: boolean;
     private currentStateId: string | undefined;
     private popstateSequence = 0;
+    private cleanups: (() => void)[] = [];
+    dispose(): void {
+        this.popstateSequence++;
+        cancelTryScroll();
+        for (const cleanup of this.cleanups.splice(0)) cleanup();
+    }
 
     constructor(log: Logger, options: HistoryOptions, sizeLimit = HISTORY_SIZE_LIMIT) {
         this.entries = new LruMap(sizeLimit);
@@ -89,7 +95,7 @@ export class History<State> {
     }
 
     onPopState(listener: (url: string, state?: State) => void | Promise<void>): void {
-        window.addEventListener("popstate", (event: PopStateEvent) => {
+        const handler = (event: PopStateEvent) => {
             cancelTryScroll();
             this.saveScrollPosition(this.currentStateId);
 
@@ -139,7 +145,9 @@ export class History<State> {
                     this.log.error("onPopState listener error:", error);
                 },
             );
-        });
+        };
+        window.addEventListener("popstate", handler);
+        this.cleanups.push(() => window.removeEventListener("popstate", handler));
     }
 
     /** 仅推入 URL，不缓存页面状态（用于页面加载失败场景） */

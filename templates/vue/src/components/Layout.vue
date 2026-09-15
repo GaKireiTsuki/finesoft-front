@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import Navigation from "./Navigation.vue";
 
 const { currentPath = "/", onAction } = defineProps<{

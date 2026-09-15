@@ -1,4 +1,4 @@
-import { BaseController, type BasePage } from "@finesoft/front";
+import { BaseController, type BasePage } from "@finesoft/front/browser";
 
 export class HomeController extends BaseController<Record<string, string>, BasePage> {
     readonly intentId = "home";

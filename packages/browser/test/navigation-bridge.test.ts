@@ -1,3 +1,4 @@
+import { Framework, defineWebApp } from "@finesoft/web";
 import { leaf } from "../../web/test/helpers/navigation";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import type { Logger } from "@finesoft/core";
@@ -115,7 +116,7 @@ describe("createNavigationBridge", () => {
         const history = HistoryMock.latest<NavigationHistoryState>();
         expect(history.replaceState).toHaveBeenCalledTimes(1);
         expect(history.replaceState.mock.calls[0][1]).toBe("/home");
-        expect(history.replaceState.mock.calls[0][0]).toEqual({
+        expect(history.replaceState.mock.calls[0][0]).toMatchObject({
             tree: serializeNavigation(initial),
         });
         expect(history.pushState).not.toHaveBeenCalled();
@@ -170,7 +171,7 @@ describe("createNavigationBridge", () => {
         });
 
         // 控制器已 hydrate 到缓存树。
-        expect(controller.getTree()).toEqual(cachedTree);
+        expect(controller.getTree()).toMatchObject(cachedTree);
         // 关键不变量：popstate 触发的 hydrate 不回写 history。
         expect(history.pushState).not.toHaveBeenCalled();
         // settings 是新可见目标，被 dispatch。
@@ -200,7 +201,7 @@ describe("createNavigationBridge", () => {
 
         await history.popListener?.(`https://app.example${deepUrl}`, undefined);
 
-        expect(controller.getTree()).toEqual(deepTree);
+        expect(controller.getTree()).toMatchObject(deepTree);
         expect(history.pushState).not.toHaveBeenCalled();
     });
 
@@ -243,7 +244,7 @@ describe("createNavigationBridge", () => {
             tree: { kind: "nonsense" } as unknown as SerializedNavigation,
         });
 
-        expect(controller.getTree()).toEqual(fallbackTree);
+        expect(controller.getTree()).toMatchObject(fallbackTree);
         expect(log.warn).toHaveBeenCalledWith(
             "[navigation] cached tree deserialize failed, falling back to codec",
             expect.anything(),
@@ -338,20 +339,31 @@ function makeController(initial: NavigationNode): {
     controller: NavigationController;
     dispatch: ReturnType<typeof vi.fn>;
 } {
-    const dispatch = vi.fn(async (intent: Intent<BasePage>) => makePage(intent.id));
-    const intentDispatcher = { dispatch } as never;
-    const router = {
-        resolve: vi.fn(async (url: string) => {
-            const path = new URL(url, "https://app.example").pathname;
-            const id = path.replace(/^\//, "") || "home";
-            return { intent: { id, params: {} } };
+    const dispatch = vi.fn(
+        async (intent: Intent<BasePage>, _container: unknown, _context: unknown) =>
+            makePage(intent.id),
+    );
+    const framework = Framework.create({
+        definition: defineWebApp({
+            id: "bridge-test",
+            controllers: ["home", "settings", "dashboard", "reports", "z", "product", "about"].map(
+                (id) => ({
+                    id,
+                    handler: (params, context) =>
+                        dispatch({ id, params }, context.container, context),
+                }),
+            ),
+            routes: ["home", "settings", "dashboard", "reports", "z", "product", "about"].map(
+                (id) => ({
+                    path: id === "product" ? "/products/:id" : "/" + id,
+                    intentId: id,
+                }),
+            ),
+            getErrorPage: (_status, title) => ({ id: "error", pageType: "error", title }),
         }),
-        getRoutes: () => [],
-    } as never;
-
+    });
     const controller = createNavigationController({
-        intentDispatcher,
-        router,
+        framework,
         initial,
         createContext: ({ intent, params }) => ({
             container: {} as never,

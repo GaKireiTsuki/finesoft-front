@@ -22,6 +22,7 @@ export interface StartServerOptions {
     vite?: ViteDevServer;
     /** Transfer disposal ownership of a supplied Vite server. Internally created Vite is owned. */
     ownsVite?: boolean;
+    disposeApp?: () => Promise<void>;
     /** 运行时信息（可选，不传时自动检测） */
     runtime?: RuntimeInfo;
     /** 已注册的路由列表（用于启动日志） */
@@ -65,7 +66,11 @@ export async function startServer(options: StartServerOptions): Promise<StartedS
             try {
                 await stop?.();
             } finally {
-                await ownedVite?.close();
+                try {
+                    await options.disposeApp?.();
+                } finally {
+                    await ownedVite?.close();
+                }
             }
         })());
     if (isVercel) return { vite, dispose };

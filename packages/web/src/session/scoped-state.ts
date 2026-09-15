@@ -12,10 +12,8 @@
  * 区别于 `collectVisibleDestinations`（仅沿可见路径）—— 作用域保留需要全部 present 条目。
  */
 
-import { entryKey } from "../navigation/keys";
 import { collectAllLeaves } from "../navigation/operations";
 import type { NavigationNode } from "../navigation/index";
-import type { RouteParams } from "../router/types";
 import { SessionError, type NavigationScopedState } from "./types";
 
 /**
@@ -24,9 +22,6 @@ import { SessionError, type NavigationScopedState } from "./types";
  * 与 controller 的目标键同源、跨重载稳定（`stableStringify` 对 params 键排序，
  * 故 `{a,b}` 与 `{b,a}` 产出同一键）。
  */
-export function sessionEntryKey(intent: string, params: RouteParams): string {
-    return entryKey(intent, params);
-}
 
 /**
  * 收集导航树中**全部 leaf** 的身份键（含不可见 / 未激活分支 / 各 split 列）。

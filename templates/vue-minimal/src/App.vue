@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { isStackNode, isTabsNode } from "@finesoft/front";
+import { isStackNode, isTabsNode } from "@finesoft/front/browser";
 import { computed } from "vue";
-import type { AppController, AppState } from "./main";
+import type { AppController, AppState } from "./instance";
 
-const { state, controller } = defineProps<{ state?: AppState; controller?: AppController }>();
+const { state, profile, controller, initialSnapshot } = defineProps<{
+    state?: AppState;
+    profile?: AppState;
+    initialSnapshot?: import("@finesoft/front/web").NavigationSnapshot;
+    controller?: AppController;
+}>();
 
-const tree = computed(() => state?.snapshot?.tree ?? null);
+const tree = computed(() => (initialSnapshot ?? state?.snapshot)?.tree ?? null);
 
 /** Tab bar（tree 为 tabs 节点时）。 */
 const tabs = computed(() => {
@@ -24,9 +29,10 @@ const canGoBack = computed(() => {
 
 /** 全局切片：名字（跨 tab / 跨重载）。 */
 const name = computed({
-    get: () => state?.name ?? "",
+    get: () => profile?.name ?? state?.name ?? "",
     set: (v) => {
-        if (state) state.name = v;
+        if (profile) profile.name = v;
+        else if (state) state.name = v;
     },
 });
 </script>
@@ -35,9 +41,9 @@ const name = computed({
     <div style="max-width: 32rem; margin: 0 auto; padding: 1rem; font-family: system-ui">
         <!-- 全局切片：名字 -->
         <header style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem">
-            <label v-if="state" style="flex: 1">
+            <label style="flex: 1">
                 Your name (global):
-                <input v-model="name" placeholder="anon" @blur="controller?.save()" />
+                <input v-model="name" placeholder="anon" @blur="controller?.session?.save()" />
             </label>
             <span v-if="name">👋 {{ name }}</span>
         </header>
@@ -49,13 +55,17 @@ const name = computed({
                 :key="key"
                 :style="{ fontWeight: key === tabs.active ? '700' : '400' }"
                 :aria-current="key === tabs.active"
-                @click="controller?.selectTab(key)"
+                @click="controller?.navigation?.selectTab(key)"
             >
                 {{ tabLabels[key] ?? key }}
             </button>
         </nav>
 
-        <button v-if="canGoBack" style="margin-bottom: 0.5rem" @click="controller?.pop()">
+        <button
+            v-if="canGoBack"
+            style="margin-bottom: 0.5rem"
+            @click="controller?.navigation?.pop()"
+        >
             ← Back
         </button>
     </div>

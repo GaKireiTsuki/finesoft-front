@@ -1,7 +1,10 @@
+import { fixtureEntryId } from "../helpers/navigation";
 import { leaf, treeShape } from "../helpers/navigation";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { Container } from "@finesoft/core";
-import { IntentDispatcher } from "@finesoft/core";
+import { Framework } from "../../src/framework";
+import { defineWebApp } from "../../src/application/definition";
+import type { PageControllerDefinition } from "../../src/application/types";
 import type { Intent, IntentController } from "@finesoft/core";
 import { deny, next, redirect, rewrite } from "../../src/middleware/types";
 import type {
@@ -18,7 +21,6 @@ import {
     type NavigationControllerOptions,
     type NavigationDispatchContext,
 } from "../../src/navigation/controller";
-import { sessionEntryKey } from "../../src/session/scoped-state";
 import { split, stack, tabs } from "../../src/navigation/nodes";
 import { SPLIT_VISIBILITIES, type NavigationNode } from "../../src/navigation/types";
 
@@ -36,34 +38,36 @@ function pageFor(intent: string, params: Record<string, unknown>): BasePage {
 }
 
 /** 注册若干 intentId → page 工厂的 controller；记录每次 dispatch 的调用。 */
-function makeDispatcher(
+function makeControllers(
     handlers: Record<string, (params: Record<string, unknown>) => BasePage>,
     calls?: string[],
-): IntentDispatcher {
-    const dispatcher = new IntentDispatcher();
+): PageControllerDefinition[] {
+    const dispatcher = [] as PageControllerDefinition[];
     for (const intentId of Object.keys(handlers)) {
-        const controller: IntentController = {
+        const controller: IntentController<BasePage> = {
             intentId,
             perform(intent: Intent): BasePage {
                 calls?.push(intentId);
                 return handlers[intentId](intent.params ?? {});
             },
         };
-        dispatcher.register(controller);
+        dispatcher.push(factory(controller));
     }
     return dispatcher;
 }
 
 /** 一个抛错的 controller（验证 dispatch 失败的兜底语义）。 */
-function makeThrowingDispatcher(intentId: string, calls?: string[]): IntentDispatcher {
-    const dispatcher = new IntentDispatcher();
-    dispatcher.register({
-        intentId,
-        perform(): BasePage {
-            calls?.push(intentId);
-            throw new Error(`boom:${intentId}`);
-        },
-    });
+function makeThrowingControllers(intentId: string, calls?: string[]): PageControllerDefinition[] {
+    const dispatcher = [] as PageControllerDefinition[];
+    dispatcher.push(
+        factory({
+            intentId,
+            perform(): BasePage {
+                calls?.push(intentId);
+                throw new Error(`boom:${intentId}`);
+            },
+        }),
+    );
     return dispatcher;
 }
 
@@ -74,15 +78,41 @@ function contextFactory(url?: string): NavigationControllerOptions["createContex
 }
 
 /** 默认选项装配器：只需给 dispatcher + initial，其余取默认。 */
-function makeOptions(
-    overrides: Partial<NavigationControllerOptions> &
-        Pick<NavigationControllerOptions, "intentDispatcher" | "initial">,
-): NavigationControllerOptions {
+function factory(controller: IntentController<BasePage>): PageControllerDefinition {
     return {
-        router: new Router(),
-        createContext: contextFactory(),
-        ...overrides,
+        id: controller.intentId,
+        create: () => ({
+            intentId: controller.intentId,
+            perform: controller.perform.bind(controller),
+        }),
     };
+}
+function makeOptions(
+    overrides: Partial<NavigationControllerOptions> & {
+        controllers: PageControllerDefinition[];
+        initial: NavigationNode;
+        router?: Router;
+        prefetched?: PrefetchedIntents;
+    },
+): NavigationControllerOptions {
+    const { controllers, router, prefetched, ...options } = overrides;
+    const framework = Framework.create({
+        definition: defineWebApp({
+            id: "navigation-fixture",
+            controllers,
+            routes: (router?.getRoutes() ?? []).map((route) => {
+                const [path, intentId] = route.split(" → ");
+                return { path, intentId };
+            }),
+            getErrorPage: (status, message) => ({
+                id: String(status),
+                pageType: "error",
+                title: message,
+            }),
+        }),
+        prefetchedIntents: prefetched,
+    });
+    return { createContext: contextFactory(), ...options, framework };
 }
 
 // =====================================================================
@@ -92,9 +122,9 @@ function makeOptions(
 describe("single leaf (backward-compatible flat page)", () => {
     test("resolve() dispatches the one intent and yields one destination", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) }, calls);
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) }, calls);
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home", { a: 1 }) }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home", { a: 1 }) }),
         );
 
         const snap = await controller.resolve();
@@ -109,9 +139,9 @@ describe("single leaf (backward-compatible flat page)", () => {
     });
 
     test("getTree / getSnapshot reflect committed state", async () => {
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home") }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
 
         // 解析前：tree = initial，destinations 空
@@ -130,7 +160,7 @@ describe("single leaf (backward-compatible flat page)", () => {
 
 describe("stack operations", () => {
     function stackController(calls: string[]): ReturnType<typeof createNavigationController> {
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             {
                 root: (p) => pageFor("root", p),
                 detail: (p) => pageFor("detail", p),
@@ -139,7 +169,7 @@ describe("stack operations", () => {
             calls,
         );
         return createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
     }
 
@@ -178,13 +208,13 @@ describe("stack operations", () => {
 
     test("a destination unchanged FROM THE PREVIOUS snapshot is reused (split column)", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { list: (p) => pageFor("list", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: split([{ id: "list", content: leaf("list") }, { id: "detail" }]),
             }),
         );
@@ -234,13 +264,13 @@ describe("stack operations", () => {
 
     test("popTo via generic apply keeps [0..index]", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { a: (p) => pageFor("a", p), b: (p) => pageFor("b", p), c: (p) => pageFor("c", p) },
             calls,
         );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: stack([leaf("a"), leaf("b"), leaf("c")]),
             }),
         );
@@ -260,13 +290,13 @@ describe("stack operations", () => {
             guardCalls.push(ctx.intent.id);
             return next();
         };
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
             dispatchCalls,
         );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: stack(leaf("root")),
                 beforeLoad: [guard],
             }),
@@ -284,12 +314,12 @@ describe("stack operations", () => {
 
     test("an entry removed from the tree then re-added is re-dispatched (cache pruned on leave)", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
             calls,
         );
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("home")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("home")) }),
         );
         await controller.resolve(); // [home]
         await controller.replaceTop("other"); // home 离树 → 缓存 prune；[other]
@@ -306,13 +336,13 @@ describe("stack operations", () => {
 describe("tabs", () => {
     test("only the active branch is visible + dispatched", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { home: (p) => pageFor("home", p), profile: (p) => pageFor("profile", p) },
             calls,
         );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: tabs({
                     active: "home",
                     branches: { home: leaf("home"), profile: leaf("profile") },
@@ -329,13 +359,13 @@ describe("tabs", () => {
 
     test("selectTab switches active branch and dispatches the new one", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { home: (p) => pageFor("home", p), profile: (p) => pageFor("profile", p) },
             calls,
         );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: tabs({
                     active: "home",
                     branches: { home: leaf("home"), profile: leaf("profile") },
@@ -363,13 +393,13 @@ describe("tabs", () => {
 describe("split", () => {
     test("all non-empty columns are visible and ordered like collectVisibleDestinations", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { list: (p) => pageFor("list", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: split([
                     { id: "list", content: leaf("list") },
                     { id: "detail", content: leaf("detail") },
@@ -386,7 +416,7 @@ describe("split", () => {
 
     test("selectColumn sets a column's content and clears columns after it", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             {
                 list: (p) => pageFor("list", p),
                 detail: (p) => pageFor("detail", p),
@@ -396,7 +426,7 @@ describe("split", () => {
         );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: split([{ id: "list", content: leaf("list") }, { id: "detail" }]),
             }),
         );
@@ -418,13 +448,13 @@ describe("split", () => {
     });
 
     test("selectColumn with undefined intent clears the column", async () => {
-        const dispatcher = makeDispatcher({
+        const dispatcher = makeControllers({
             list: (p) => pageFor("list", p),
             detail: (p) => pageFor("detail", p),
         });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: split([
                     { id: "list", content: leaf("list") },
                     { id: "detail", content: leaf("detail") },
@@ -450,10 +480,10 @@ describe("beforeLoad guards (primary destination)", () => {
     test("next → dispatch proceeds normally", async () => {
         const calls: string[] = [];
         const guard: BeforeLoadGuard = () => next();
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) }, calls);
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) }, calls);
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("home"),
                 beforeLoad: [guard],
             }),
@@ -467,10 +497,10 @@ describe("beforeLoad guards (primary destination)", () => {
     test("deny → status set, intent NOT dispatched, error page used", async () => {
         const calls: string[] = [];
         const guard: BeforeLoadGuard = () => deny(403, "nope");
-        const dispatcher = makeDispatcher({ secret: (p) => pageFor("secret", p) }, calls);
+        const dispatcher = makeControllers({ secret: (p) => pageFor("secret", p) }, calls);
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("secret"),
                 beforeLoad: [guard],
             }),
@@ -486,7 +516,7 @@ describe("beforeLoad guards (primary destination)", () => {
 
     test("deny uses custom getErrorPage", async () => {
         const guard: BeforeLoadGuard = () => deny(401, "login");
-        const dispatcher = makeDispatcher({ secret: (p) => pageFor("secret", p) });
+        const dispatcher = makeControllers({ secret: (p) => pageFor("secret", p) });
         const getErrorPage = vi.fn(
             (status: number, message: string): BasePage => ({
                 id: "custom-error",
@@ -496,7 +526,7 @@ describe("beforeLoad guards (primary destination)", () => {
         );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("secret"),
                 beforeLoad: [guard],
                 getErrorPage,
@@ -512,10 +542,10 @@ describe("beforeLoad guards (primary destination)", () => {
         const calls: string[] = [];
         const onRedirect = vi.fn();
         const guard: BeforeLoadGuard = () => redirect("/login", 302);
-        const dispatcher = makeDispatcher({ secret: (p) => pageFor("secret", p) }, calls);
+        const dispatcher = makeControllers({ secret: (p) => pageFor("secret", p) }, calls);
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("secret"),
                 beforeLoad: [guard],
                 onRedirect,
@@ -535,17 +565,19 @@ describe("beforeLoad guards (primary destination)", () => {
         router.add("/canonical/:id", "canonical");
         const guard: BeforeLoadGuard = (ctx) =>
             ctx.intent.id === "alias" ? rewrite("/canonical/42") : next();
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { alias: (p) => pageFor("alias", p), canonical: (p) => pageFor("canonical", p) },
             calls,
         );
-        const controller = createNavigationController({
-            intentDispatcher: dispatcher,
-            router,
-            initial: leaf("alias"),
-            createContext: contextFactory(),
-            beforeLoad: [guard],
-        });
+        const controller = createNavigationController(
+            makeOptions({
+                controllers: dispatcher,
+                router,
+                initial: leaf("alias"),
+                createContext: contextFactory(),
+                beforeLoad: [guard],
+            }),
+        );
 
         const snap = await controller.resolve();
 
@@ -559,14 +591,16 @@ describe("beforeLoad guards (primary destination)", () => {
         const calls: string[] = [];
         const router = new Router(); // 无路由 → resolve 返回 null
         const guard: BeforeLoadGuard = () => rewrite("/nope");
-        const dispatcher = makeDispatcher({ alias: (p) => pageFor("alias", p) }, calls);
-        const controller = createNavigationController({
-            intentDispatcher: dispatcher,
-            router,
-            initial: leaf("alias"),
-            createContext: contextFactory(),
-            beforeLoad: [guard],
-        });
+        const dispatcher = makeControllers({ alias: (p) => pageFor("alias", p) }, calls);
+        const controller = createNavigationController(
+            makeOptions({
+                controllers: dispatcher,
+                router,
+                initial: leaf("alias"),
+                createContext: contextFactory(),
+                beforeLoad: [guard],
+            }),
+        );
 
         const snap = await controller.resolve();
         // A failed rewrite must not load the original destination.
@@ -587,10 +621,10 @@ describe("afterLoad guards (primary destination)", () => {
             seen.push(ctx.page);
             return next();
         };
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("home"),
                 afterLoad: [guard],
             }),
@@ -604,10 +638,10 @@ describe("afterLoad guards (primary destination)", () => {
 
     test("afterLoad deny returns an error destination without committing the loaded page", async () => {
         const guard: AfterLoadGuard = () => deny(403, "blocked");
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("home"),
                 afterLoad: [guard],
             }),
@@ -622,10 +656,10 @@ describe("afterLoad guards (primary destination)", () => {
     test("afterLoad redirect invokes the callback without exposing the loaded page", async () => {
         const onRedirect = vi.fn();
         const guard: AfterLoadGuard = () => redirect("/elsewhere", 302);
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("home"),
                 afterLoad: [guard],
                 onRedirect,
@@ -640,10 +674,10 @@ describe("afterLoad guards (primary destination)", () => {
 
     test("afterLoad rewrite → page kept, NO status (canonical URL only)", async () => {
         const guard: AfterLoadGuard = () => rewrite("/canonical");
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("home"),
                 afterLoad: [guard],
             }),
@@ -660,13 +694,13 @@ describe("afterLoad guards (primary destination)", () => {
             guardCalls.push(ctx.intent.id);
             return next();
         };
-        const dispatcher = makeDispatcher({
+        const dispatcher = makeControllers({
             list: (p) => pageFor("list", p),
             detail: (p) => pageFor("detail", p),
         });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: split([
                     { id: "list", content: leaf("list") },
                     { id: "detail", content: leaf("detail") },
@@ -688,9 +722,9 @@ describe("afterLoad guards (primary destination)", () => {
 describe("dispatch failure handling", () => {
     test("a throwing controller does not throw out of resolve; surfaces status 500 + error page", async () => {
         const calls: string[] = [];
-        const dispatcher = makeThrowingDispatcher("home", calls);
+        const dispatcher = makeThrowingControllers("home", calls);
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home") }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
 
         const snap = await controller.resolve();
@@ -702,20 +736,24 @@ describe("dispatch failure handling", () => {
     });
 
     test("a failing secondary column does not sink the whole snapshot", async () => {
-        const dispatcher = new IntentDispatcher();
-        dispatcher.register({
-            intentId: "ok",
-            perform: (i: Intent): BasePage => pageFor("ok", i.params ?? {}),
-        });
-        dispatcher.register({
-            intentId: "bad",
-            perform(): BasePage {
-                throw new Error("bad column");
-            },
-        });
+        const dispatcher = [] as PageControllerDefinition[];
+        dispatcher.push(
+            factory({
+                intentId: "ok",
+                perform: (i: Intent): BasePage => pageFor("ok", i.params ?? {}),
+            }),
+        );
+        dispatcher.push(
+            factory({
+                intentId: "bad",
+                perform(): BasePage {
+                    throw new Error("bad column");
+                },
+            }),
+        );
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: split([
                     { id: "a", content: leaf("ok") },
                     { id: "b", content: leaf("bad") },
@@ -730,13 +768,13 @@ describe("dispatch failure handling", () => {
     });
 
     test("unregistered intent (no controller) is treated as a dispatch failure", async () => {
-        const dispatcher = new IntentDispatcher(); // 空：home 无 controller
+        const dispatcher = [] as PageControllerDefinition[]; // 空：home 无 controller
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home") }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
 
         const snap = await controller.resolve();
-        expect(snap.destinations[0].status).toBe(500);
+        expect(snap.destinations[0].status).toBe(404);
         expect(snap.destinations[0].page.pageType).toBe("error");
     });
 });
@@ -748,13 +786,17 @@ describe("dispatch failure handling", () => {
 describe("prefetched reuse", () => {
     test("primary destination reuses a prefetched page without dispatching", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) }, calls);
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) }, calls);
         const prefetchedPage: BasePage = { id: "ssr-home", pageType: "home", title: "from-ssr" };
         const prefetched = PrefetchedIntents.fromArray([
-            { intent: { id: "home", params: {} }, data: prefetchedPage },
+            {
+                entryId: fixtureEntryId("home", {}),
+                intent: { id: "home", params: {} },
+                data: prefetchedPage,
+            },
         ]);
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home"), prefetched }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home"), prefetched }),
         );
 
         const snap = await controller.resolve();
@@ -765,20 +807,25 @@ describe("prefetched reuse", () => {
 
     test("secondary destination also reuses prefetched results", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { list: (p) => pageFor("list", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
         const prefetched = PrefetchedIntents.fromArray([
-            { intent: { id: "list", params: {} }, data: { id: "x", pageType: "list", title: "L" } },
             {
+                entryId: fixtureEntryId("list", {}),
+                intent: { id: "list", params: {} },
+                data: { id: "x", pageType: "list", title: "L" },
+            },
+            {
+                entryId: fixtureEntryId("detail", {}),
                 intent: { id: "detail", params: {} },
                 data: { id: "y", pageType: "detail", title: "D" },
             },
         ]);
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: split([
                     { id: "list", content: leaf("list") },
                     { id: "detail", content: leaf("detail") },
@@ -794,16 +841,20 @@ describe("prefetched reuse", () => {
 
     test("a popped-back present entry reuses its cached page (prefetched result included), no re-dispatch", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
             calls,
         );
         const prefetched = PrefetchedIntents.fromArray([
-            { intent: { id: "home", params: {} }, data: { id: "h", pageType: "home", title: "S" } },
+            {
+                entryId: fixtureEntryId("home", {}),
+                intent: { id: "home", params: {} },
+                data: { id: "h", pageType: "home", title: "S" },
+            },
         ]);
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: stack(leaf("home")),
                 prefetched,
             }),
@@ -826,12 +877,12 @@ describe("prefetched reuse", () => {
 describe("hydrate", () => {
     test("replaces the tree and re-resolves its visible destinations", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { home: (p) => pageFor("home", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home") }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
         await controller.resolve();
 
@@ -851,12 +902,12 @@ describe("hydrate", () => {
 
 describe("subscribe", () => {
     test("listeners are notified on every commit with the new snapshot", async () => {
-        const dispatcher = makeDispatcher({
+        const dispatcher = makeControllers({
             home: (p) => pageFor("home", p),
             detail: (p) => pageFor("detail", p),
         });
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("home")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("home")) }),
         );
         const received: string[][] = [];
         const unsubscribe = controller.subscribe((snap) => {
@@ -874,9 +925,9 @@ describe("subscribe", () => {
     });
 
     test("the snapshot passed to listeners equals getSnapshot()", async () => {
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home") }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
         let last: unknown;
         controller.subscribe((snap) => {
@@ -894,13 +945,13 @@ describe("subscribe", () => {
 
 describe("immutability", () => {
     test("push does not mutate the previous committed tree", async () => {
-        const dispatcher = makeDispatcher({
+        const dispatcher = makeControllers({
             root: (p) => pageFor("root", p),
             detail: (p) => pageFor("detail", p),
         });
         const initial = stack(leaf("root"));
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial }),
+            makeOptions({ controllers: dispatcher, initial }),
         );
         await controller.resolve();
         const before = controller.getTree();
@@ -919,9 +970,9 @@ describe("immutability", () => {
 
 describe("invalid operations propagate NavigationError", () => {
     test("selectTab on a non-tabs tree throws", async () => {
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home") }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
         await controller.resolve();
 
@@ -929,9 +980,9 @@ describe("invalid operations propagate NavigationError", () => {
     });
 
     test("push with no stack on the active path throws", async () => {
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: leaf("home") }),
+            makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
         await controller.resolve();
 
@@ -948,19 +999,24 @@ describe("invalid operations propagate NavigationError", () => {
  * 的 promise，使 resolveTree 真正异步。这样并发的两次 apply 若不串行化，就会都读到同一棵
  * 原始树、各自解析、后提交者覆盖先提交者——正是被修复的竞态。
  */
-function makeSlowDispatcher(intentIds: readonly string[], calls?: string[]): IntentDispatcher {
-    const dispatcher = new IntentDispatcher();
+function makeSlowDispatcher(
+    intentIds: readonly string[],
+    calls?: string[],
+): PageControllerDefinition[] {
+    const dispatcher = [] as PageControllerDefinition[];
     for (const intentId of intentIds) {
-        dispatcher.register({
-            intentId,
-            perform(intent: Intent): Promise<BasePage> {
-                calls?.push(intentId);
-                return new Promise((resolve) => {
-                    // setTimeout(0)：把 resolve 推到宏任务，确保 apply 之间有真实的异步窗口。
-                    setTimeout(() => resolve(pageFor(intentId, intent.params ?? {})), 0);
-                });
-            },
-        });
+        dispatcher.push(
+            factory({
+                intentId,
+                perform(intent: Intent): Promise<BasePage> {
+                    calls?.push(intentId);
+                    return new Promise((resolve) => {
+                        // setTimeout(0)：把 resolve 推到宏任务，确保 apply 之间有真实的异步窗口。
+                        setTimeout(() => resolve(pageFor(intentId, intent.params ?? {})), 0);
+                    });
+                },
+            }),
+        );
     }
     return dispatcher;
 }
@@ -970,7 +1026,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         const calls: string[] = [];
         const dispatcher = makeSlowDispatcher(["root", "a", "b"], calls);
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve(); // stack([root])
 
@@ -991,7 +1047,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
     test("many interleaved concurrent pushes apply in submission order", async () => {
         const dispatcher = makeSlowDispatcher(["root", "x0", "x1", "x2", "x3", "x4"]);
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve();
 
@@ -1010,7 +1066,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         const calls: string[] = [];
         const dispatcher = makeSlowDispatcher(["root", "ok"], calls);
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve();
 
@@ -1027,7 +1083,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
     test("concurrent resolve() and apply() do not clobber each other", async () => {
         const dispatcher = makeSlowDispatcher(["root", "next"]);
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
 
         // 首屏 resolve 与一次 push 并发：串行队列保证 push 基于 resolve 后的树。
@@ -1054,10 +1110,10 @@ describe("minimalContext isServer (no navigation supplied)", () => {
 
     test("defaults to true under a server-like env (no window)", async () => {
         const seen: boolean[] = [];
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("home"),
                 beforeLoad: [recordingGuard(seen)],
                 // createContext 默认不返回 navigation → 走 minimalContext 兜底。
@@ -1071,10 +1127,10 @@ describe("minimalContext isServer (no navigation supplied)", () => {
 
     test("explicit isServer:false overrides the env default in the fallback context", async () => {
         const seen: boolean[] = [];
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("home"),
                 beforeLoad: [recordingGuard(seen)],
                 isServer: false,
@@ -1088,10 +1144,10 @@ describe("minimalContext isServer (no navigation supplied)", () => {
 
     test("explicit isServer:true is honored too", async () => {
         const seen: boolean[] = [];
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: leaf("home"),
                 beforeLoad: [recordingGuard(seen)],
                 isServer: true,
@@ -1105,28 +1161,30 @@ describe("minimalContext isServer (no navigation supplied)", () => {
     test("a supplied navigation context wins over the isServer option", async () => {
         const seen: boolean[] = [];
         const container = new Container();
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController({
-            router: new Router(),
-            intentDispatcher: dispatcher,
-            initial: leaf("home"),
-            beforeLoad: [recordingGuard(seen)],
-            // isServer 选项说 true，但 createContext 提供了 isServer:false 的完整 navigation。
-            isServer: true,
-            createContext: ({ intent, params }): NavigationDispatchContext => ({
-                container,
-                navigation: {
-                    url: "/home",
-                    path: "/home",
-                    params,
-                    intent: { id: intent, params },
-                    isServer: false,
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
+        const controller = createNavigationController(
+            makeOptions({
+                router: new Router(),
+                controllers: dispatcher,
+                initial: leaf("home"),
+                beforeLoad: [recordingGuard(seen)],
+                // isServer 选项说 true，但 createContext 提供了 isServer:false 的完整 navigation。
+                isServer: true,
+                createContext: ({ intent, params }): NavigationDispatchContext => ({
                     container,
-                    getCookie: () => undefined,
-                    getHeader: () => undefined,
-                },
+                    navigation: {
+                        url: "/home",
+                        path: "/home",
+                        params,
+                        intent: { id: intent, params },
+                        isServer: false,
+                        container,
+                        getCookie: () => undefined,
+                        getHeader: () => undefined,
+                    },
+                }),
             }),
-        });
+        );
 
         await controller.resolve();
         // 应用提供的 navigation 优先：minimalContext 不生效。
@@ -1148,7 +1206,7 @@ describe("setVisibility 影响可见集与派发", () => {
 
     test("切 detailOnly：快照只剩 detail 目标，已解析的 message 复用不重派发", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             {
                 folders: (p) => pageFor("folders", p),
                 list: (p) => pageFor("list", p),
@@ -1157,7 +1215,7 @@ describe("setVisibility 影响可见集与派发", () => {
             calls,
         );
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: threeColumns() }),
+            makeOptions({ controllers: dispatcher, initial: threeColumns() }),
         );
 
         await controller.resolve();
@@ -1173,7 +1231,7 @@ describe("setVisibility 影响可见集与派发", () => {
 
     test("detailOnly → all：补派发新变可见的 sidebar/content，detail 复用", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             {
                 folders: (p) => pageFor("folders", p),
                 list: (p) => pageFor("list", p),
@@ -1190,7 +1248,7 @@ describe("setVisibility 影响可见集与派发", () => {
             SPLIT_VISIBILITIES.DETAIL_ONLY,
         );
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial }),
+            makeOptions({ controllers: dispatcher, initial }),
         );
 
         await controller.resolve();
@@ -1204,13 +1262,13 @@ describe("setVisibility 影响可见集与派发", () => {
     });
 
     test("apply({ kind: SET_VISIBILITY }) 与便捷方法等价", async () => {
-        const dispatcher = makeDispatcher({
+        const dispatcher = makeControllers({
             folders: (p) => pageFor("folders", p),
             message: (p) => pageFor("message", p),
         });
         const controller = createNavigationController(
             makeOptions({
-                intentDispatcher: dispatcher,
+                controllers: dispatcher,
                 initial: split([
                     { id: "sidebar", content: leaf("folders") },
                     { id: "detail", content: leaf("message") },
@@ -1233,9 +1291,9 @@ describe("setVisibility 影响可见集与派发", () => {
 describe("invalidate / refresh", () => {
     test("refresh 重新 dispatch 当前激活叶子（清其缓存 + 重解析）", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) }, calls);
+        const dispatcher = makeControllers({ home: (p) => pageFor("home", p) }, calls);
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("home")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("home")) }),
         );
         await controller.resolve(); // [home]
 
@@ -1247,17 +1305,17 @@ describe("invalidate / refresh", () => {
 
     test("invalidate(entryKey) 使该条目下次 reveal 时重新 dispatch", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve();
         await controller.push("detail");
 
-        controller.invalidate(sessionEntryKey("root", {})); // 清 root 缓存
+        controller.invalidate(fixtureEntryId("root", {})); // 清 root 缓存
         await controller.pop(); // root 被 invalidate → 重新 dispatch（而非复用）
 
         expect(calls).toEqual(["root", "detail", "root"]);
@@ -1265,12 +1323,12 @@ describe("invalidate / refresh", () => {
 
     test("invalidate() 无参清空整个缓存", async () => {
         const calls: string[] = [];
-        const dispatcher = makeDispatcher(
+        const dispatcher = makeControllers(
             { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
         const controller = createNavigationController(
-            makeOptions({ intentDispatcher: dispatcher, initial: stack(leaf("root")) }),
+            makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve();
         await controller.push("detail");

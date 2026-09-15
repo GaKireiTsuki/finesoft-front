@@ -131,9 +131,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
 
         expect(plugin.config({ build: { outDir: "dist/custom" } })).toMatchObject({
             appType: "custom",
-            define: {
-                __FINESOFT_I18N_LOADER_SPECIFIER__: "undefined",
-            },
+            define: {},
         });
     });
 
@@ -148,9 +146,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
 
         expect(plugin.config({ build: { outDir: "dist/custom-client" } })).toMatchObject({
             appType: "custom",
-            define: {
-                __FINESOFT_I18N_LOADER_SPECIFIER__: '"virtual:finesoft-front/i18n-loader"',
-            },
+            define: {},
             build: {
                 outDir: "dist/custom-client",
             },
@@ -200,6 +196,8 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             throw new Error(`Unexpected CSS module: ${url}`);
         });
         const server = {
+            close: vi.fn(async () => {}),
+            httpServer: { close: vi.fn((callback: () => void) => callback()) },
             transformRequest,
             moduleGraph: { getModuleByUrl },
             ssrLoadModule,
@@ -296,6 +294,8 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         }) as VitePluginShape;
         const setupFn = vi.fn(async () => {});
         const server = {
+            close: vi.fn(async () => {}),
+            httpServer: { close: vi.fn((callback: () => void) => callback()) },
             ssrLoadModule: vi.fn(async () => ({ utility: setupFn })),
             middlewares: { use: vi.fn() },
         };
@@ -308,7 +308,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             resolve: { alias: { "@": "/src" } },
             css: { modules: true },
         });
-        createSSRApp.mockReturnValue("ssr-app");
+        createSSRApp.mockReturnValue({ dispose: vi.fn(async () => {}) });
         dynamicImport.mockImplementation(async (specifier: string) => {
             if (specifier === "hono") {
                 return { Hono: HonoMock };
@@ -339,7 +339,10 @@ describe("finesoftFrontViteConfig lifecycle", () => {
                 parentFetch: expect.any(Function),
             }),
         );
-        expect(app.route).toHaveBeenCalledWith("/", "ssr-app");
+        expect(app.route).toHaveBeenCalledWith(
+            "/",
+            expect.objectContaining({ dispose: expect.any(Function) }),
+        );
         expect(getRequestListener).toHaveBeenCalledWith(app.fetch);
 
         const middleware = server.middlewares.use.mock.calls[0]?.[0];
@@ -355,6 +358,8 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             ssr: { entry: "src/entry.ts" },
         }) as VitePluginShape;
         const server = {
+            close: vi.fn(async () => {}),
+            httpServer: { close: vi.fn((callback: () => void) => callback()) },
             ssrLoadModule: vi.fn(),
             middlewares: { use: vi.fn() },
         };
@@ -367,7 +372,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             resolve: {},
             css: {},
         });
-        createSSRApp.mockReturnValue("ssr-app");
+        createSSRApp.mockReturnValue({ dispose: vi.fn(async () => {}) });
         dynamicImport.mockImplementation(async (specifier: string) => {
             if (specifier === "hono") {
                 return { Hono: HonoMock };
@@ -393,6 +398,8 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             setup: "src/setup.ts",
         }) as VitePluginShape;
         const server = {
+            close: vi.fn(async () => {}),
+            httpServer: { close: vi.fn((callback: () => void) => callback()) },
             ssrLoadModule: vi.fn(async () => ({
                 default: defaultSetup,
                 setup: namedSetup,
@@ -407,7 +414,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             resolve: {},
             css: {},
         });
-        createSSRApp.mockReturnValue("ssr-app");
+        createSSRApp.mockReturnValue({ dispose: vi.fn(async () => {}) });
         dynamicImport.mockImplementation(async (specifier: string) => {
             if (specifier === "hono") {
                 return { Hono: HonoMock };
@@ -434,7 +441,11 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const error = vi.spyOn(console, "error").mockImplementation(() => {});
         const middlewares = { use: vi.fn() };
-        const server = { middlewares };
+        const server = {
+            close: vi.fn(async () => {}),
+            httpServer: { close: vi.fn((callback: () => void) => callback()) },
+            middlewares,
+        };
         const listener = vi.fn();
         const getRequestListener = vi.fn(() => listener);
         const readFileSync = vi.fn(
@@ -583,7 +594,11 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             renderModes: { "/docs/*": "csr" },
             defaultLocale: "ja-JP",
         }) as VitePluginShape;
-        const server = { middlewares: { use: vi.fn() } };
+        const server = {
+            close: vi.fn(async () => {}),
+            httpServer: { close: vi.fn((callback: () => void) => callback()) },
+            middlewares: { use: vi.fn() },
+        };
         const getRequestListener = vi.fn(() => vi.fn());
         const render = vi.fn(async (url: string) => ({
             html: `<main>${url}</main>`,
@@ -654,7 +669,11 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             setup,
             proxies: [{ prefix: "/api", target: "https://example.com" }],
         }) as VitePluginShape;
-        const server = { middlewares: { use: vi.fn() } };
+        const server = {
+            close: vi.fn(async () => {}),
+            httpServer: { close: vi.fn((callback: () => void) => callback()) },
+            middlewares: { use: vi.fn() },
+        };
         const getRequestListener = vi.fn(() => vi.fn());
         const render = vi.fn(async (url: string) => ({
             html: `<main>${url}</main>`,
@@ -728,7 +747,11 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         const plugin = finesoftFrontViteConfig({
             setup: "src/setup.ts",
         }) as VitePluginShape;
-        const server = { middlewares: { use: vi.fn() } };
+        const server = {
+            close: vi.fn(async () => {}),
+            httpServer: { close: vi.fn((callback: () => void) => callback()) },
+            middlewares: { use: vi.fn() },
+        };
         const getRequestListener = vi.fn(() => vi.fn());
         const setupModuleUrl = pathToFileURL(
             nodePath.resolve("/project", "dist/server/setup.mjs"),
@@ -844,7 +867,6 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         const plugin = finesoftFrontViteConfig({
             adapter: "node",
             setup: "src/setup.ts",
-            bootstrapEntry: "src/bootstrap.ts",
             proxies: [{ prefix: "/api", target: "https://example.com" }],
             renderModes: { "/": "prerender" },
             locales: ["en-US"],
@@ -857,7 +879,6 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             expect(ctx.root).toBe("/project");
             expect(ctx.ssrEntry).toBe("src/custom-ssr.ts");
             expect(ctx.setupPath).toBe("src/setup.ts");
-            expect(ctx.bootstrapEntry).toBe("src/bootstrap.ts");
             expect(ctx.templateHtml).toBe("<html>client</html>");
             expect(ctx.renderModes).toEqual({ "/": "prerender" });
             expect(ctx.proxies).toEqual([{ prefix: "/api", target: "https://example.com" }]);
@@ -967,7 +988,6 @@ interface AdapterBuildContext {
     root: string;
     ssrEntry: string;
     setupPath?: string;
-    bootstrapEntry?: string;
     templateHtml: string;
     renderModes?: Record<string, string>;
     proxies?: Array<{ prefix: string; target: string }>;

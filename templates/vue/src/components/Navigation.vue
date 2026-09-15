@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { makeExternalUrlAction, makeFlowAction, type Action } from "@finesoft/front";
+import { makeExternalUrlAction, makeFlowAction, type Action } from "@finesoft/front/browser";
 
 const { currentPath = "/", onAction } = defineProps<{
     currentPath?: string;

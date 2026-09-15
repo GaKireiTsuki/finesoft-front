@@ -63,6 +63,8 @@ export interface NavigationBridgeDependencies {
  * `subscribe` 与 controller 的订阅一致（每次提交都回调，含来自 popstate 的 hydrate）。
  */
 export interface NavigationHandle {
+    dispose(): void;
+    refresh(): Promise<NavigationSnapshot>;
     /** 当前快照（树 + 已解析的可见目标）。 */
     getSnapshot(): NavigationSnapshot;
     /** 在激活栈压入新目标。 */
@@ -127,7 +129,7 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
     let popSequence = 0;
 
     // ===== 快照 → history =====
-    controller.subscribe((snapshot) => {
+    const unsubscribe = controller.subscribe((snapshot) => {
         if (isApplyingHistory) {
             // 该快照源于 popstate 的 hydrate：地址栏/历史栈已是目标状态，不再回写。
             return;
@@ -201,6 +203,13 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
 
     // ===== navigation handle =====
     return {
+        dispose() {
+            unsubscribe();
+            history.dispose();
+        },
+        refresh() {
+            return controller.refresh();
+        },
         getSnapshot() {
             return controller.getSnapshot();
         },

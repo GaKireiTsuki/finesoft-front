@@ -1,402 +1,104 @@
-import { leaf } from "../../web/test/helpers/navigation";
-vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
-import { describe, expect, test, vi } from "vite-plus/test";
-
-vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
-
-import {
-    sessionEntryKey,
-    stack,
-    tabs,
-    type NavigationSnapshot,
-    type ResolvedDestination,
-} from "@finesoft/web";
-import { type BasePage } from "@finesoft/web";
-import {
-    createIslandOrchestrator,
-    type IslandHandle,
-    type MountEntry,
-    type ResolvedEntry,
-} from "../src/navigation-islands";
+import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
+import { leaf, stack, split, type NavigationSnapshot } from "@finesoft/web";
 import { FakeElement, stubDomGlobals } from "./fake-dom";
-
-// ---------------------------------------------------------------------------
-// 极简 DOM 实现（项目无 jsdom/happy-dom；对齐 start-app.test 用 vi.stubGlobal 风格）
-// ---------------------------------------------------------------------------
-
-// Register CustomEvent + document globally so navigation-islands.ts can call
-// document.createElement / container.dispatchEvent.
-stubDomGlobals();
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
-/** 构造一个 ResolvedDestination（page 用 intent 编进去，方便断言）。 */
-function dest(intent: string, params: Record<string, unknown> = {}): ResolvedDestination {
-    return {
-        entryId: KEY(intent, params),
-        resourceKey: KEY(intent, params),
-        intent,
-        params,
-        page: { id: intent, pageType: intent, title: intent } as BasePage,
-    };
+import { createEntryRenderer } from "../src/navigation-islands";
+import type { RenderContext } from "../src/renderer";
+beforeEach(stubDomGlobals);
+afterEach(() => vi.unstubAllGlobals());
+function outlet() {
+    const element = new FakeElement("main");
+    Object.defineProperty(element, "ownerDocument", {
+        value: { createElement: (tag: string) => new FakeElement(tag) },
+    });
+    return element as unknown as HTMLElement;
 }
-
-/** 记录所有 mountEntry / unmount 调用 + 把 entryKey 写进 container 供 DOM 断言。 */
-function makeMountEntry(events: string[]): MountEntry {
-    return (entry: ResolvedEntry, container: HTMLElement): IslandHandle => {
-        events.push(`mount:${entry.entryKey}`);
-        container.setAttribute("data-key", entry.entryKey);
-        container.textContent = entry.page.title ?? "";
-        return {
-            unmount(): void {
-                events.push(`unmount:${entry.entryKey}`);
-            },
-        };
-    };
-}
-
-/** 该 outlet 内当前 attached（在 outlet DOM 树里）的 island 的 data-key，按 DOM 序。 */
-function attachedKeys(outlet: HTMLElement): string[] {
-    return (outlet as unknown as FakeElement)
-        .querySelectorAll("[data-fs-entry]")
-        .map((el) => el.getAttribute("data-key") ?? "");
-}
-
-const KEY = (intent: string, params: Record<string, unknown> = {}): string =>
-    sessionEntryKey(intent, params);
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe("island orchestrator — 生命周期", () => {
-    test("首屏可见目标各 mountEntry 一次并 attach 进 outlet", () => {
-        const events: string[] = [];
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
-
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
-
-        expect(events).toEqual([`mount:${KEY("home")}`]);
-        expect(attachedKeys(outlet)).toEqual([KEY("home")]);
-    });
-
-    test("push 新目标：仅新目标 mountEntry，底层条目仍挂载但 detach（出 outlet）", () => {
-        const events: string[] = [];
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
-
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
-        events.length = 0;
-
-        // push detail：tree=[home,detail]，可见=[detail]，home 仍 present 但不可见。
-        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] });
-
-        expect(events).toEqual([`mount:${KEY("detail")}`]); // home 不重挂、不 unmount（保活）
-        expect(attachedKeys(outlet)).toEqual([KEY("detail")]); // home detach 出 document
-    });
-
-    test("pop 回 home：复用 home 的活实例（不重挂、不 unmount），detail 仍 present→保活 detach", () => {
-        const events: string[] = [];
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
-
-        // 固定 home/detail 引用：page-identity 检测要求同一 dest 对象复用同一 page 引用。
-        const dHome = dest("home");
-        const dDetail = dest("detail");
-
-        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dDetail] });
-        // 注意：上一步 home 从未可见过 → 未挂载。先让 home 可见一次再 push，模拟真实路径。
-        o.sync({ tree: stack([leaf("home")]), destinations: [dHome] }); // home 挂载
-        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dDetail] }); // detail 挂载，home detach
-        events.length = 0;
-
-        // pop：tree=[home]，可见=[home]。home 仍在 mounted → 复用 + 重 attach；detail 离树 → unmount。
-        o.sync({ tree: stack([leaf("home")]), destinations: [dHome] });
-
-        expect(events).toEqual([`unmount:${KEY("detail")}`]); // detail 离树 unmount；home 不重挂
-        expect(attachedKeys(outlet)).toEqual([KEY("home")]); // home 重 attach
-    });
-
-    test("split 多可见目标：按 destinations 顺序 attach 为 outlet 的有序子节点", () => {
-        const events: string[] = [];
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
-
-        o.sync({
-            tree: {
-                kind: "split",
-                columns: [
-                    { id: "l", content: leaf("list") },
-                    { id: "d", content: leaf("detail") },
-                ],
-            } as NavigationSnapshot["tree"],
-            destinations: [dest("list"), dest("detail")],
-        });
-
-        expect(attachedKeys(outlet)).toEqual([KEY("list"), KEY("detail")]);
-    });
-
-    test("离树条目 unmount：tabs 切到只剩另一分支可见时，旧可见叶子仍 present（保活），真正离树才 unmount", () => {
-        const events: string[] = [];
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
-
-        const tree = tabs({
-            active: "home",
-            branches: { home: leaf("home"), notes: leaf("notes") },
-        });
-        o.sync({ tree, destinations: [dest("home")] }); // home 挂载
-        o.sync({
-            tree: tabs({ active: "notes", branches: { home: leaf("home"), notes: leaf("notes") } }),
-            destinations: [dest("notes")],
-        });
-        // 切到 notes：home 分支仍在 tabs 树中（present）→ home 保活 detach，不 unmount；notes 挂载。
-        expect(events).toEqual([`mount:${KEY("home")}`, `mount:${KEY("notes")}`]);
-        expect(attachedKeys(outlet)).toEqual([KEY("notes")]);
-    });
-
-    test("dispose：unmount 全部 island 并清空 outlet", () => {
-        const events: string[] = [];
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
-        events.length = 0;
-
-        o.dispose();
-
-        expect(events).toEqual([`unmount:${KEY("home")}`]);
-        expect((outlet as unknown as FakeElement).children).toHaveLength(0);
-    });
-});
-
-// ---------------------------------------------------------------------------
-// Task 2: fs:* 生命周期事件
-// ---------------------------------------------------------------------------
-
-describe("island orchestrator — fs:* 生命周期事件", () => {
-    /**
-     * 在 outlet 上委托监听 fs:* 事件（CustomEvent bubbles），记录 type:key。
-     * 读 e.target 上的 data-key（由 makeMountEntry 写入）来标识哪个 island 触发。
-     */
-    function listen(outlet: HTMLElement, log: string[]): void {
-        for (const type of ["fs:enter", "fs:reveal", "fs:conceal", "fs:exit"]) {
-            (outlet as unknown as FakeElement).addEventListener(type, (e) => {
-                const key = (e.target as unknown as FakeElement).getAttribute("data-key") ?? "";
-                log.push(`${type}:${key}`);
-            });
-        }
-    }
-
-    test("挂载→可见 派发 enter 然后 reveal", () => {
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const log: string[] = [];
-        listen(outlet, log);
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry([]) });
-
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
-
-        expect(log).toEqual([`fs:enter:${KEY("home")}`, `fs:reveal:${KEY("home")}`]);
-    });
-
-    test("push 使底层条目 conceal；pop 使其 reveal", () => {
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const log: string[] = [];
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry([]) });
-        // 先让 home 挂载+可见，再开始记录事件
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
-        listen(outlet, log);
-
-        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dest("detail")] });
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
-
-        expect(log).toContain(`fs:conceal:${KEY("home")}`);
-        expect(log).toContain(`fs:enter:${KEY("detail")}`);
-        expect(log).toContain(`fs:reveal:${KEY("home")}`);
-        expect(log).toContain(`fs:exit:${KEY("detail")}`); // detail 离树
-    });
-
-    test("dispose：已挂载 island 派发 fs:exit", () => {
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const log: string[] = [];
-        listen(outlet, log);
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry([]) });
-        o.sync({ tree: stack([leaf("home")]), destinations: [dest("home")] });
-        log.length = 0;
-
-        o.dispose();
-
-        expect(log).toContain(`fs:exit:${KEY("home")}`);
-    });
-});
-
-// ---------------------------------------------------------------------------
-// Task 3: 滚动 conceal/reveal 往返
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Task 4: page 变化 remount
-// ---------------------------------------------------------------------------
-
-describe("island orchestrator — page 变化 remount", () => {
-    test("同 entryKey 但 page 引用变化 → unmount 旧 + mount 新", () => {
-        const events: string[] = [];
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
-
-        const d1 = dest("home");
-        o.sync({ tree: stack([leaf("home")]), destinations: [d1] });
-        events.length = 0;
-
-        // 同 key、新 page 对象（模拟 refresh 后控制器产出的新页）
-        const d2: ResolvedDestination = {
-            entryId: d1.entryId,
-            resourceKey: d1.resourceKey,
-            intent: "home",
+const a = leaf("a", {}, { entryId: "entry-a" }),
+    b = leaf("b", {}, { entryId: "entry-b" });
+const page = (id: string, type = id) => ({ id, pageType: type, title: id });
+const snapshot = (tree: NavigationSnapshot["tree"], ids: string[]): NavigationSnapshot =>
+    ({
+        tree,
+        destinations: ids.map((id) => ({
+            entryId: "entry-" + id,
+            resourceKey: "resource-" + id,
+            intent: id,
             params: {},
-            page: { id: "home", pageType: "home", title: "fresh" } as BasePage,
-        };
-        o.sync({ tree: stack([leaf("home")]), destinations: [d2] });
-
-        expect(events).toEqual([`unmount:${KEY("home")}`, `mount:${KEY("home")}`]);
-        expect(
-            (outlet as unknown as FakeElement).querySelector("[data-fs-entry]")?.textContent,
-        ).toBe("fresh");
-    });
-
-    test("page 引用不变 → 不 remount（保活）", () => {
-        const events: string[] = [];
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        const o = createIslandOrchestrator({ outlet, mountEntry: makeMountEntry(events) });
-        const d = dest("home");
-        o.sync({ tree: stack([leaf("home")]), destinations: [d] });
-        events.length = 0;
-        o.sync({ tree: stack([leaf("home")]), destinations: [d] }); // 同一 page 引用
-        expect(events).toEqual([]);
-    });
-});
-
-// ---------------------------------------------------------------------------
-// Task 3: 滚动 conceal/reveal 往返
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Task 4 (SSR 收养): orchestrator 首次 sync 收养 SSR island 容器
-// ---------------------------------------------------------------------------
-
-describe("createIslandOrchestrator — SSR 收养水合（首次 sync）", () => {
-    function destSnapshot(intent: string, params: Record<string, unknown>, page: unknown) {
-        return {
-            tree: { kind: "leaf", intent, params },
-            destinations: [
-                {
-                    entryId: KEY(intent, params),
-                    resourceKey: KEY(intent, params),
-                    intent,
-                    params,
-                    page,
-                },
-            ],
-        } as never;
-    }
-
-    test("命中既有 SSR 容器 → 收养（hydrate:true、复用容器、不新建）", () => {
-        const outlet = new FakeElement("main");
-        const key = sessionEntryKey("home", {});
-        const ssrDiv = new FakeElement("div");
-        ssrDiv.setAttribute("data-fs-entry", "");
-        ssrDiv.setAttribute("data-fs-intent", "home");
-        ssrDiv.setAttribute("data-fs-key", key);
-        outlet.appendChild(ssrDiv);
-
-        const seen: Array<{ container: unknown; hydrate?: boolean }> = [];
-        const orch = createIslandOrchestrator({
-            outlet: outlet as never,
-            mountEntry: (entry, container) => {
-                seen.push({ container, hydrate: entry.hydrate });
-                return { unmount() {} };
+            page: page(id),
+        })),
+    }) as NavigationSnapshot;
+test("native-ready settlement precedes reveal, hidden entries retain scroll, and update precedes next commit", async () => {
+    const root = outlet(),
+        events: string[] = [];
+    let release!: () => void;
+    let mounted = 0;
+    const owner = createEntryRenderer({
+        outlet: root,
+        context: {} as RenderContext,
+        renderer: {
+            mount: async ({ target }) => {
+                mounted++;
+                if (mounted === 1) await new Promise<void>((r) => (release = r));
+                target.addEventListener("fs:reveal", () => events.push("reveal"));
+                return {
+                    update: async () => {
+                        await Promise.resolve();
+                        events.push("update");
+                    },
+                    dispose() {},
+                };
             },
-            schedule: (cb) => cb(),
-        });
-        orch.sync(destSnapshot("home", {}, { id: "home" }));
-
-        expect(seen).toHaveLength(1);
-        expect(seen[0].hydrate).toBe(true);
-        expect(seen[0].container).toBe(ssrDiv); // 复用 SSR 容器
-        expect(outlet.querySelectorAll("[data-fs-entry]")).toHaveLength(1); // 未新建额外容器
+        },
     });
-
-    test("无 SSR 标记 → 回退新建（hydrate falsy、新容器）", () => {
-        const outlet = new FakeElement("main");
-        const seen: Array<{ hydrate?: boolean }> = [];
-        const orch = createIslandOrchestrator({
-            outlet: outlet as never,
-            mountEntry: (entry) => {
-                seen.push({ hydrate: entry.hydrate });
-                return { unmount() {} };
-            },
-            schedule: (cb) => cb(),
-        });
-        orch.sync(destSnapshot("home", {}, { id: "home" }));
-        expect(seen[0].hydrate).toBeFalsy();
-        expect(outlet.querySelectorAll("[data-fs-entry]")).toHaveLength(1);
-    });
-
-    test("孤儿 SSR 容器（不在可见集）→ 首次 sync 丢弃", () => {
-        const outlet = new FakeElement("main");
-        const stale = new FakeElement("div");
-        stale.setAttribute("data-fs-entry", "");
-        stale.setAttribute("data-fs-intent", "old");
-        stale.setAttribute("data-fs-key", sessionEntryKey("old", {}));
-        outlet.appendChild(stale);
-
-        const orch = createIslandOrchestrator({
-            outlet: outlet as never,
-            mountEntry: () => ({ unmount() {} }),
-            schedule: (cb) => cb(),
-        });
-        orch.sync(destSnapshot("home", {}, { id: "home" }));
-        const keys = outlet
-            .querySelectorAll("[data-fs-entry]")
-            .map((el: FakeElement) => el.getAttribute("data-fs-key"));
-        expect(keys).toEqual([sessionEntryKey("home", {})]);
-    });
+    const first = owner.sync(snapshot(stack(a), ["a"]));
+    await Promise.resolve();
+    expect(events).toEqual([]);
+    release();
+    await first;
+    expect(events).toEqual(["reveal"]);
+    const original = root.querySelector<HTMLElement>("[data-fs-entry]")!;
+    original.scrollTop = 53;
+    await owner.sync(snapshot(stack([a, b]), ["b"]));
+    original.scrollTop = 0;
+    await owner.sync(snapshot(stack(a), ["a"]));
+    expect(root.querySelector("[data-fs-entry]")).toBe(original);
+    expect(original.scrollTop).toBe(53);
+    expect(events).toContain("update");
+    await owner.dispose();
+    expect(root.querySelectorAll("[data-fs-entry]")).toHaveLength(0);
 });
-
-describe("island orchestrator — 滚动 conceal/reveal 往返", () => {
-    test("conceal 记录 scrollTop，reveal 重放", () => {
-        const outlet = document.createElement("div") as unknown as HTMLElement;
-        // mountEntry 在 container 内放一个带 data-fs-scroll 的可滚动元素
-        const mountEntry: MountEntry = (_entry, container) => {
-            const scroller = document.createElement("div") as unknown as HTMLElement;
-            (scroller as unknown as FakeElement).setAttribute("data-fs-scroll", "");
-            (container as unknown as FakeElement).appendChild(scroller as unknown as FakeElement);
-            return { unmount() {} };
-        };
-        // 注入同步 scheduler（替代 rAF）便于断言
-        const o = createIslandOrchestrator({ outlet, mountEntry, schedule: (cb) => cb() });
-
-        // 固定 dest 引用：page-identity 检测要求同一 dest 复用同一 page 引用（keep-alive 路径）。
-        const dHome = dest("home");
-        const dDetail = dest("detail");
-
-        o.sync({ tree: stack([leaf("home")]), destinations: [dHome] });
-
-        // 找到 outlet 里的 data-fs-scroll 元素，设置 scrollTop
-        const scroller = (outlet as unknown as FakeElement).querySelector(
-            "[data-fs-scroll]",
-        ) as unknown as FakeElement;
-        scroller.scrollTop = 120;
-
-        // push detail → home conceal（记录 120）
-        o.sync({ tree: stack([leaf("home"), leaf("detail")]), destinations: [dDetail] });
-        // 模拟 detach 期间 scrollTop 归零（真实浏览器行为；jsdom 需手动置 0 验证重放）
-        scroller.scrollTop = 0;
-        // pop → home reveal → 重放 120
-        o.sync({ tree: stack([leaf("home")]), destinations: [dHome] });
-
-        expect(scroller.scrollTop).toBe(120);
+test("partial mount removes its container and final shutdown attempts every native cleanup", async () => {
+    const root = outlet(),
+        cleaned: string[] = [];
+    let failMount = true;
+    const owner = createEntryRenderer({
+        outlet: root,
+        context: {} as RenderContext,
+        renderer: {
+            mount: ({ page }) => {
+                if (failMount) throw Error("mount failed");
+                return {
+                    update() {},
+                    dispose() {
+                        cleaned.push(page.id);
+                        if (page.id === "a") throw Error("cleanup failed");
+                    },
+                };
+            },
+        },
     });
+    await expect(owner.sync(snapshot(stack(a), ["a"]))).rejects.toThrow("mount failed");
+    expect(root.querySelectorAll("[data-fs-entry]")).toHaveLength(0);
+    failMount = false;
+    await owner.sync(
+        snapshot(
+            split([
+                { id: "left", content: a },
+                { id: "right", content: b },
+            ]),
+            ["a", "b"],
+        ),
+    );
+    await expect(owner.dispose()).rejects.toThrow("Entry cleanup failed");
+    expect(cleaned).toEqual(["a", "b"]);
+    expect(root.querySelectorAll("[data-fs-entry]")).toHaveLength(0);
 });

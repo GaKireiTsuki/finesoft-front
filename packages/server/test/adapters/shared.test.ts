@@ -124,7 +124,6 @@ describe("shared adapter helpers", () => {
         const ctx = createAdapterContext({
             fs,
             vite,
-            bootstrapEntry: "src/bootstrap.ts",
             templateHtml:
                 "<html><head><!--ssr-head--></head><body><!--ssr-body--><!--ssr-data--></body></html>",
             locales: ["fr"],
@@ -150,20 +149,29 @@ describe("shared adapter helpers", () => {
             }
             if (specifier === ssrModuleUrl) {
                 return {
-                    render: vi.fn(async (url: string) => {
-                        if (url === "/fr/blog") {
-                            throw new Error("boom");
-                        }
+                    render: Object.assign(
+                        vi.fn(async (url: string) => {
+                            if (url === "/fr/blog") {
+                                throw new Error("boom");
+                            }
 
-                        return {
-                            html: `<main>${url}</main>`,
-                            cache: "public",
-                            head: '<meta charset="utf-8">',
-                            css: ".app{color:red}",
-                            serverData: [{ url }],
-                            locale: url === "/fr" ? "fr-FR" : undefined,
-                        };
-                    }),
+                            return {
+                                html: `<main>${url}</main>`,
+                                cache: "public",
+                                head: '<meta charset="utf-8">',
+                                css: ".app{color:red}",
+                                serverData: [{ url }],
+                                locale: url === "/fr" ? "fr-FR" : undefined,
+                            };
+                        }),
+                        {
+                            routes: [
+                                { path: "/", renderMode: "prerender" },
+                                { path: "/blog", renderMode: "prerender" },
+                                { path: "/product/:id", renderMode: "prerender" },
+                            ],
+                        },
+                    ),
                     serializeServerData: vi.fn((data: unknown) => JSON.stringify(data)),
                 };
             }
@@ -180,22 +188,8 @@ describe("shared adapter helpers", () => {
 
         const results = await prerenderRoutes(ctx as never);
 
-        expect(vite.build).toHaveBeenCalledWith({
-            root: "/project",
-            build: {
-                ssr: "src/bootstrap.ts",
-                outDir: nodePath.resolve("/project", "dist/server"),
-                emptyOutDir: false,
-                rollupOptions: {
-                    output: { entryFileNames: "_routes_prerender.mjs" },
-                },
-            },
-            resolve: {},
-        });
-        expect(fs.rmSync).toHaveBeenCalledWith(
-            nodePath.resolve("/project", "dist/server/_routes_prerender.mjs"),
-            { force: true },
-        );
+        expect(vite.build).not.toHaveBeenCalled();
+        expect(fs.rmSync).not.toHaveBeenCalled();
         expect(results).toHaveLength(3);
         expect(results.map((result) => result.url)).toEqual(
             expect.arrayContaining(["/", "/blog", "/fr"]),
@@ -204,7 +198,7 @@ describe("shared adapter helpers", () => {
             '<html lang="fr-FR" dir="ltr">',
         );
         expect(results.find((result) => result.url === "/blog")?.html).toContain(
-            '<script id="serialized-server-data" type="application/json">',
+            '<script data-fs-server-data type="application/json">',
         );
         expect(warn).toHaveBeenCalledWith(
             "  [prerender] Failed to render /fr/blog:",
@@ -247,7 +241,6 @@ function createAdapterContext(overrides: Record<string, unknown> = {}): Record<s
         root: "/project",
         ssrEntry: "ssr.mjs",
         setupPath: undefined,
-        bootstrapEntry: "src/lib/bootstrap.ts",
         templateHtml: "<html></html>",
         resolvedResolve: {},
         resolvedCss: {},
@@ -269,29 +262,37 @@ function createAdapterContext(overrides: Record<string, unknown> = {}): Record<s
     };
 }
 
-test("discovers routes from an ordinary default Web definition", async () => {
-    const ctx = createAdapterContext({ fs: { existsSync: () => true, rmSync: vi.fn() } });
-    dynamicImport.mockImplementation(async (specifier: string) => {
-        if (specifier === "node:url") return import("node:url");
-        if (specifier.endsWith("_routes_prerender.mjs"))
-            return {
-                default: {
-                    id: "web",
-                    routes: [{ path: "/public", renderMode: "prerender" }],
-                },
-            };
-        if (specifier.endsWith("ssr.js"))
-            return {
-                serializeServerData: JSON.stringify,
-                render: () => ({
-                    html: "public-page",
-                    head: "",
-                    css: "",
-                    serverData: [],
-                    cache: "public",
-                }),
-            };
-        throw new Error(`Unexpected import: ${specifier}`);
+test("discovers prerender declarations on the compiled standard renderer and closes unused owners", async () => {
+    const dispose = vi.fn(async () => {});
+    const routes = Object.freeze([{ path: "/static", renderMode: "prerender" }]);
+    const render = Object.assign(
+        async () => ({
+            html: "compiled-static",
+            head: "",
+            css: "",
+            serverData: [],
+            cache: "public" as const,
+        }),
+        { routes, dispose },
+    );
+    dynamicImport.mockImplementation(async (specifier: string) =>
+        specifier === "node:url"
+            ? import("node:url")
+            : { render, serializeServerData: JSON.stringify },
+    );
+    const build = vi.fn();
+    const ctx = createAdapterContext({
+        fs: { existsSync: (path: string) => path.endsWith("/ssr.js") },
+        vite: { build },
+        templateHtml: "<!--ssr-body-->",
     });
-    expect(await prerenderRoutes(ctx as never)).toHaveLength(1);
+    expect(await prerenderRoutes(ctx as never)).toEqual([
+        { url: "/static", html: "compiled-static" },
+    ]);
+    expect(build).not.toHaveBeenCalled();
+    expect(render.routes).toBe(routes);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    render.routes = Object.freeze([]);
+    expect(await prerenderRoutes(ctx as never)).toEqual([]);
+    expect(dispose).toHaveBeenCalledTimes(2);
 });

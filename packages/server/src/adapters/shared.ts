@@ -48,7 +48,7 @@ export const NODE_BUILTINS = [
 export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOptions): string {
     return `
 import { Hono } from "hono";
-import { createSSRHandler } from "@finesoft/front/http";
+import { createSSRHost } from "@finesoft/front/http";
 ${opts.platformImport}
 ${opts.dnsPolicy === "hostname" ? "" : 'import { nodeDnsLookup as _dnsLookup } from "@finesoft/front/node";'}
 import { render, serializeServerData } from "./${ctx.ssrEntry}";
@@ -61,7 +61,7 @@ const app = new Hono();
 ${generateProxyCode(ctx.proxies ?? [])}
 ${ctx.setupPath ? 'if (typeof _setupDefault === "function") await _setupDefault(app);' : ""}
 ${opts.platformMiddleware ?? ""}
-const ssrHandler = createSSRHandler({
+const ssrHost = createSSRHost({
     template: TEMPLATE,
     render,
     serializeServerData,
@@ -72,7 +72,7 @@ const ssrHandler = createSSRHandler({
     ${opts.platformCache ? "cache: {get: platformCacheGet, set: platformCacheSet}," : ""}
     ${opts.publicCacheHeaders ? `publicCacheHeaders: ${JSON.stringify(opts.publicCacheHeaders)},` : ""}
 });
-app.get("*", c => ssrHandler(c.req.raw, c.env));
+app.get("*", c => ssrHost.handle(c.req.raw, c.env));
 ${opts.platformExport}
 `;
 }
@@ -127,113 +127,92 @@ export interface PrerenderResult {
  * 3. 渲染每个 URL × locale
  */
 export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderResult[]> {
-    const { fs, path, root, vite } = ctx;
+    const { fs, path, root } = ctx;
     const { pathToFileURL } = await dynamicImport("node:url");
     const importVersion = ctx.buildId ? `?finesoft-build=${encodeURIComponent(ctx.buildId)}` : "";
 
-    const routesExport = ctx.bootstrapEntry ?? "src/lib/bootstrap.ts";
-
-    // ── 1. 尝试构建并加载路由定义（文件不存在则跳过） ──
-    let routes: Array<{ path: string; renderMode?: string }> = [];
-    const routesFileExists = fs.existsSync(path.resolve(root, routesExport));
-
-    if (routesFileExists) {
-        await vite.build({
-            root,
-            build: {
-                ssr: routesExport,
-                outDir: path.resolve(root, "dist/server"),
-                emptyOutDir: false,
-                rollupOptions: {
-                    output: { entryFileNames: "_routes_prerender.mjs" },
-                },
-            },
-            resolve: ctx.resolvedResolve,
-        });
-
-        const routesPath = pathToFileURL(
-            path.resolve(root, "dist/server/_routes_prerender.mjs"),
-        ).href;
-        const routesMod = await dynamicImport(routesPath + importVersion);
-        routes = routesMod.routes ?? routesMod.default?.routes ?? routesMod.default ?? [];
-
-        // 清理临时文件
-        fs.rmSync(path.resolve(root, "dist/server/_routes_prerender.mjs"), {
-            force: true,
-        });
+    const routes: Array<{ path: string; renderMode?: string }> = [];
+    const ssrFile = path.resolve(root, "dist/server/ssr.js");
+    let ssrModule: SSRModule | undefined;
+    if (fs.existsSync(ssrFile)) {
+        ssrModule = await dynamicImport(pathToFileURL(ssrFile).href + importVersion);
+        routes.push(...(ssrModule!.render.routes ?? []));
     }
+    try {
+        // ── 2. 收集 prerender 路径 ──
+        const prerenderPaths = new Set<string>();
 
-    // ── 2. 收集 prerender 路径 ──
-    const prerenderPaths = new Set<string>();
-
-    // 路由定义级别
-    for (const r of routes) {
-        if (r.renderMode === "prerender" && r.path && !r.path.includes(":")) {
-            prerenderPaths.add(r.path);
-        }
-    }
-
-    // Vite 配置覆盖级别
-    if (ctx.renderModes) {
-        for (const [pattern, mode] of Object.entries(ctx.renderModes)) {
-            if (mode === "prerender" && !pattern.includes("*") && !pattern.includes(":")) {
-                prerenderPaths.add(pattern);
+        // 路由定义级别
+        for (const r of routes) {
+            if (r.renderMode === "prerender" && r.path && !r.path.includes(":")) {
+                prerenderPaths.add(r.path);
             }
         }
-    }
 
-    // locale 矩阵展开
-    if (ctx.locales?.length) {
-        const basePaths = [...prerenderPaths];
-        for (const locale of ctx.locales) {
-            for (const basePath of basePaths) {
-                const localePath = basePath === "/" ? `/${locale}` : `/${locale}${basePath}`;
-                prerenderPaths.add(localePath);
+        // Vite 配置覆盖级别
+        if (ctx.renderModes) {
+            for (const [pattern, mode] of Object.entries(ctx.renderModes)) {
+                if (mode === "prerender" && !pattern.includes("*") && !pattern.includes(":")) {
+                    prerenderPaths.add(pattern);
+                }
             }
         }
-    }
 
-    if (prerenderPaths.size === 0) return [];
-
-    // ── 3. 加载 SSR 模块 ──
-    const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
-    const ssrModule = await dynamicImport(ssrPath + importVersion);
-
-    // ── 4. 渲染每个 URL ──
-    const results: PrerenderResult[] = [];
-
-    for (const url of prerenderPaths) {
-        try {
-            let eligible = false;
-            const handler = createSSRHandler({
-                template: ctx.templateHtml,
-                render: async (path, context) => {
-                    const result = await (ssrModule as SSRModule).render(path, context);
-                    eligible =
-                        result.cache === "public" &&
-                        !result.redirect &&
-                        !result.rewriteUrl &&
-                        (result.status ?? 200) === 200 &&
-                        [...new Headers(result.headers)].length === 0;
-                    return result;
-                },
-                serializeServerData: ssrModule.serializeServerData,
-                defaultLocale: ctx.defaultLocale,
-                renderModes: ctx.renderModes,
-                safeFetch: { lookup: nodeDnsLookup },
-                onError: (error) => console.warn(`  [prerender] Failed to render ${url}:`, error),
-            });
-            const response = await handler(new Request(new URL(url, "http://prerender.local")));
-            if (eligible && response.status === 200)
-                results.push({ url, html: await response.text() });
-        } catch (e) {
-            console.warn(`  [prerender] Failed to render ${url}:`, e);
+        // locale 矩阵展开
+        if (ctx.locales?.length) {
+            const basePaths = [...prerenderPaths];
+            for (const locale of ctx.locales) {
+                for (const basePath of basePaths) {
+                    const localePath = basePath === "/" ? `/${locale}` : `/${locale}${basePath}`;
+                    prerenderPaths.add(localePath);
+                }
+            }
         }
-    }
 
-    if (results.length > 0) {
-        console.log(`  Pre-rendered ${results.length} pages (${prerenderPaths.size} routes)\n`);
-    }
+        if (prerenderPaths.size === 0) return [];
 
-    return results;
+        // ── 3. 加载 SSR 模块 ──
+        ssrModule ??= await dynamicImport(pathToFileURL(ssrFile).href + importVersion);
+
+        // ── 4. 渲染每个 URL ──
+        const results: PrerenderResult[] = [];
+
+        for (const url of prerenderPaths) {
+            try {
+                let eligible = false;
+                const handler = createSSRHandler({
+                    template: ctx.templateHtml,
+                    render: async (path, context) => {
+                        const result = await (ssrModule as SSRModule).render(path, context);
+                        eligible =
+                            result.cache === "public" &&
+                            !result.redirect &&
+                            !result.rewriteUrl &&
+                            (result.status ?? 200) === 200 &&
+                            [...new Headers(result.headers)].length === 0;
+                        return result;
+                    },
+                    serializeServerData: ssrModule!.serializeServerData,
+                    defaultLocale: ctx.defaultLocale,
+                    renderModes: ctx.renderModes,
+                    safeFetch: { lookup: nodeDnsLookup },
+                    onError: (error) =>
+                        console.warn(`  [prerender] Failed to render ${url}:`, error),
+                });
+                const response = await handler(new Request(new URL(url, "http://prerender.local")));
+                if (eligible && response.status === 200)
+                    results.push({ url, html: await response.text() });
+            } catch (e) {
+                console.warn(`  [prerender] Failed to render ${url}:`, e);
+            }
+        }
+
+        if (results.length > 0) {
+            console.log(`  Pre-rendered ${results.length} pages (${prerenderPaths.size} routes)\n`);
+        }
+
+        return results;
+    } finally {
+        await ssrModule?.render.dispose?.();
+    }
 }

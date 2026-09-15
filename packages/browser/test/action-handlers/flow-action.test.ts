@@ -1,3 +1,4 @@
+import { fixtureDefinition } from "../../../web/test/helpers/definition";
 vi.mock("@finesoft/web", async () => import("../../../web/src/index.ts"));
 import type { Logger } from "@finesoft/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -851,7 +852,7 @@ describe("registerFlowActionHandler", () => {
 
 function makeFramework(overrides: Partial<Record<string, unknown>> = {}) {
     const actionHandlers = new Map<string, (action: Record<string, unknown>) => Promise<void>>();
-    const owner = Framework.create();
+    const owner = Framework.create({ definition: fixtureDefinition() });
     const framework = {
         container: owner.container,
         prefetchedIntents: owner.prefetchedIntents,

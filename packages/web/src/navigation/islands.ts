@@ -15,7 +15,6 @@ export interface ResolvedEntry {
     readonly resourceKey: string;
     readonly intent: string;
     readonly params: RouteParams;
-    readonly entryKey: string;
     readonly page: BasePage;
     /**
      * SSR 水合提示：true = 该条目的容器已含服务端渲染标记，挂载原语应**水合**（如 Vue

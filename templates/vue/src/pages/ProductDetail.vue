@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import { NAV_ACTIONS } from "../actions";
 import type { ProductPage } from "../lib/models/product";
 

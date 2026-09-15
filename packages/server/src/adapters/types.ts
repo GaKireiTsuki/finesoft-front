@@ -17,8 +17,6 @@ export interface AdapterContext {
     ssrEntry: string;
     /** setup 文件相对路径（如 "src/proxies.ts"），仅当 options.setup 为 string 时有值 */
     setupPath?: string;
-    /** 路由定义入口文件（用于预渲染时加载路由），如 "src/lib/bootstrap.ts" */
-    bootstrapEntry?: string;
     /** dist/client/index.html 的内容 */
     templateHtml: string;
     /** Vite 的 resolve 配置 */

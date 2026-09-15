@@ -1,4 +1,4 @@
-import { type BeforeLoadGuard, defineRequestScopedKey, next } from "@finesoft/front";
+import { type BeforeLoadGuard, defineRequestScopedKey, next } from "@finesoft/front/browser";
 
 export interface TracedUser {
     name: string;

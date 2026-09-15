@@ -17,7 +17,13 @@ export {
     type SSRRenderNavigationOptions,
     type SSRRenderNavigationResult,
 } from "./navigation";
-export { ssrRender, type SSRContext, type SSRRenderOptions, type SSRRenderResult } from "./render";
+export {
+    ssrRender,
+    type SSRAppResult,
+    type SSRContext,
+    type SSRRenderOptions,
+    type SSRRenderResult,
+} from "./render";
 export {
     materializeServerData,
     serializeServerData,

@@ -43,7 +43,7 @@ export { islandContainerAttributes } from "./islands";
 export { type ResolvedEntry } from "./islands";
 
 // ===== Keys（稳定身份键）=====
-export { entryKey, resourceKey } from "./keys";
+export { resourceKey } from "./keys";
 
 // ===== Operations（纯函数）=====
 export {

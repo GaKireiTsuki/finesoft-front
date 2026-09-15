@@ -26,7 +26,7 @@ describe("SSR injection helpers", () => {
         expect(result).toContain("<main>Hello</main>");
         expect(result).toContain('<link rel="preload">');
         expect(result).toContain(
-            '<script id="serialized-server-data" type="application/json">{"ok":true}</script>',
+            '<script data-fs-server-data type="application/json">{"ok":true}</script>',
         );
     });
 
@@ -54,9 +54,7 @@ describe("SSR injection helpers", () => {
         expect(result).toContain('<html class="shell">');
         expect(result).not.toContain("<style>");
         expect(result).toContain("<main>Plain</main>");
-        expect(result).toContain(
-            '<script id="serialized-server-data" type="application/json">{}</script>',
-        );
+        expect(result).toContain('<script data-fs-server-data type="application/json">{}</script>');
         expect(result).not.toContain("<!--ssr-missing-->");
     });
 

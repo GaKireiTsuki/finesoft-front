@@ -1,3 +1,4 @@
+import { createSSRHost } from "./ssr-host";
 import { nodeDnsLookup } from "./node/dns";
 /**
  * createSSRApp — 创建 Hono SSR 应用
@@ -11,7 +12,7 @@ import type { ViteDevServer } from "vite";
 import { dynamicImport } from "./dynamic-import";
 
 export type { SSRModule } from "./ssr-handler";
-import { createSSRHandler, type SSRModule } from "./ssr-handler";
+import { type SSRModule } from "./ssr-handler";
 
 export interface SSRAppOptions {
     /** 项目根路径 */
@@ -45,7 +46,9 @@ export interface SSRAppOptions {
     defaultLocale?: string;
 }
 
-export function createSSRApp(options: SSRAppOptions): Hono<{ Bindings: Record<string, unknown> }> {
+export function createSSRApp(
+    options: SSRAppOptions,
+): Hono<{ Bindings: Record<string, unknown> }> & { dispose(): Promise<void> } {
     const {
         root,
         vite,
@@ -103,7 +106,7 @@ export function createSSRApp(options: SSRAppOptions): Hono<{ Bindings: Record<st
         return dynamicImport(absPath) as Promise<SSRModule>;
     }
 
-    const handler = createSSRHandler({
+    const owner = createSSRHost({
         template: (request) =>
             readTemplate(new URL(request.url).pathname + new URL(request.url).search),
         loadModule: () => loadSSRModule(),
@@ -116,6 +119,6 @@ export function createSSRApp(options: SSRAppOptions): Hono<{ Bindings: Record<st
             console.error("[SSR Error]", error);
         },
     });
-    app.get("*", (c) => handler(c.req.raw, c.env));
-    return app;
+    app.get("*", (c) => owner.handle(c.req.raw, c.env));
+    return Object.assign(app, { dispose: () => owner.dispose() });
 }

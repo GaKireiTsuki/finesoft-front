@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import type { AboutPage } from "../lib/models/product";
 
 const { page, onAction: _onAction } = defineProps<{

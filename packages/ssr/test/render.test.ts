@@ -3,7 +3,7 @@ vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import type { BasePage } from "@finesoft/web";
 import type { IntentController } from "@finesoft/core";
-import { defineRoutes } from "@finesoft/web";
+import { fixtureDefinition } from "../../web/test/helpers/definition";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
@@ -11,7 +11,6 @@ import { ssrRender } from "../src/render";
 
 describe("ssrRender", () => {
     afterEach(() => {
-        globalThis.__FINESOFT_I18N_LOADER__ = undefined;
         vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
@@ -22,16 +21,16 @@ describe("ssrRender", () => {
         let safeFetch: typeof globalThis.fetch | undefined;
         await ssrRender({
             url: "/",
-            frameworkConfig: {},
-            ssrContext: { fetch, safeFetch: { lookup } },
-            bootstrap(framework) {
-                safeFetch = framework.container.resolve(DEP_KEYS.SAFE_FETCH);
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     { path: "/", intentId: "home", controller: makeController(makePage()) },
-                ]);
+                ]),
             },
+            ssrContext: { fetch, safeFetch: { lookup } },
+
             getErrorPage: makeErrorPage,
-            renderApp() {
+            renderApp(_page, framework) {
+                safeFetch = framework.container.resolve(DEP_KEYS.SAFE_FETCH);
                 return { html: "ok", head: "", css: "" };
             },
         });
@@ -40,26 +39,21 @@ describe("ssrRender", () => {
         expect(fetch).not.toHaveBeenCalled();
     });
 
-    test("uses the Vite-generated loader when loadMessages is omitted", async () => {
-        globalThis.__FINESOFT_I18N_LOADER__ = vi.fn(async (locale) => {
-            expect(locale).toBe("en-US");
-            return { hello: "Hello from generated loader" };
-        });
-
+    test("uses the application loader when supplied", async () => {
         const result = await ssrRender({
             url: "/",
+            loadMessages: () => ({ hello: "Hello from generated loader" }),
             frameworkConfig: {
-                locale: "en-US",
-            },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+                definition: fixtureDefinition([
                     {
                         path: "/",
                         intentId: "home",
                         controller: makeController(makePage()),
                     },
-                ]);
+                ]),
+                locale: "en-US",
             },
+
             getErrorPage: makeErrorPage,
             renderApp(_page, framework) {
                 return {
@@ -80,17 +74,16 @@ describe("ssrRender", () => {
         const result = await ssrRender({
             url: "/?from=test",
             frameworkConfig: {
-                locale: "en-US",
-            },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+                definition: fixtureDefinition([
                     {
                         path: "/",
                         intentId: "home",
                         controller: makeController(page),
                     },
-                ]);
+                ]),
+                locale: "en-US",
             },
+
             getErrorPage: makeErrorPage,
             renderApp(_page, framework) {
                 return {
@@ -137,6 +130,13 @@ describe("ssrRender", () => {
         const result = await ssrRender({
             url: "/zh-Hans",
             frameworkConfig: {
+                definition: fixtureDefinition([
+                    {
+                        path: "/zh-Hans",
+                        intentId: "home",
+                        controller: makeController(makePage()),
+                    },
+                ]),
                 locale: "en-US",
             },
             ssrContext: {
@@ -146,15 +146,7 @@ describe("ssrRender", () => {
             resolveLocale() {
                 return { lang: "zh-Hans", dir: "ltr" };
             },
-            bootstrap(framework) {
-                defineRoutes(framework, [
-                    {
-                        path: "/zh-Hans",
-                        intentId: "home",
-                        controller: makeController(makePage()),
-                    },
-                ]);
-            },
+
             getErrorPage: makeErrorPage,
             renderApp(_page, framework) {
                 return {
@@ -185,17 +177,16 @@ describe("ssrRender", () => {
         const result = await ssrRender({
             url: "/",
             frameworkConfig: {
-                locale: "en-US",
-            },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+                definition: fixtureDefinition([
                     {
                         path: "/",
                         intentId: "home",
                         controller: makeController(page),
                     },
-                ]);
+                ]),
+                locale: "en-US",
             },
+
             getErrorPage: makeErrorPage,
             renderApp(_page, framework) {
                 return {
@@ -223,10 +214,8 @@ describe("ssrRender", () => {
         await expect(
             ssrRender({
                 url: "/",
-                frameworkConfig: {
-                    locale: "en-US",
-                },
-                bootstrap() {},
+                frameworkConfig: { definition: fixtureDefinition([]), locale: "en-US" },
+
                 getErrorPage: makeErrorPage,
                 renderApp() {
                     return { html: "", head: "", css: "" };
@@ -244,10 +233,8 @@ describe("ssrRender", () => {
         await expect(
             ssrRender({
                 url: "/",
-                frameworkConfig: {
-                    locale: "en-US",
-                },
-                bootstrap() {},
+                frameworkConfig: { definition: fixtureDefinition([]), locale: "en-US" },
+
                 getErrorPage: makeErrorPage,
                 renderApp() {
                     return { html: "", head: "", css: "" };
@@ -265,17 +252,17 @@ describe("ssrRender", () => {
 
         const result = await ssrRender({
             url: "/",
-            frameworkConfig: {},
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/",
                         intentId: "home",
                         controller: makeController(makePage()),
                         renderMode: "csr",
                     },
-                ]);
+                ]),
             },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });
@@ -295,9 +282,8 @@ describe("ssrRender", () => {
 
         const result = await ssrRender({
             url: "/private",
-            frameworkConfig: {},
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/private",
                         intentId: "private",
@@ -310,8 +296,9 @@ describe("ssrRender", () => {
                             }),
                         ],
                     },
-                ]);
+                ]),
             },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });
@@ -336,9 +323,8 @@ describe("ssrRender", () => {
 
         const result = await ssrRender({
             url: "/private",
-            frameworkConfig: {},
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/private",
                         intentId: "private",
@@ -351,8 +337,9 @@ describe("ssrRender", () => {
                             }),
                         ],
                     },
-                ]);
+                ]),
             },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });
@@ -377,17 +364,17 @@ describe("ssrRender", () => {
 
         const result = await ssrRender({
             url: "/products?id=1",
-            frameworkConfig: {},
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/products",
                         intentId: "product",
                         controller: makeController(page, "product"),
                         afterLoad: [() => ({ kind: "rewrite", url: "/products/1" })],
                     },
-                ]);
+                ]),
             },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });
@@ -415,9 +402,8 @@ describe("ssrRender", () => {
 
         const result = await ssrRender({
             url: "/legacy",
-            frameworkConfig: {},
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/legacy",
                         intentId: "legacy",
@@ -435,8 +421,9 @@ describe("ssrRender", () => {
                             perform: canonicalController,
                         },
                     },
-                ]);
+                ]),
             },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });
@@ -454,9 +441,8 @@ describe("ssrRender", () => {
         await expect(
             ssrRender({
                 url: "/a",
-                frameworkConfig: {},
-                bootstrap(framework) {
-                    defineRoutes(framework, [
+                frameworkConfig: {
+                    definition: fixtureDefinition([
                         {
                             path: "/a",
                             intentId: "a",
@@ -469,8 +455,9 @@ describe("ssrRender", () => {
                             controller: makeController(makePage(), "b"),
                             beforeLoad: [() => ({ kind: "rewrite", url: "/a" })],
                         },
-                    ]);
+                    ]),
                 },
+
                 getErrorPage: makeErrorPage,
                 renderApp: () => ({ html: "", head: "", css: "" }),
             }),
@@ -486,8 +473,8 @@ describe("ssrRender", () => {
 
         const result = await ssrRender({
             url: "/missing",
-            frameworkConfig: {},
-            bootstrap() {},
+            frameworkConfig: { definition: fixtureDefinition([]) },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });
@@ -515,9 +502,8 @@ describe("ssrRender", () => {
 
         const result = await ssrRender({
             url: "/broken",
-            frameworkConfig: {},
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/broken",
                         intentId: "broken",
@@ -528,8 +514,9 @@ describe("ssrRender", () => {
                             },
                         },
                     },
-                ]);
+                ]),
             },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });

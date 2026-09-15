@@ -24,10 +24,13 @@ export interface SSRResponseResult<TData = unknown> {
     cache?: "public";
 }
 export interface SSRModule<TData = unknown> {
-    render: (
+    render: ((
         url: string,
         context?: SSRRequestContext,
-    ) => SSRResponseResult<TData> | Promise<SSRResponseResult<TData>>;
+    ) => SSRResponseResult<TData> | Promise<SSRResponseResult<TData>>) & {
+        dispose?(): Promise<void>;
+        readonly routes?: readonly { readonly path: string; readonly renderMode?: string }[];
+    };
     serializeServerData: (data: TData) => string;
 }
 export interface SSRCache {

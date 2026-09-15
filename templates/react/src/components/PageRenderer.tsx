@@ -1,4 +1,4 @@
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import type { AppPage } from "../lib/models/product";
 import About from "../pages/About";
 import Home from "../pages/Home";

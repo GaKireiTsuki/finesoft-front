@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import { computed } from "vue";
 import Layout from "./components/Layout.vue";
 import Loading from "./components/Loading.vue";

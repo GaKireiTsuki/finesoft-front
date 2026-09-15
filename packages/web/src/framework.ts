@@ -10,8 +10,6 @@ import type { Action } from "./actions/types";
 import {
     Container,
     createRuntime,
-    defineApp,
-    defineOperation,
     ExecutionError,
     type RuntimeHandle,
     type ExecutionHandle,
@@ -23,8 +21,7 @@ import type { MetricsRecorder } from "@finesoft/core";
 import { DEP_KEYS } from "@finesoft/core";
 import { makeDependencies, type MakeDependenciesOptions } from "./dependencies/make-dependencies";
 import type { LocaleAttributes, Translator } from "@finesoft/core";
-import { IntentDispatcher } from "@finesoft/core";
-import type { Intent, IntentController } from "@finesoft/core";
+import type { Intent } from "@finesoft/core";
 import type { Logger } from "@finesoft/core";
 import { runAfterLoadGuards, runBeforeLoadGuards } from "./middleware/pipeline";
 import type {
@@ -41,18 +38,14 @@ import type { PlatformInfo } from "@finesoft/core";
 
 /** Framework 初始化配置 */
 export interface FrameworkConfig extends MakeDependenciesOptions {
-    definition?: WebAppDefinition;
-    /** Temporary bridge for imperative startup. */
-    router?: Router;
+    definition: WebAppDefinition;
     runtime?: RuntimeHandle;
     invocation?: Invocation;
-    setupRoutes?: (router: Router) => void;
     prefetchedIntents?: PrefetchedIntents;
 }
 
 export class Framework {
     readonly container: Container;
-    readonly intentDispatcher: IntentDispatcher;
     readonly actionDispatcher: ActionDispatcher;
     readonly router: Router;
     readonly prefetchedIntents: PrefetchedIntents;
@@ -65,59 +58,32 @@ export class Framework {
     private readonly config: FrameworkConfig;
     private closed = false;
     private disposal?: Promise<void>;
-    readonly definition?: WebAppDefinition;
+    readonly definition: WebAppDefinition;
     currentEntry?: import("./navigation/types").LeafNode;
     private readonly ownsRuntime: boolean;
-    private readonly legacy = new Map<string, IntentController>();
-    private readonly legacyOperation = defineOperation({
-        id: "@web/legacy-page",
-        kind: "query" as const,
-        handler: async (intent: Intent, context: import("@finesoft/core").ExecutionContext) => {
-            const cached =
-                (context.bindings[WEB_EXECUTION] as WebExecutionState).retained.get(intent) ??
-                this.prefetchedIntents.get(
-                    intent,
-                    (context.bindings[WEB_EXECUTION] as WebExecutionState).entryIds.get(intent),
-                );
-            if (cached !== undefined) return cached;
-            const controller = this.legacy.get(intent.id);
-            if (!controller) throw new ExecutionError("not_found");
-            return controller.perform(intent, this.container, context);
-        },
-    });
-
     private constructor(config: FrameworkConfig) {
         this.config = config;
         this.definition = config.definition;
-        const plan = config.definition && getWebPlan(config.definition);
+        const plan = getWebPlan(config.definition);
         this.prefetchedIntents = config.prefetchedIntents ?? PrefetchedIntents.empty();
         this.ownsRuntime = !config.runtime;
         this.runtime =
             config.runtime ??
             createRuntime({
-                app:
-                    plan?.app ??
-                    defineApp({ id: "legacy-web", operations: [this.legacyOperation] }),
+                app: plan.app,
                 capabilities: { fetch: config.fetch ?? globalThis.fetch?.bind(globalThis) },
                 invocationCapabilities: ["fetch"],
                 recorder: config.eventRecorder,
             });
         this.container = new Container();
         makeDependencies(this.container, config);
-        this.intentDispatcher = new IntentDispatcher();
-        // Temporary startup facade: all consumers dispatch through the Runtime owner.
-        this.intentDispatcher.dispatch = (intent) => this.dispatch(intent);
         this.actionDispatcher = new ActionDispatcher();
-        this.router =
-            plan?.router ??
-            config.router ??
-            new Router((message) => this.getLogger().debug(message));
+        this.router = plan.router;
         this.beforeGuards.push(...(config.definition?.beforeLoad ?? []));
         this.afterGuards.push(...(config.definition?.afterLoad ?? []));
-        config.setupRoutes?.(this.router);
     }
 
-    static create(config: FrameworkConfig = {}): Framework {
+    static create(config: FrameworkConfig): Framework {
         return new Framework({ ...config.definition?.frameworkConfig, ...config });
     }
 
@@ -132,8 +98,8 @@ export class Framework {
         retained?: BasePage,
         entryId?: string,
     ): Promise<T> {
-        const operation = this.definition && getWebPlan(this.definition).operations.get(intent.id);
-        if (this.definition && !operation) throw new ExecutionError("not_found");
+        const operation = getWebPlan(this.definition).operations.get(intent.id);
+        if (!operation) throw new ExecutionError("not_found");
         const owned = !execution;
         execution ??= this.createExecution();
         try {
@@ -148,13 +114,7 @@ export class Framework {
                     params,
                     retained,
                 );
-            if (!operation && retained) {
-                const state = execution.context.bindings[WEB_EXECUTION] as WebExecutionState;
-                state.retained.set(intent, retained);
-            }
-            return (await (operation
-                ? execution.execute(operation, params)
-                : execution.execute(this.legacyOperation, intent))) as T;
+            return (await execution.execute(operation, params)) as T;
         } finally {
             if (owned) await execution.dispose();
         }
@@ -203,14 +163,6 @@ export class Framework {
     /** 注册 Action 处理器 */
     onAction<A extends Action>(kind: string, handler: ActionHandler<A>): void {
         this.actionDispatcher.onAction(kind, handler);
-    }
-
-    /** 注册 Intent Controller */
-    registerIntent(controller: IntentController): void {
-        if (this.definition)
-            throw new ExecutionError("configuration", "Controllers belong in defineWebApp");
-        this.legacy.set(controller.intentId, controller);
-        this.intentDispatcher.register(controller);
     }
 
     // ===== Navigation Middleware =====

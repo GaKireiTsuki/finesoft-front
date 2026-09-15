@@ -5,7 +5,7 @@ import {
     DEP_KEYS,
     HostGuardError,
     HttpClient,
-} from "@finesoft/front";
+} from "@finesoft/front/browser";
 
 class GenericHttpClient extends HttpClient {
     fetchRoot(): Promise<unknown> {

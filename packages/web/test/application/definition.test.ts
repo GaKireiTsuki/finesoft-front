@@ -1,3 +1,4 @@
+import { fixtureDefinition } from "../helpers/definition";
 import { expect, test } from "vite-plus/test";
 import { defineApp, ExecutionError } from "@finesoft/core";
 import { Framework, defineWebApp, loadPage, next, leaf, PrefetchedIntents } from "../../src/index";
@@ -80,7 +81,7 @@ test("prefetch is consumed inside operation after app policies", async () => {
     });
     const cached = { id: "cached", pageType: "home", title: "Cached" };
     const prefetch = PrefetchedIntents.fromArray([
-        { intent: { id: "home", params: {} }, data: cached },
+        { entryId: "cached-entry", intent: { id: "home", params: {} }, data: cached },
     ]);
     const fw = Framework.create({
         definition: web,
@@ -88,7 +89,7 @@ test("prefetch is consumed inside operation after app policies", async () => {
         invocation: { bindings: { denied: true } },
     });
     await expect(fw.dispatch({ id: "home", params: {} })).rejects.toMatchObject({ code: "denied" });
-    expect(prefetch.get({ id: "home", params: {} })).toBe(cached);
+    expect(prefetch.get({ id: "home", params: {} }, "cached-entry")).toBe(cached);
     await fw.dispose();
 });
 
@@ -276,7 +277,7 @@ test("assembled route indexes cannot be mutated through a request facade", async
 });
 
 test("facade disposal finishes environment and owned Runtime even if execution cleanup fails", async () => {
-    const fw = Framework.create();
+    const fw = Framework.create({ definition: fixtureDefinition() });
     const execution = fw.createExecution();
     execution.context.onDispose(() => {
         throw new Error("cleanup failed");
@@ -292,7 +293,7 @@ test("facade disposal finishes environment and owned Runtime even if execution c
 
 test("disposed navigation rejects new work even when its shared facade is still alive", async () => {
     const { createNavigationController, stack } = await import("../../src/navigation");
-    const fw = Framework.create();
+    const fw = Framework.create({ definition: fixtureDefinition() });
     const nav = createNavigationController({ framework: fw, initial: stack(leaf("home")) });
     await nav.dispose();
     await expect(nav.resolve()).rejects.toMatchObject({

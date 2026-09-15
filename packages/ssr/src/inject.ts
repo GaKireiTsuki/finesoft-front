@@ -31,7 +31,7 @@ export function injectSSRContent(options: InjectSSROptions): string {
     const replacements: Record<string, string> = {
         head: `${head}\n${cssTag}`,
         body: html,
-        data: `<script id="serialized-server-data" type="application/json">${serializedData}</script>`,
+        data: `<script data-fs-server-data type="application/json">${serializedData}</script>`,
         ...slots,
     };
 

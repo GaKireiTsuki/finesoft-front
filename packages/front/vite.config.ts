@@ -10,6 +10,9 @@ export default defineConfig({
             "src/http.ts",
             "src/worker.ts",
             "src/node.ts",
+            ...["react", "vue", "svelte"].flatMap((ui) =>
+                ["browser", "server"].map((side) => "src/renderers/" + ui + "/" + side + ".ts"),
+            ),
         ],
         format: "esm",
         dts: true,
@@ -26,7 +29,15 @@ export default defineConfig({
             ),
         },
         deps: {
-            neverBundle: ["hono", "@hono/node-server", "vite", "dotenv"],
+            neverBundle: [
+                "hono",
+                "@hono/node-server",
+                "vite",
+                "dotenv",
+                /^react(?:-dom)?(?:\/|$)/,
+                /^vue(?:\/|$)/,
+                /^svelte(?:\/|$)/,
+            ],
             alwaysBundle: internal.map((name) => `@finesoft/${name}`),
         },
     },

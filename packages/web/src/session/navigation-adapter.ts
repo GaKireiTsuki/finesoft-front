@@ -17,10 +17,9 @@
  */
 
 import { deserializeNavigation, serializeNavigation } from "../navigation/index";
-import { collectLeafKeys, sessionEntryKey } from "./scoped-state";
+import { collectLeafKeys } from "./scoped-state";
 import { isUrlLocation } from "./types";
 import type { NavigationController } from "../navigation/index";
-import type { RouteParams } from "../router/types";
 import type { SessionNavigationAdapter, SessionSnapshot } from "./types";
 
 /**
@@ -61,16 +60,13 @@ export interface UrlAdapterOptions {
     readonly currentUrl: () => string;
     /** 应用恢复的 URL（应用提供，如 `framework.perform(makeFlowAction(url))`）。 */
     readonly navigate: (url: string, entryId?: string) => void | Promise<void>;
-    /** 可选：当前屏的 intent + params，用于 `presentKeys` 产出稳定身份键。 */
-    readonly currentIntent?: () => { intent: string; params: RouteParams };
 }
 
 /**
  * 扁平 URL 适配器：把单页 URL 接到会话编排器。
  *
  * `apply` 仅处理 `SessionUrlLocation`；`SerializedNavigation` 与 `undefined` 一律 no-op
- * （扁平只认 URL 形态）。`presentKeys` 恒为单条目：有 `currentIntent` 时用
- * `sessionEntryKey(intent, params)`，否则退化为当前 URL 字符串。
+ * （扁平只认 URL 形态）。`presentKeys` 只返回当前 EntryId，尚无条目时为空。
  */
 export function createUrlSessionAdapter(opts: UrlAdapterOptions): SessionNavigationAdapter {
     return {
@@ -92,11 +88,7 @@ export function createUrlSessionAdapter(opts: UrlAdapterOptions): SessionNavigat
                 const entry = opts.currentEntry();
                 return entry ? [entry.entryId] : [];
             }
-            if (opts.currentIntent) {
-                const { intent, params } = opts.currentIntent();
-                return [sessionEntryKey(intent, params)];
-            }
-            return [opts.currentUrl()];
+            return [];
         },
     };
 }

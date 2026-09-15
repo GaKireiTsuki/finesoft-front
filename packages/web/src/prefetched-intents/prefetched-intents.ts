@@ -31,10 +31,8 @@ export class PrefetchedIntents {
         const map = new Map<string, unknown>();
         const entries = new Map<string, string[]>();
         for (const item of items) {
-            if (item.intent && item.data !== undefined) {
-                const key = item.entryId
-                    ? stableStringify([item.entryId, item.intent])
-                    : stableStringify(item.intent);
+            if (item.entryId && item.intent && item.data !== undefined) {
+                const key = stableStringify([item.entryId, item.intent]);
                 map.set(key, item.data);
                 if (item.entryId) {
                     const intentKey = stableStringify(item.intent);
@@ -55,8 +53,8 @@ export class PrefetchedIntents {
      * 命中后从缓存中删除。
      */
     get<T>(intent: Intent<T>, entryId?: string): T | undefined {
-        const entryKey = entryId && stableStringify([entryId, intent]);
-        const key = entryKey && this.intents.has(entryKey) ? entryKey : stableStringify(intent);
+        if (!entryId) return undefined;
+        const key = stableStringify([entryId, intent]);
         const data = this.intents.get(key);
         if (data !== undefined) {
             this.intents.delete(key);
@@ -75,9 +73,7 @@ export class PrefetchedIntents {
 
     /** 检查缓存中是否有某个 Intent 的数据 */
     has(intent: Intent, entryId?: string): boolean {
-        return this.intents.has(
-            entryId ? stableStringify([entryId, intent]) : stableStringify(intent),
-        );
+        return !!entryId && this.intents.has(stableStringify([entryId, intent]));
     }
 
     /** 缓存中的条目数 */

@@ -1,4 +1,4 @@
-import { BaseController, type BasePage } from "@finesoft/front";
+import { BaseController, type BasePage } from "@finesoft/front/browser";
 
 /** Notes 页面：第二个 tab，演示切 tab 保活该分支的作用域状态。 */
 export class NotesController extends BaseController<Record<string, string>, BasePage> {

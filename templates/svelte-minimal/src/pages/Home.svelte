@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { BasePage } from "@finesoft/front";
+	import type { BasePage } from "@finesoft/front/browser";
 	import { getFramework } from "../lib/framework-svelte";
 
 	let { page }: { page: BasePage } = $props();
@@ -13,7 +13,7 @@
 		"Hydration kept the translator alive on the client.";
 	const switchHint =
 		translator?.t("home.switchHint") ??
-		'Change frameworkConfig.locale in src/bootstrap.ts to load another JSON file.';
+		'Change frameworkConfig.locale in src/app-definition.ts to load another JSON file.';
 </script>
 
 <div>

@@ -1,5 +1,5 @@
-import type { Action } from "@finesoft/front";
-import { makeFlowAction } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
+import { makeFlowAction } from "@finesoft/front/browser";
 import type { ErrorPage } from "../lib/models/product";
 
 interface NotFoundProps {

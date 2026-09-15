@@ -1,4 +1,4 @@
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import { Layout } from "./components/Layout";
 import { Loading } from "./components/Loading";
 import { PageRenderer } from "./components/PageRenderer";

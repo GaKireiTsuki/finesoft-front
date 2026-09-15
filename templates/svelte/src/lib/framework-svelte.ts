@@ -5,8 +5,8 @@
  * 子组件通过 getPerform 获取 perform 函数，无需逐层传递 onaction 回调。
  */
 
-import type { Action } from "@finesoft/front";
-import { Framework } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
+import { Framework } from "@finesoft/front/browser";
 import { getContext, setContext } from "svelte";
 
 const FRAMEWORK_KEY = "framework";

@@ -1,4 +1,4 @@
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import type { AboutPage } from "../lib/models/product";
 
 interface AboutProps {

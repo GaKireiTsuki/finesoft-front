@@ -1,4 +1,4 @@
-import { BaseController, type BasePage, safeErrorPage } from "@finesoft/front";
+import { BaseController, type BasePage, safeErrorPage } from "@finesoft/front/browser";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 

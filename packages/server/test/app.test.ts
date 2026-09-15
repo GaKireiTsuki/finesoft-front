@@ -123,9 +123,7 @@ export function serializeServerData(data) {
 
         expect(response.status).toBe(200);
         expect(html).toContain("<main>/blog/post-1</main>");
-        expect(html).toContain(
-            '<script id="serialized-server-data" type="application/json">[]</script>',
-        );
+        expect(html).toContain('<script data-fs-server-data type="application/json">[]</script>');
     });
 
     test("caches prerender output and wires parentFetch through internal SSR fetch", async () => {
@@ -178,7 +176,7 @@ export function serializeServerData(data) {
         expect(first.status).toBe(200);
         expect(second.status).toBe(200);
         expect(firstHtml).toContain("<main>/cached?view=1:internal-ok</main>");
-        expect(firstHtml).toContain('<script id="serialized-server-data" type="application/json">');
+        expect(firstHtml).toContain('<script data-fs-server-data type="application/json">');
         expect(secondHtml).toBe(firstHtml);
         expect(appGlobals.__APP_RENDER_CALLS__).toBe(2);
         expect(appGlobals.__APP_INTERNAL_FETCH_TEXT__).toBe("internal-ok");

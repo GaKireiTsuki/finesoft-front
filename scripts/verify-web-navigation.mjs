@@ -69,7 +69,6 @@ const context = {
     path,
     vite,
     ssrEntry: "src/ssr.ts",
-    bootstrapEntry: "src/app.ts",
     templateHtml:
         "<!DOCTYPE html><html><head><!--ssr-head--></head><body><!--ssr-body--><!--ssr-data--></body></html>",
     resolvedResolve: {},

@@ -1,20 +1,5 @@
-import { createSSRRender, safeErrorPage, serializeServerData } from "@finesoft/front";
-import { renderToString } from "react-dom/server";
-import App from "./App";
-import { bootstrap } from "./bootstrap";
-
-export const render = createSSRRender({
-    bootstrap,
-    getErrorPage(status, message) {
-        return safeErrorPage({ status, publicMessage: message });
-    },
-    renderApp(page, _framework) {
-        return {
-            html: renderToString(<App page={page} />),
-            head: `<title>${page.title}</title>`,
-            css: "",
-        };
-    },
-});
-
-export { serializeServerData };
+import { createReactSSRRender } from "@finesoft/front/renderers/react/server";
+import { app } from "./app-definition";
+import { views } from "./views";
+export const render = createReactSSRRender({ app, renderer: views });
+export { serializeServerData } from "@finesoft/front/renderers/react/server";

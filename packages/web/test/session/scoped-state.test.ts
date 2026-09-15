@@ -1,43 +1,29 @@
+import { fixtureEntryId } from "../helpers/navigation";
 import { leaf } from "../helpers/navigation";
 import { describe, expect, test } from "vite-plus/test";
 import { split, stack, tabs } from "../../src/navigation/nodes";
-import {
-    collectLeafKeys,
-    createNavigationScopedState,
-    sessionEntryKey,
-} from "../../src/session/scoped-state";
-
-describe("sessionEntryKey", () => {
-    test("stable for same intent+params regardless of key order", () => {
-        expect(sessionEntryKey("p", { a: 1, b: 2 })).toBe(sessionEntryKey("p", { b: 2, a: 1 }));
-    });
-
-    test("format is `intent stableStringify(params)`", () => {
-        expect(sessionEntryKey("home", {})).toBe("home {}");
-        expect(sessionEntryKey("post", { id: 7 })).toBe('post {"id":7}');
-    });
-});
+import { collectLeafKeys, createNavigationScopedState } from "../../src/session/scoped-state";
 
 describe("collectLeafKeys (all present, not just visible)", () => {
     test("leaf collects itself", () => {
-        expect(collectLeafKeys(leaf("A"))).toEqual([sessionEntryKey("A", {})]);
+        expect(collectLeafKeys(leaf("A"))).toEqual([fixtureEntryId("A", {})]);
     });
 
     test("stack collects every entry (A under B)", () => {
         const tree = stack([leaf("A"), leaf("B")]);
-        expect(collectLeafKeys(tree)).toEqual([sessionEntryKey("A", {}), sessionEntryKey("B", {})]);
+        expect(collectLeafKeys(tree)).toEqual([fixtureEntryId("A", {}), fixtureEntryId("B", {})]);
     });
 
     test("tabs collects ALL branches (inactive retained)", () => {
         const tree = tabs({ active: "x", branches: { x: leaf("X"), y: leaf("Y") } });
         expect(collectLeafKeys(tree).sort()).toEqual(
-            [sessionEntryKey("X", {}), sessionEntryKey("Y", {})].sort(),
+            [fixtureEntryId("X", {}), fixtureEntryId("Y", {})].sort(),
         );
     });
 
     test("split collects all columns that have content (empty columns skipped)", () => {
         const tree = split([{ id: "sidebar", content: leaf("S") }, { id: "detail" }]);
-        expect(collectLeafKeys(tree)).toEqual([sessionEntryKey("S", {})]);
+        expect(collectLeafKeys(tree)).toEqual([fixtureEntryId("S", {})]);
     });
 
     test("deeply nested tree (tabs of stacks + split) collects every leaf anywhere", () => {
@@ -53,11 +39,11 @@ describe("collectLeafKeys (all present, not just visible)", () => {
         });
         expect(collectLeafKeys(tree).sort()).toEqual(
             [
-                sessionEntryKey("A", {}),
-                sessionEntryKey("B", {}),
-                sessionEntryKey("L", {}),
-                sessionEntryKey("D1", {}),
-                sessionEntryKey("D2", {}),
+                fixtureEntryId("A", {}),
+                fixtureEntryId("B", {}),
+                fixtureEntryId("L", {}),
+                fixtureEntryId("D1", {}),
+                fixtureEntryId("D2", {}),
             ].sort(),
         );
     });
@@ -66,32 +52,32 @@ describe("collectLeafKeys (all present, not just visible)", () => {
 describe("NavigationScopedState.prune — SwiftUI push/pop lifecycle", () => {
     test("pop B drops B, keeps A", () => {
         const s = createNavigationScopedState();
-        s.set(sessionEntryKey("A", {}), { scroll: 10 });
-        s.set(sessionEntryKey("B", {}), { draft: "hi" });
+        s.set(fixtureEntryId("A", {}), { scroll: 10 });
+        s.set(fixtureEntryId("B", {}), { draft: "hi" });
         // pop B → present = {A}
         s.prune(collectLeafKeys(stack([leaf("A")])));
-        expect(s.get(sessionEntryKey("A", {}))).toEqual({ scroll: 10 });
-        expect(s.get(sessionEntryKey("B", {}))).toBeUndefined();
+        expect(s.get(fixtureEntryId("A", {}))).toEqual({ scroll: 10 });
+        expect(s.get(fixtureEntryId("B", {}))).toBeUndefined();
     });
 
     test("push B keeps A (present under B), B gets its own scope", () => {
         const s = createNavigationScopedState();
-        s.set(sessionEntryKey("A", {}), { scroll: 10 });
+        s.set(fixtureEntryId("A", {}), { scroll: 10 });
         // push B → present = {A, B}
         s.prune(collectLeafKeys(stack([leaf("A"), leaf("B")])));
-        s.set(sessionEntryKey("B", {}), { draft: "hi" });
-        expect(s.get(sessionEntryKey("A", {}))).toEqual({ scroll: 10 });
-        expect(s.get(sessionEntryKey("B", {}))).toEqual({ draft: "hi" });
+        s.set(fixtureEntryId("B", {}), { draft: "hi" });
+        expect(s.get(fixtureEntryId("A", {}))).toEqual({ scroll: 10 });
+        expect(s.get(fixtureEntryId("B", {}))).toEqual({ draft: "hi" });
     });
 
     test("tab switch retains all branches", () => {
         const s = createNavigationScopedState();
-        s.set(sessionEntryKey("X", {}), 1);
-        s.set(sessionEntryKey("Y", {}), 2);
+        s.set(fixtureEntryId("X", {}), 1);
+        s.set(fixtureEntryId("Y", {}), 2);
         const tree = tabs({ active: "y", branches: { x: leaf("X"), y: leaf("Y") } });
         s.prune(collectLeafKeys(tree));
-        expect(s.get(sessionEntryKey("X", {}))).toBe(1);
-        expect(s.get(sessionEntryKey("Y", {}))).toBe(2);
+        expect(s.get(fixtureEntryId("X", {}))).toBe(1);
+        expect(s.get(fixtureEntryId("Y", {}))).toBe(2);
     });
 
     test("get/set/delete/keys", () => {

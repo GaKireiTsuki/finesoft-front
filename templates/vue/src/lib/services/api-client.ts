@@ -1,4 +1,4 @@
-import { HttpClient, type HttpClientConfig } from "@finesoft/front";
+import { HttpClient, type HttpClientConfig } from "@finesoft/front/browser";
 
 /**
  * Demo API client — extends HttpClient for typed endpoint access.

@@ -29,7 +29,7 @@ export {
 export { decodeSnapshot, encodeSnapshot } from "./snapshot";
 
 // ===== Scoped state（导航作用域状态）=====
-export { collectLeafKeys, createNavigationScopedState, sessionEntryKey } from "./scoped-state";
+export { collectLeafKeys, createNavigationScopedState } from "./scoped-state";
 
 // ===== Store（会话编排器）=====
 export { createSessionStore } from "./session-store";

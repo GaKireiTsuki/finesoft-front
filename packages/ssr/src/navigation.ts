@@ -1,3 +1,4 @@
+import { ownRender } from "./render-owner";
 import { materializeServerData } from "./server-data";
 /**
  * ssrRenderNavigation — 结构化导航的 SSR 渲染管线
@@ -11,11 +12,11 @@ import { materializeServerData } from "./server-data";
  * 3. 把快照（树 + 每个目标的预取结果）经 **既有 `PrefetchedIntents` 通道** 序列化进
  *    HTML：每个可见目标产出一条 `{ intent, data: page }`（与单页 SSR 完全一致的形态），
  *    再额外挂一条 **哨兵条目** 承载 `serializeNavigation(tree)`。哨兵复用同一个
- *    `#serialized-server-data` 脚本，因此 `@finesoft/server` 层零改动即可透传。
+ *    `script[data-fs-server-data]` 脚本，因此 `@finesoft/server` 层零改动即可透传。
  *
  * 浏览器侧用 `extractNavigationTree` 取出树、`stripNavigationTree` 把哨兵剔除后，
  * 剩下的纯目标条目交给现有 `PrefetchedIntents.fromArray` 还原——每个目标按
- * `stableStringify(intent)` 命中，`NavigationController` 的 dispatch 优先复用，
+ * `EntryId + stableStringify(intent)` 命中，`NavigationController` 的 dispatch 优先复用，
  * 不再回服务端取数。
  *
  * 应用不启用导航（不传 `navigation`）时调用方继续走 `ssrRender` 的单页路径；本模块
@@ -25,10 +26,13 @@ import { materializeServerData } from "./server-data";
 import { Framework, type BasePage } from "@finesoft/web";
 import {
     createNavigationController,
+    resolveInitialNavigation,
     createActiveLeafCodec,
     type WebAppDefinition,
     deserializeNavigation,
     leaf,
+    stack,
+    resourceKey,
     markPublic,
     resolveConfiguredMessages,
     serializeNavigation,
@@ -78,7 +82,7 @@ export interface SerializedNavigationTreePayload {
  * - `beforeLoad` / `afterLoad`：目标级守卫，由控制器对主目标执行（叠加在全局/路由守卫外）。
  */
 export interface SSRNavigationDefinition {
-    /** URL ⇄ 树 的编解码器（调用方在 bootstrap 决定，缺省常用 `createActiveLeafCodec`）。 */
+    /** URL ⇄ 树 的编解码器（定义侧决定，缺省常用 `createActiveLeafCodec`）。 */
     readonly codec: NavigationCodec;
     /** 可选初始树工厂：codec 无法从 URL 还原结构时，用它产出默认结构骨架。 */
     readonly initial?: (url: string) => NavigationNode | undefined;
@@ -100,7 +104,6 @@ export interface SSRRenderNavigationOptions {
     /** Framework 配置（含路由注册等） */
     readonly frameworkConfig: FrameworkConfig;
     /** 注册 controllers 和路由的引导函数 */
-    readonly bootstrap?: (framework: Framework) => void;
     /** 获取错误页面 */
     readonly getErrorPage: (status: number, message: string) => BasePage;
     /**
@@ -161,7 +164,6 @@ export async function ssrRenderNavigation(
     const {
         url,
         frameworkConfig,
-        bootstrap,
         getErrorPage,
         renderApp,
         navigation,
@@ -210,7 +212,6 @@ export async function ssrRenderNavigation(
             bindings: { ...ssrContext?.bindings, request: ssrContext?.request },
         },
     } as InternalSSRFrameworkConfig);
-    bootstrap?.(framework);
 
     try {
         // ===== 1. URL → 初始树（单页回退时一并拿到该路由的 renderMode） =====
@@ -220,15 +221,29 @@ export async function ssrRenderNavigation(
         // 与单页 SSR 的 404 路径对齐。
         if (resolved === undefined) {
             const page = getErrorPage(404, "Page not found");
+            const target = leaf("@finesoft/not-found", {}, { url: fullPath });
+            const snapshot: NavigationSnapshot = {
+                tree: stack(target),
+                destinations: [
+                    {
+                        entryId: target.entryId,
+                        resourceKey: resourceKey(target.intent, target.params),
+                        intent: target.intent,
+                        params: target.params,
+                        page,
+                        status: 404,
+                    },
+                ],
+            };
             return await renderResult({
                 framework,
                 resolvedLocale,
                 renderApp,
                 page,
-                snapshot: { tree: leaf("@finesoft/not-found"), destinations: [] },
-                serverData: [],
+                snapshot,
+                serverData: materializeServerData(buildServerData(snapshot)),
                 renderMode: undefined,
-                status: undefined,
+                status: 404,
             });
         }
 
@@ -319,23 +334,7 @@ async function resolveInitialTree(
     navigation: SSRNavigationDefinition,
     url: string,
 ): Promise<ResolvedInitialTree | undefined> {
-    // 1) 结构化覆盖（深链）：codec 同步还原整棵树。
-    const decoded = navigation.codec.decode(url, framework.router);
-    if (decoded !== undefined) return { tree: decoded, renderMode: undefined };
-
-    // 2) 应用提供的默认结构骨架。
-    const skeleton = navigation.initial?.(url);
-    if (skeleton !== undefined) return { tree: skeleton, renderMode: undefined };
-
-    // 3) 单页回退：Router.resolve → 单 LeafNode（今天的行为，含 renderMode）。
-    const match = await framework.routeUrl(url);
-    if (match === null) return undefined;
-    return {
-        tree: leaf(match.intent.id, (match.intent.params ?? {}) as Record<string, unknown>, {
-            url,
-        }),
-        renderMode: match.renderMode,
-    };
+    return resolveInitialNavigation(framework, url, navigation);
 }
 
 // =====================================================================
@@ -367,7 +366,6 @@ function buildController(args: BuildControllerArgs): NavigationController {
         isServer: true,
         framework,
         execution: framework.createExecution(),
-        router: framework.router,
         initial: initialTree,
         beforeLoad: navigation.beforeLoad,
         afterLoad: navigation.afterLoad,
@@ -581,9 +579,8 @@ function getSSRFetch(fetchFn?: typeof globalThis.fetch): typeof globalThis.fetch
 
 /** `createSSRNavigationRender` 的一次性配置（绑定后返回 `(url, ctx?) => result`）。 */
 export interface SSRNavigationRenderConfig {
-    readonly definition?: WebAppDefinition;
+    readonly definition: WebAppDefinition;
     /** 注册 controllers 和路由的引导函数 */
-    readonly bootstrap?: (framework: Framework) => void;
     /** 获取错误页面 */
     readonly getErrorPage?: (status: number, message: string) => BasePage;
     /** 应用层渲染函数（含多区域快照） */
@@ -595,7 +592,7 @@ export interface SSRNavigationRenderConfig {
     /** 导航定义（codec + 目标级守卫 + 可选初始骨架） */
     readonly navigation?: SSRNavigationDefinition;
     /** Framework 构造配置（可选） */
-    readonly frameworkConfig?: FrameworkConfig;
+    readonly frameworkConfig?: Omit<FrameworkConfig, "definition">;
     /** 解析请求 locale 的回调 */
     readonly resolveLocale?: (
         url: string,
@@ -608,7 +605,7 @@ export interface SSRNavigationRenderConfig {
 /**
  * 创建导航 SSR render 函数。
  *
- * 把一次性配置（bootstrap / getErrorPage / renderApp / navigation）绑定后，返回
+ * 把一次性配置（definition / getErrorPage / renderApp / navigation）绑定后，返回
  * `(url, ssrContext?) => Promise<SSRRenderNavigationResult>`，与 `createSSRRender` 同形。
  */
 export function createSSRNavigationRender(config: SSRNavigationRenderConfig): ((
@@ -616,40 +613,38 @@ export function createSSRNavigationRender(config: SSRNavigationRenderConfig): ((
     ssrContext?: SSRContext,
 ) => Promise<SSRRenderNavigationResult>) & {
     dispose(): Promise<void>;
+    readonly routes: WebAppDefinition["routes"];
 } {
-    const {
-        bootstrap,
-        getErrorPage,
-        renderApp,
-        navigation,
-        frameworkConfig,
-        resolveLocale,
-        loadMessages,
-    } = config;
+    const { getErrorPage, renderApp, navigation, frameworkConfig, resolveLocale, loadMessages } =
+        config;
 
-    const owner = config.definition
-        ? Framework.create({ ...frameworkConfig, definition: config.definition })
-        : undefined;
+    const owner = Framework.create({ ...frameworkConfig, definition: config.definition });
     const render = (url: string, ssrContext?: SSRContext) =>
         ssrRenderNavigation({
             url,
             frameworkConfig: {
                 ...frameworkConfig,
-                ...(owner ? { definition: config.definition, runtime: owner.runtime } : {}),
+                definition: config.definition,
+                runtime: owner.runtime,
             },
-            bootstrap,
             getErrorPage:
                 getErrorPage ??
                 config.definition?.getErrorPage ??
                 ((status, message) => ({ id: String(status), pageType: "error", title: message })),
             renderApp,
             navigation: navigation ?? {
-                codec: createActiveLeafCodec(),
-                initial: () => config.definition?.navigation,
+                codec: config.definition?.navigationCodec ?? createActiveLeafCodec(),
+                initial: (url) =>
+                    typeof config.definition?.navigation === "function"
+                        ? config.definition.navigation(url)
+                        : config.definition?.navigation,
             },
             ssrContext,
             resolveLocale,
-            loadMessages,
+            loadMessages: loadMessages ?? config.definition?.loadMessages,
         });
-    return Object.assign(render, { dispose: () => owner?.dispose() ?? Promise.resolve() });
+    return Object.assign(
+        ownRender(render, () => owner.dispose()),
+        { routes: config.definition.routes },
+    );
 }

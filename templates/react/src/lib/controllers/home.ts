@@ -1,4 +1,4 @@
-import { markPublic, BaseController, makeFlowAction } from "@finesoft/front";
+import { markPublic, BaseController, makeFlowAction } from "@finesoft/front/browser";
 import type { HomePage, ProductItem, ProductShelf } from "../models/product";
 
 const MOCK_PRODUCTS: ProductItem[] = [

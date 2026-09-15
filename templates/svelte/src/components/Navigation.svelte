@@ -3,7 +3,7 @@
 		makeExternalUrlAction,
 		makeFlowAction,
 		type Action,
-	} from "@finesoft/front";
+	} from "@finesoft/front/browser";
 	import { getPerform } from "../lib/framework-svelte";
 
 	let { currentPath = "/" }: { currentPath?: string } = $props();

@@ -1,4 +1,4 @@
-import type { BasePage } from "@finesoft/front";
+import type { BasePage } from "@finesoft/front/browser";
 
 /**
  * Detail：由 push("detail", { id }) 进入。

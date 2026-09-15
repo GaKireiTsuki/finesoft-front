@@ -1,4 +1,4 @@
-import { makeExternalUrlAction, makeFlowAction, type Action } from "@finesoft/front";
+import { makeExternalUrlAction, makeFlowAction, type Action } from "@finesoft/front/browser";
 
 /** 创建指向商品详情的 FlowAction */
 export function productDetailAction(id: string): Action {

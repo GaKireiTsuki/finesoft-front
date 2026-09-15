@@ -14,7 +14,7 @@ import {
     stack,
     tabs,
 } from "@finesoft/web";
-import { defineRoutes } from "@finesoft/web";
+import { fixtureDefinition } from "../../web/test/helpers/definition";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
@@ -74,7 +74,6 @@ function dataForIntent(
 
 describe("ssrRenderNavigation", () => {
     afterEach(() => {
-        globalThis.__FINESOFT_I18N_LOADER__ = undefined;
         vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
@@ -83,13 +82,13 @@ describe("ssrRenderNavigation", () => {
         const home = page("home");
         const result = await ssrRenderNavigation({
             url: "/?from=test",
-            frameworkConfig: {},
-            navigation: { codec: createActiveLeafCodec() },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     { path: "/", intentId: "home", controller: makeController("home", home) },
-                ]);
+                ]),
             },
+            navigation: { codec: createActiveLeafCodec() },
+
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.title, head: "", css: "" };
@@ -109,14 +108,25 @@ describe("ssrRenderNavigation", () => {
 
         // tree round-trips out of the sentinel
         const restored = extractNavigationTree(result.serverData);
-        expect(restored).toMatchObject(treeShape(leaf("home", { from: "test" })));
-        expect(result.snapshot.tree).toMatchObject(treeShape(leaf("home", { from: "test" })));
+        expect(restored).toMatchObject(treeShape(stack(leaf("home", { from: "test" }))));
+        expect(result.snapshot.tree).toMatchObject(
+            treeShape(stack(leaf("home", { from: "test" }))),
+        );
     });
 
     test("split prefetches ALL visible columns (multi-region)", async () => {
         const result = await ssrRenderNavigation({
             url: "/list",
-            frameworkConfig: {},
+            frameworkConfig: {
+                definition: fixtureDefinition([
+                    { path: "/list", intentId: "list", controller: makeEchoController("list") },
+                    {
+                        path: "/detail/:itemId",
+                        intentId: "detail",
+                        controller: makeEchoController("detail"),
+                    },
+                ]),
+            },
             navigation: {
                 codec: createActiveLeafCodec(),
                 // default structural skeleton: two-column split, both filled
@@ -126,16 +136,7 @@ describe("ssrRenderNavigation", () => {
                         { id: "detail", content: leaf("detail", { itemId: "42" }) },
                     ]),
             },
-            bootstrap(framework) {
-                defineRoutes(framework, [
-                    { path: "/list", intentId: "list", controller: makeEchoController("list") },
-                    {
-                        path: "/detail/:itemId",
-                        intentId: "detail",
-                        controller: makeEchoController("detail"),
-                    },
-                ]);
-            },
+
             getErrorPage: makeErrorPage,
             renderApp(_p, _fw, snapshot) {
                 return {
@@ -173,7 +174,16 @@ describe("ssrRenderNavigation", () => {
         const inactivePerform = vi.fn(() => page("settings"));
         const result = await ssrRenderNavigation({
             url: "/home",
-            frameworkConfig: {},
+            frameworkConfig: {
+                definition: fixtureDefinition([
+                    { path: "/home", intentId: "home", controller: makeEchoController("home") },
+                    {
+                        path: "/settings",
+                        intentId: "settings",
+                        controller: { intentId: "settings", perform: inactivePerform },
+                    },
+                ]),
+            },
             navigation: {
                 codec: createActiveLeafCodec(),
                 initial: () =>
@@ -185,16 +195,7 @@ describe("ssrRenderNavigation", () => {
                         },
                     }),
             },
-            bootstrap(framework) {
-                defineRoutes(framework, [
-                    { path: "/home", intentId: "home", controller: makeEchoController("home") },
-                    {
-                        path: "/settings",
-                        intentId: "settings",
-                        controller: { intentId: "settings", perform: inactivePerform },
-                    },
-                ]);
-            },
+
             getErrorPage: makeErrorPage,
             renderApp(_p, _fw, snapshot) {
                 return {
@@ -217,18 +218,18 @@ describe("ssrRenderNavigation", () => {
 
         const result = await ssrRenderNavigation({
             url,
-            frameworkConfig: {},
-            navigation: { codec },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     { path: "/home", intentId: "home", controller: makeEchoController("home") },
                     {
                         path: "/detail/:id",
                         intentId: "detail",
                         controller: makeEchoController("detail"),
                     },
-                ]);
+                ]),
             },
+            navigation: { codec },
+
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.id, head: "", css: "" };
@@ -245,7 +246,16 @@ describe("ssrRenderNavigation", () => {
     test("prefetched destinations restore on the browser side via PrefetchedIntents (no refetch)", async () => {
         const result = await ssrRenderNavigation({
             url: "/list",
-            frameworkConfig: {},
+            frameworkConfig: {
+                definition: fixtureDefinition([
+                    { path: "/list", intentId: "list", controller: makeEchoController("list") },
+                    {
+                        path: "/detail/:itemId",
+                        intentId: "detail",
+                        controller: makeEchoController("detail"),
+                    },
+                ]),
+            },
             navigation: {
                 codec: createActiveLeafCodec(),
                 initial: () =>
@@ -254,16 +264,7 @@ describe("ssrRenderNavigation", () => {
                         { id: "detail", content: leaf("detail", { itemId: "9" }) },
                     ]),
             },
-            bootstrap(framework) {
-                defineRoutes(framework, [
-                    { path: "/list", intentId: "list", controller: makeEchoController("list") },
-                    {
-                        path: "/detail/:itemId",
-                        intentId: "detail",
-                        controller: makeEchoController("detail"),
-                    },
-                ]);
-            },
+
             getErrorPage: makeErrorPage,
             renderApp() {
                 return { html: "", head: "", css: "" };
@@ -327,20 +328,20 @@ describe("ssrRenderNavigation", () => {
         const renderApp = vi.fn(() => ({ html: "", head: "", css: "" }));
         const result = await ssrRenderNavigation({
             url: "/private",
-            frameworkConfig: {},
-            navigation: {
-                codec: createActiveLeafCodec(),
-                beforeLoad: [() => ({ kind: "redirect", url: "/login", status: 302 })],
-            },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/private",
                         intentId: "private",
                         controller: makeController("private", page("private")),
                     },
-                ]);
+                ]),
             },
+            navigation: {
+                codec: createActiveLeafCodec(),
+                beforeLoad: [() => ({ kind: "redirect", url: "/login", status: 302 })],
+            },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });
@@ -354,20 +355,20 @@ describe("ssrRenderNavigation", () => {
         const perform = vi.fn(() => page("private"));
         const result = await ssrRenderNavigation({
             url: "/private",
-            frameworkConfig: {},
-            navigation: {
-                codec: createActiveLeafCodec(),
-                beforeLoad: [() => ({ kind: "deny", status: 403, message: "Forbidden" })],
-            },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/private",
                         intentId: "private",
                         controller: { intentId: "private", perform },
                     },
-                ]);
+                ]),
             },
+            navigation: {
+                codec: createActiveLeafCodec(),
+                beforeLoad: [() => ({ kind: "deny", status: 403, message: "Forbidden" })],
+            },
+
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.title, head: "", css: "" };
@@ -378,16 +379,16 @@ describe("ssrRenderNavigation", () => {
         expect(result.html).toBe("Forbidden");
         expect(perform).not.toHaveBeenCalled();
         // deny still commits a tree; sentinel rides along
-        expect(extractNavigationTree(result.serverData)).toMatchObject(treeShape(leaf("private")));
+        expect(extractNavigationTree(result.serverData)).toMatchObject(
+            treeShape(stack(leaf("private"))),
+        );
     });
 
     test("dispatch failure falls back to a 500 page on that destination without throwing", async () => {
         const result = await ssrRenderNavigation({
             url: "/broken",
-            frameworkConfig: {},
-            navigation: { codec: createActiveLeafCodec() },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/broken",
                         intentId: "broken",
@@ -398,8 +399,10 @@ describe("ssrRenderNavigation", () => {
                             },
                         },
                     },
-                ]);
+                ]),
             },
+            navigation: { codec: createActiveLeafCodec() },
+
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.title, head: "", css: "" };
@@ -414,17 +417,8 @@ describe("ssrRenderNavigation", () => {
     test("one failing column does not blow up the whole split render", async () => {
         const result = await ssrRenderNavigation({
             url: "/list",
-            frameworkConfig: {},
-            navigation: {
-                codec: createActiveLeafCodec(),
-                initial: () =>
-                    split([
-                        { id: "list", content: leaf("list") },
-                        { id: "detail", content: leaf("detail") },
-                    ]),
-            },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     { path: "/list", intentId: "list", controller: makeEchoController("list") },
                     {
                         path: "/detail",
@@ -436,8 +430,17 @@ describe("ssrRenderNavigation", () => {
                             },
                         },
                     },
-                ]);
+                ]),
             },
+            navigation: {
+                codec: createActiveLeafCodec(),
+                initial: () =>
+                    split([
+                        { id: "list", content: leaf("list") },
+                        { id: "detail", content: leaf("detail") },
+                    ]),
+            },
+
             getErrorPage: makeErrorPage,
             renderApp(_p, _fw, snapshot) {
                 return {
@@ -457,9 +460,9 @@ describe("ssrRenderNavigation", () => {
     test("renders a 404 page when no route matches and no overlay/initial", async () => {
         const result = await ssrRenderNavigation({
             url: "/missing",
-            frameworkConfig: {},
+            frameworkConfig: { definition: fixtureDefinition([]) },
             navigation: { codec: createActiveLeafCodec() },
-            bootstrap() {},
+
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.title, head: "", css: "" };
@@ -467,25 +470,28 @@ describe("ssrRenderNavigation", () => {
         });
 
         expect(result.html).toBe("Page not found");
-        expect(result.serverData).toEqual([]);
+        expect(result.status).toBe(404);
+        expect(result.snapshot.destinations[0].page.title).toBe("Page not found");
+        expect(result.serverData[0].entryId).toBe(result.snapshot.destinations[0].entryId);
+        expect(extractNavigationTree(result.serverData)).toMatchObject(result.snapshot.tree);
     });
 
     test("returns an empty shell for csr routes (single-page fallback)", async () => {
         const renderApp = vi.fn();
         const result = await ssrRenderNavigation({
             url: "/dash",
-            frameworkConfig: {},
-            navigation: { codec: createActiveLeafCodec() },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/dash",
                         intentId: "dash",
                         controller: makeController("dash", page("dash")),
                         renderMode: "csr",
                     },
-                ]);
+                ]),
             },
+            navigation: { codec: createActiveLeafCodec() },
+
             getErrorPage: makeErrorPage,
             renderApp,
         });
@@ -499,18 +505,18 @@ describe("ssrRenderNavigation", () => {
     test("preserves single-page renderMode for a single LeafNode fallback", async () => {
         const result = await ssrRenderNavigation({
             url: "/static",
-            frameworkConfig: {},
-            navigation: { codec: createActiveLeafCodec() },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/static",
                         intentId: "static",
                         controller: makeController("static", page("static")),
                         renderMode: "prerender",
                     },
-                ]);
+                ]),
             },
+            navigation: { codec: createActiveLeafCodec() },
+
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.title, head: "", css: "" };
@@ -524,20 +530,21 @@ describe("ssrRenderNavigation", () => {
     test("resolveLocale output flows into the result locale", async () => {
         const result = await ssrRenderNavigation({
             url: "/home",
-            frameworkConfig: { locale: "en-US" },
-            navigation: { codec: createActiveLeafCodec() },
-            resolveLocale() {
-                return { lang: "zh-Hans", dir: "ltr" };
-            },
-            bootstrap(framework) {
-                defineRoutes(framework, [
+            frameworkConfig: {
+                definition: fixtureDefinition([
                     {
                         path: "/home",
                         intentId: "home",
                         controller: makeController("home", page("home")),
                     },
-                ]);
+                ]),
+                locale: "en-US",
             },
+            navigation: { codec: createActiveLeafCodec() },
+            resolveLocale() {
+                return { lang: "zh-Hans", dir: "ltr" };
+            },
+
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.title, head: "", css: "" };
@@ -582,17 +589,11 @@ describe("extractNavigationTree / stripNavigationTree", () => {
 describe("createSSRNavigationRender", () => {
     test("binds config and renders through ssrRenderNavigation", async () => {
         const render = createSSRNavigationRender({
-            frameworkConfig: {},
+            definition: fixtureDefinition([
+                { path: "/", intentId: "home", controller: makeController("home", page("home")) },
+            ]),
             navigation: { codec: createActiveLeafCodec() },
-            bootstrap(framework) {
-                defineRoutes(framework, [
-                    {
-                        path: "/",
-                        intentId: "home",
-                        controller: makeController("home", page("home")),
-                    },
-                ]);
-            },
+
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.title, head: "", css: "" };
@@ -601,21 +602,21 @@ describe("createSSRNavigationRender", () => {
 
         const result = await render("/");
         expect(result.html).toBe("home");
-        expect(extractNavigationTree(result.serverData)).toMatchObject(treeShape(leaf("home")));
+        expect(extractNavigationTree(result.serverData)).toMatchObject(
+            treeShape(stack(leaf("home"))),
+        );
     });
 
     test("defaults frameworkConfig to an empty object", async () => {
         const render = createSSRNavigationRender({
             navigation: { codec: createActiveLeafCodec() },
-            bootstrap(framework) {
-                defineRoutes(framework, [
-                    {
-                        path: "/",
-                        intentId: "home",
-                        controller: makeController("home", page("home")),
-                    },
-                ]);
-            },
+            definition: fixtureDefinition([
+                {
+                    path: "/",
+                    intentId: "home",
+                    controller: makeController("home", page("home")),
+                },
+            ]),
             getErrorPage: makeErrorPage,
             renderApp(p) {
                 return { html: p.title, head: "", css: "" };

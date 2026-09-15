@@ -37,7 +37,6 @@ export async function renderIslandsHtml(
         const entry: ResolvedEntry = {
             intent: dest.intent,
             params: dest.params,
-            entryKey,
             entryId: dest.entryId,
             resourceKey: dest.resourceKey,
             page: dest.page,

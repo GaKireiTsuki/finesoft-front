@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front";
+import type { Action } from "@finesoft/front/browser";
 import type { ProductItem } from "../lib/models/product";
 
 const { item, onAction } = defineProps<{

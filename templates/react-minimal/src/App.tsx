@@ -1,10 +1,10 @@
 import {
     isStackNode,
     isTabsNode,
-    type AppHandle,
+    type BrowserAppHandle,
     type NavigationHandle,
     type NavigationSnapshot,
-} from "@finesoft/front";
+} from "@finesoft/front/browser";
 import { useEffect, useState } from "react";
 
 /** name 全局切片的极小外部 store 接口（main 创建并注入；App 只读它 + 订阅）。 */
@@ -20,7 +20,7 @@ export interface AppProps {
     /** 导航 handle（客户端有；SSR 无）。提供后订阅 snapshot 变更驱动重渲。 */
     nav?: NavigationHandle;
     /** 框架统一句柄（selectTab / pop / save）。SSR 无（渲染不依赖，仅事件处理用）。 */
-    controller?: AppHandle;
+    controller?: BrowserAppHandle;
     /** name 切片 store（客户端注入；SSR 无 → name 恒 ""）。 */
     nameStore?: NameStore;
 }
@@ -76,7 +76,7 @@ export default function App({ initialSnapshot, nav, controller, nameStore }: App
                             setName(e.target.value);
                             nameStore?.set(e.target.value);
                         }}
-                        onBlur={() => controller?.save()}
+                        onBlur={() => controller?.session?.save()}
                     />
                 </label>
                 {name && <span>👋 {name}</span>}
@@ -90,7 +90,7 @@ export default function App({ initialSnapshot, nav, controller, nameStore }: App
                             key={key}
                             style={{ fontWeight: key === tabBar.active ? 700 : 400 }}
                             aria-current={key === tabBar.active}
-                            onClick={() => void controller?.selectTab(key)}
+                            onClick={() => void controller?.navigation?.selectTab(key)}
                         >
                             {TAB_LABELS[key] ?? key}
                         </button>
@@ -99,7 +99,10 @@ export default function App({ initialSnapshot, nav, controller, nameStore }: App
             )}
 
             {canGoBack && (
-                <button style={{ marginBottom: "0.5rem" }} onClick={() => void controller?.pop()}>
+                <button
+                    style={{ marginBottom: "0.5rem" }}
+                    onClick={() => void controller?.navigation?.pop()}
+                >
                     ← Back
                 </button>
             )}

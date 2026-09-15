@@ -30,22 +30,14 @@ export { safeErrorPage, type SafeErrorPageOptions } from "./models/safe-error-pa
 export type { BaseItem, BaseShelf } from "./models/shelf";
 export { PrefetchedIntents } from "./prefetched-intents/prefetched-intents";
 export type { PrefetchedIntent } from "./prefetched-intents/prefetched-intents";
-export { defineNavigation } from "./bootstrap/define-navigation";
-export type {
-    DefineNavigationOptions,
-    NavigationBrowserConfig,
-    NavigationDefinition,
-    NavigationInitial,
-    NavigationSSRDefinition,
-} from "./bootstrap/define-navigation";
-export { defineRoute, route } from "./bootstrap/define-routes";
-export { defineRoutes } from "./bootstrap/define-routes";
-export type { DefineRoutesOptions, RenderMode } from "./bootstrap/define-routes";
+export { route } from "./bootstrap/define-routes";
+export type { RenderMode } from "./bootstrap/define-routes";
 export type { RouteDefinition } from "./bootstrap/define-routes";
 export {
     collectAllLeaves,
     collectVisibleDestinations,
     islandContainerAttributes,
+    resourceKey,
     createActiveLeafCodec,
     createFlatStackCodec,
     createFullStateCodec,
@@ -137,7 +129,6 @@ export {
     SESSION_DEFAULT_VERSION,
     SessionError,
     StorageUnavailableError,
-    sessionEntryKey,
 } from "./session/index";
 export type {
     NavigationScopedState,
@@ -182,3 +173,5 @@ export {
     type WireEnvelope,
     type WireDecodeResult,
 } from "./protocol";
+
+export { resolveInitialNavigation } from "./application/initial-navigation";

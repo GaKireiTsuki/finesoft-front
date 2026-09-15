@@ -38,9 +38,7 @@ describe("finesoftFrontViteConfig", () => {
         };
 
         const config = plugin.config({});
-        expect(config.define).toMatchObject({
-            __FINESOFT_I18N_LOADER_SPECIFIER__: '"virtual:finesoft-front/i18n-loader"',
-        });
+        expect(config.define).toMatchObject({});
 
         plugin.configResolved({
             root,

@@ -22,20 +22,12 @@
  * 单个 LeafNode 树 = 今天的扁平单页：一个可见目标、一次 resolve/dispatch、一对 before/after。
  */
 
-import {
-    ExecutionError,
-    generateUuid,
-    type ExecutionHandle,
-    type Container,
-    type IntentDispatcher,
-} from "@finesoft/core";
+import { ExecutionError, generateUuid, type ExecutionHandle, type Container } from "@finesoft/core";
 import { Framework } from "../framework";
 import { loadPage } from "../application/load-page";
 import type { AfterLoadGuard, BeforeLoadGuard, NavigationContext } from "../middleware/types";
 import { bindExecutionCancellation } from "../application/execution";
-import type { PrefetchedIntents } from "../prefetched-intents/prefetched-intents";
 import { resourceKey } from "./keys";
-import type { Router } from "../router/router";
 import type { RouteParams } from "../router/types";
 import { leaf } from "./nodes";
 import {
@@ -206,13 +198,9 @@ export interface NavigationDispatchContext {
 
 /** NavigationController 构造选项。 */
 export interface NavigationControllerOptions {
-    readonly framework?: Framework;
+    readonly framework: Framework;
     readonly execution?: ExecutionHandle;
     readonly viewReady?: (snapshot: NavigationSnapshot) => void | Promise<void>;
-    /** Intent 派发器（派发可见目标的 intent → page）。 */
-    readonly intentDispatcher?: IntentDispatcher;
-    /** 路由器（beforeLoad rewrite/redirect 时把 URL 重解析为 leaf）。 */
-    readonly router?: Router;
     /** 初始导航树（单 LeafNode = 今天的扁平单页）。 */
     readonly initial: NavigationNode;
     /** 应用提供的「目标 → 派发上下文」构建回调。 */
@@ -227,8 +215,6 @@ export interface NavigationControllerOptions {
     readonly beforeLoad?: readonly BeforeLoadGuard[];
     /** 目标级 afterLoad 守卫。 */
     readonly afterLoad?: readonly AfterLoadGuard[];
-    /** SSR 预取缓存（浏览器 hydration 时复用服务端解析结果）。 */
-    readonly prefetched?: PrefetchedIntents;
     /**
      * 兜底错误页工厂——dispatch 失败 / deny 时，用它产出该目标的 page。
      * 缺省用一个最小的 BasePage（pageType="error"）。复刻 runner 的 fallback 语义。
@@ -278,7 +264,7 @@ export interface NavigationController {
     /** 用外部树替换当前树并重解析（history/URL 还原）。 */
     hydrate(tree: NavigationNode): Promise<NavigationSnapshot>;
     /**
-     * 清除页面缓存：给 `entryKey`（= `sessionEntryKey(intent, params)`）清单个，
+     * 清除页面缓存：给 `entryId` 清单个，
      * 不传清全部。仅清缓存、不触发重解析——该条目下次被解析时重新 dispatch。
      */
     invalidate(entryKey?: string): void;
@@ -307,27 +293,7 @@ function defaultErrorPage(status: number, message: string): Page {
 export function createNavigationController(
     options: NavigationControllerOptions,
 ): NavigationController {
-    const framework =
-        options.framework ??
-        Framework.create({ router: options.router, prefetchedIntents: options.prefetched });
-    if (!options.framework) {
-        for (const route of options.router?.getRoutes() ?? []) {
-            const intentId = route.slice(route.indexOf(" → ") + 3);
-            framework.registerIntent({
-                intentId,
-                perform: (intent, _container, context) =>
-                    options.intentDispatcher!.dispatch(
-                        intent,
-                        options.createContext?.({
-                            intent: intent.id,
-                            params: intent.params ?? {},
-                            signal: context?.signal,
-                        })?.container ?? framework.container,
-                        context,
-                    ),
-            });
-        }
-    }
+    const framework = options.framework;
     const getErrorPage =
         options.getErrorPage ?? framework.definition?.getErrorPage ?? defaultErrorPage;
     let tree = options.initial;
@@ -360,23 +326,6 @@ export function createNavigationController(
         for (const dest of collectAllLeaves(nextTree)) {
             if (ids.has(dest.entryId)) throw new Error(`Duplicate entry ID: ${dest.entryId}`);
             ids.add(dest.entryId);
-            if (!options.framework && !framework.intentDispatcher.has(dest.intent)) {
-                framework.registerIntent({
-                    intentId: dest.intent,
-                    perform: (intent, _container, context) => {
-                        const legacy = options.createContext?.({
-                            intent: dest.intent,
-                            params: dest.params,
-                            signal: context?.signal,
-                        });
-                        return options.intentDispatcher!.dispatch(
-                            intent,
-                            legacy?.container ?? framework.container,
-                            context,
-                        );
-                    },
-                });
-            }
         }
         current = new AbortController();
         const combined = signal ? AbortSignal.any([signal, current.signal]) : current.signal;
@@ -555,7 +504,6 @@ export function createNavigationController(
             await inflight;
             listeners.clear();
             pageCache.clear();
-            if (!options.framework) await framework.dispose();
         },
         cancel() {
             generation++;

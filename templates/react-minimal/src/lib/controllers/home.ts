@@ -1,4 +1,4 @@
-import { markPublic, BaseController, type BasePage } from "@finesoft/front";
+import { markPublic, BaseController, type BasePage } from "@finesoft/front/browser";
 
 /** 一个 feed 项。 */
 export interface FeedItem {

@@ -1,3 +1,4 @@
+import { createSSRHost } from "./ssr-host";
 /**
  * finesoftFrontViteConfig — Vite 插件
  *
@@ -8,7 +9,6 @@
  * 或自定义 Adapter 对象。
  */
 
-import { createSSRHandler } from "./ssr-handler";
 import { nodeDnsLookup } from "./node/dns";
 import type { Hono } from "hono";
 import { resolveAdapter } from "./adapters/resolve";
@@ -64,11 +64,6 @@ export interface FinesoftFrontViteOptions {
      * ```
      */
     renderModes?: Record<string, "ssr" | "csr" | "prerender">;
-    /**
-     * 路由定义入口文件（用于预渲染时加载路由），默认 "src/lib/bootstrap.ts"。
-     * 如果项目不使用声明式路由定义，可以不设置。
-     */
-    bootstrapEntry?: string;
     /**
      * 默认 locale（如 "zh-Hans"、"en-US"）。
      * 用于 CSR 壳注入 `<html lang="" dir="">`，以及预渲染时的默认语言。
@@ -164,15 +159,11 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         config(userConfig: Record<string, any>) {
             const inherited = userConfig.define?.__FINESOFT_BUILD_ID__;
             if (typeof inherited === "string") buildId = JSON.parse(inherited);
-            const generatedI18nLoaderSpecifier = options.i18n?.messagesDir
-                ? JSON.stringify(GENERATED_I18N_LOADER_ID)
-                : "undefined";
             const overrides: Record<string, any> = {
                 appType: "custom",
                 ssr: { noExternal: ["@finesoft/front", "@finesoft/web", "@finesoft/ssr"] },
                 define: {
                     __FINESOFT_BUILD_ID__: JSON.stringify(buildId),
-                    __FINESOFT_I18N_LOADER_SPECIFIER__: generatedI18nLoaderSpecifier,
                 },
             };
             if (!process.env.__FINESOFT_SUB_BUILD__) {
@@ -350,6 +341,14 @@ export async function loadMessages(locale) {
                     defaultLocale: options.defaultLocale,
                 });
                 app.route("/", ssrApp);
+                const close = server.close.bind(server);
+                server.close = async () => {
+                    try {
+                        await close();
+                    } finally {
+                        await ssrApp.dispose();
+                    }
+                };
 
                 const listener = getRequestListener(app.fetch);
 
@@ -399,7 +398,7 @@ export async function loadMessages(locale) {
                 const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
                 const ssrModule = (await dynamicImport(ssrPath)) as SSRModule;
 
-                const handler = createSSRHandler({
+                const owner = createSSRHost({
                     template,
                     ...ssrModule,
                     fetch: (request, bindings) => app.fetch(request, bindings),
@@ -408,7 +407,15 @@ export async function loadMessages(locale) {
                     defaultLocale: options.defaultLocale,
                     onError: (error) => console.error("[SSR Preview Error]", error),
                 });
-                app.get("*", (c: any) => handler(c.req.raw, c.env));
+                app.get("*", (c: any) => owner.handle(c.req.raw, c.env));
+                const close = server.httpServer.close.bind(server.httpServer);
+                server.httpServer.close = (callback?: (error?: Error) => void) =>
+                    close((error?: Error) => {
+                        void owner.dispose().then(
+                            () => callback?.(error),
+                            (cleanupError: Error) => callback?.(cleanupError),
+                        );
+                    });
 
                 const listener = getRequestListener(app.fetch);
 
@@ -477,7 +484,6 @@ export async function loadMessages(locale) {
                         buildId,
                         ssrEntry,
                         setupPath: typeof options.setup === "string" ? options.setup : undefined,
-                        bootstrapEntry: options.bootstrapEntry,
                         templateHtml,
                         renderModes: options.renderModes,
                         proxies: options.proxies,
