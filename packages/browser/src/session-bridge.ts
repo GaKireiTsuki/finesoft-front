@@ -17,13 +17,13 @@
  * 纯附加：不配 session 的应用永远不会构造 bridge，原有启动路径字节级不变。
  */
 
-import { isUrlLocation } from "@finesoft/core";
+import { isUrlLocation } from "@finesoft/web";
 import type {
     NavigationScopedState,
     SessionNavigationAdapter,
     SessionSnapshot,
     SessionStore,
-} from "@finesoft/core";
+} from "@finesoft/web";
 
 /** 导航变更后自动落盘的默认防抖窗口（ms）：合并连续导航，避免每跳一屏写一次。 */
 export const SESSION_DEFAULT_DEBOUNCE_MS = 500;

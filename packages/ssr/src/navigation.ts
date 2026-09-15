@@ -21,17 +21,15 @@
  * 对单 LeafNode 树的行为与单页 SSR 完全等价（仅 `serverData` 多一条树哨兵）。
  */
 
+import { Framework, type BasePage } from "@finesoft/web";
 import {
-    Framework,
     createNavigationController,
-    createServerContext,
     deserializeNavigation,
     leaf,
     markPublic,
     resolveConfiguredMessages,
     serializeNavigation,
     type AfterLoadGuard,
-    type BasePage,
     type BeforeLoadGuard,
     type FrameworkConfig,
     type MessagesLoader,
@@ -43,8 +41,9 @@ import {
     type PrefetchedIntent,
     type ResolvedDestination,
     type SerializedNavigation,
-    type TranslationMessages,
-} from "@finesoft/core";
+} from "@finesoft/web";
+import { createServerContext } from "./middleware/context";
+import { type TranslationMessages } from "@finesoft/core";
 import type { SSRAppResult, SSRContext } from "./render";
 
 interface InternalSSRFrameworkConfig extends FrameworkConfig {
@@ -190,7 +189,8 @@ export async function ssrRenderNavigation(
 
     const mergedConfig: FrameworkConfig = {
         ...effectiveConfig,
-        fetch: ssrContext?.fetch ?? effectiveConfig.fetch,
+        fetch: getSSRFetch(ssrContext?.fetch ?? effectiveConfig.fetch),
+        safeFetch: { ...ssrContext?.safeFetch, ...effectiveConfig.safeFetch },
     };
 
     const framework = Framework.create({
@@ -349,6 +349,7 @@ function buildController(args: BuildControllerArgs): NavigationController {
         args;
 
     return createNavigationController({
+        isServer: true,
         intentDispatcher: framework.intentDispatcher,
         router: framework.router,
         initial: initialTree,

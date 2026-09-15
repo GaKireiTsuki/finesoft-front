@@ -7,7 +7,7 @@
  * 排除 password 与 data-restore-ignore。
  */
 
-import type { NavigationScopedState } from "@finesoft/core";
+import type { NavigationScopedState } from "@finesoft/web";
 
 interface DomState {
     readonly fields?: Record<string, string | boolean>;

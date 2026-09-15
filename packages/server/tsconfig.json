@@ -5,7 +5,8 @@
         "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
         "paths": {
             "@finesoft/core": ["../core/src/index.ts"],
-            "@finesoft/ssr": ["../ssr/src/index.ts"]
+            "@finesoft/ssr": ["../ssr/src/index.ts"],
+            "@finesoft/web": ["../web/src/index.ts"]
         }
     },
     "include": ["src", "test"]

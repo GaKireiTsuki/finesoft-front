@@ -1,3 +1,4 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import type { Logger } from "@finesoft/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -62,14 +63,14 @@ import {
     serializeNavigation,
     stack,
     tabs,
-    type BasePage,
-    type Intent,
     type NavigationController,
     type NavigationNode,
     type NavigationRouterLike,
     type RouteParams,
     type SerializedNavigation,
-} from "../../core/src/index.ts";
+} from "@finesoft/web";
+import { type BasePage } from "@finesoft/web";
+import { type Intent } from "@finesoft/core";
 import { createNavigationBridge } from "../src/navigation-bridge";
 
 interface NavigationHistoryState {

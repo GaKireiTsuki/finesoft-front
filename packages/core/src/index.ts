@@ -1,41 +1,7 @@
-// ===== Actions =====
-export { ActionDispatcher } from "./actions/dispatcher";
-export type { ActionHandler } from "./actions/dispatcher";
-export {
-    ACTION_KINDS,
-    isCompoundAction,
-    isExternalUrlAction,
-    isFlowAction,
-    makeExternalUrlAction,
-    makeFlowAction,
-} from "./actions/types";
-export type { Action, CompoundAction, ExternalUrlAction, FlowAction } from "./actions/types";
-
-// ===== Intents =====
 export { IntentDispatcher } from "./intents/dispatcher";
 export type { Intent, IntentController } from "./intents/types";
-
-// ===== Dependencies =====
 export { Container } from "./dependencies/container";
-export { DEP_KEYS, makeDependencies } from "./dependencies/make-dependencies";
-export type {
-    FeatureFlags,
-    FeatureFlagsProvider,
-    Logger,
-    MakeDependenciesOptions,
-    MetricsRecorder,
-    Net,
-    Storage,
-    TranslationMessages,
-} from "./dependencies/make-dependencies";
 export { defineRequestScopedKey, type RequestScopedKey } from "./dependencies/request-scoped-key";
-
-// ===== Router =====
-export { Router } from "./router/router";
-export type { RouteAddOptions, RouteMatch } from "./router/router";
-export type { RouteParams } from "./router/types";
-
-// ===== Route Params (typed validation) =====
 export {
     bool,
     int,
@@ -49,7 +15,7 @@ export {
     str,
     uuid,
     withDefault,
-} from "./router/params";
+} from "./schema/index";
 export type {
     ExtractParamNames,
     InferOutput,
@@ -66,13 +32,10 @@ export type {
     StandardSchemaV1,
     StrOptions,
     StripOptional,
-} from "./router/params";
-
-// ===== Logger =====
+} from "./schema/index";
 export { BaseLogger } from "./logger/base";
 export { CompositeLogger, CompositeLoggerFactory } from "./logger/composite";
 export { ConsoleLogger, ConsoleLoggerFactory } from "./logger/console";
-export { resetFilterCache, shouldLog } from "./logger/local-storage-filter";
 export {
     ReportingLogger,
     ReportingLoggerFactory,
@@ -80,206 +43,24 @@ export {
     type ReportingLoggerOptions,
 } from "./logger/reporting";
 export type { LoggerFactory, Logger as LoggerInterface } from "./logger/types";
-
-// ===== Framework =====
-export { Framework } from "./framework";
-export type { FrameworkConfig } from "./framework";
-
-// ===== Models =====
-export type { BasePage } from "./models/page";
-export {
-    BASE_PAGE_FIELDS,
-    FINESOFT_PUBLIC,
-    getPublicFields,
-    isPublicMarked,
-    markPublic,
-} from "./models/page";
-export { safeErrorPage, type SafeErrorPageOptions } from "./models/safe-error-page";
-export type { BaseItem, BaseShelf } from "./models/shelf";
-
-// ===== Prefetched Intents =====
-export { PrefetchedIntents } from "./prefetched-intents/prefetched-intents";
-export type { PrefetchedIntent } from "./prefetched-intents/prefetched-intents";
-export { stableStringify } from "./prefetched-intents/stable-stringify";
-
-// ===== HTTP =====
+export { stableStringify } from "./utils/stable-stringify";
 export { HostGuardError, HttpClient, HttpError } from "./http/client";
 export type { HttpClientConfig, RequestInterceptor, ResponseInterceptor } from "./http/client";
 export { classifyHost, classifyUrl, type HostCheckResult } from "./http/host-guard";
 export { secureFetch, type SecureFetchOptions } from "./http/secure-fetch";
-
-// ===== Base Controller =====
 export { BaseController } from "./intents/base-controller";
-
-// ===== Data / Mapper =====
 export { mapEach, pipe, pipeAsync } from "./data/mapper";
 export type { AsyncMapper, Mapper } from "./data/mapper";
-
-// ===== Bootstrap =====
-export { defineNavigation } from "./bootstrap/define-navigation";
-export type {
-    DefineNavigationOptions,
-    NavigationBrowserConfig,
-    NavigationDefinition,
-    NavigationInitial,
-    NavigationSSRDefinition,
-} from "./bootstrap/define-navigation";
-export { defineRoute, defineRoutes, route } from "./bootstrap/define-routes";
-export type { DefineRoutesOptions, RenderMode, RouteDefinition } from "./bootstrap/define-routes";
-
-// ===== Navigation =====
-export {
-    collectAllLeaves,
-    collectVisibleDestinations,
-    islandContainerAttributes,
-    createActiveLeafCodec,
-    createFlatStackCodec,
-    createFullStateCodec,
-    createNavigationController,
-    decodeNavigationTreeParam,
-    DEFAULT_NAV_PARAM,
-    deserializeNavigation,
-    encodeNavigationTreeParam,
-    findNearestStack,
-    findNode,
-    isLeafNode,
-    isSplitNode,
-    isStackNode,
-    isTabsNode,
-    leaf,
-    NAVIGATION_NODE_KINDS,
-    NAVIGATION_OP_KINDS,
-    NavigationError,
-    pop,
-    popTo,
-    popToRoot,
-    push,
-    replaceTop,
-    resolveActivePath,
-    selectColumn,
-    selectTab,
-    serializeNavigation,
-    serializeNavigationStable,
-    setVisibility,
-    split,
-    SPLIT_VISIBILITIES,
-    stack,
-    tabs,
-    visibleSplitColumns,
-} from "./navigation";
-export type {
-    FullStateCodecOptions,
-    HydrateOperation,
-    LeafNode,
-    NavigationCodec,
-    NavigationContextInput,
-    NavigationController,
-    NavigationControllerOptions,
-    NavigationDispatchContext,
-    NavigationNode,
-    NavigationNodeKind,
-    NavigationOpKind,
-    NavigationOperation,
-    NavigationPath,
-    NavigationPathStep,
-    NavigationRouterLike,
-    NavigationSnapshot,
-    Page,
-    PopOperation,
-    PopToOperation,
-    PopToRootOperation,
-    PushOperation,
-    PushOptions,
-    ReplaceTopOperation,
-    ResolvedDestination,
-    ResolvedEntry,
-    SelectColumnOperation,
-    SelectTabOperation,
-    SerializedLeaf,
-    SerializedNavigation,
-    SerializedSplit,
-    SerializedSplitColumn,
-    SerializedStack,
-    SerializedTabs,
-    SetVisibilityOperation,
-    SplitColumn,
-    SplitColumnInit,
-    SplitNode,
-    SplitVisibility,
-    StackNode,
-    TabsInit,
-    TabsNode,
-} from "./navigation";
-
-// ===== Session =====
-export {
-    collectLeafKeys,
-    createNavigationScopedState,
-    createNavigationSessionAdapter,
-    createSessionStore,
-    createUrlSessionAdapter,
-    decodeSnapshot,
-    encodeSnapshot,
-    isUrlLocation,
-    SESSION_DEFAULT_KEY,
-    SESSION_DEFAULT_VERSION,
-    SessionError,
-    sessionEntryKey,
-} from "./session";
-export type {
-    NavigationScopedState,
-    SessionErrorContext,
-    SessionNavigationAdapter,
-    SessionSnapshot,
-    SessionStateProvider,
-    SessionStore,
-    SessionStoreOptions,
-    SessionUrlLocation,
-    UrlAdapterOptions,
-} from "./session";
-
-// ===== Utils =====
 export { LruMap } from "./utils/lru-map";
 export { isNone, isSome, type None, type Optional } from "./utils/optional";
 export { detectPlatform, type PlatformInfo } from "./utils/platform";
-export { getPWADisplayMode, type PWADisplayMode } from "./utils/pwa";
 export { buildUrl, getBaseUrl, removeHost, removeQueryParams, removeScheme } from "./utils/url";
 export { generateUuid } from "./utils/uuid";
-
-// ===== Middleware =====
-export { createBrowserContext, createServerContext } from "./middleware/context";
-export type { BrowserContextOptions, ServerContextOptions } from "./middleware/context";
-export { runAfterLoadGuards, runBeforeLoadGuards } from "./middleware/pipeline";
-export { deny, next, redirect, rewrite } from "./middleware/types";
-export type {
-    AfterLoadGuard,
-    BeforeLoadGuard,
-    DenyResult,
-    MiddlewareResult,
-    NavigationContext,
-    NextResult,
-    PostLoadContext,
-    RedirectResult,
-    RewriteResult,
-} from "./middleware/types";
-
-// ===== Metrics =====
 export { CompositeEventRecorder } from "./metrics/composite-recorder";
 export { ConsoleEventRecorder } from "./metrics/console-recorder";
-export {
-    IntersectionImpressionObserver,
-    type ImpressionObserverOptions,
-} from "./metrics/impression-observer";
-export type {
-    EventRecorder,
-    ImpressionEntry,
-    ImpressionObserver,
-    MetricsFieldsProvider,
-} from "./metrics/types";
+export type { EventRecorder, ImpressionEntry, MetricsFieldsProvider } from "./metrics/types";
 export { VoidEventRecorder } from "./metrics/void-recorder";
 export { WithFieldsRecorder } from "./metrics/with-fields-recorder";
-
-// ===== i18n =====
 export {
     englishPlural,
     interpolate,
@@ -293,9 +74,19 @@ export {
     isRtl,
     makeLocaleInfo,
     resolveLocaleFromUrl,
-    setHtmlLocaleAttributes,
 } from "./i18n/locale";
-export { resolveConfiguredMessages, resolveMessages } from "./i18n/messages";
-export type { MessagesLoader, MessagesLoaderContext } from "./i18n/messages";
+export { resolveMessages } from "./i18n/messages";
 export { SimpleTranslator, type SimpleTranslatorOptions } from "./i18n/translator";
 export type { LocaleAttributes, LocaleInfo, TextDirection, Translator } from "./i18n/types";
+export { DEP_KEYS } from "./dependencies/make-dependencies";
+export type {
+    FeatureFlags,
+    FeatureFlagsProvider,
+    Logger,
+    MetricsRecorder,
+    Net,
+    Storage,
+    TranslationMessages,
+} from "./dependencies/make-dependencies";
+export { enforceHostGuard, type DnsLookup, type TargetGuardOptions } from "./http/target-guard";
+export type { LogFilter } from "./logger/console";

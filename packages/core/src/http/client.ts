@@ -8,34 +8,9 @@
  * 显式 opt-out 用 `allowInternalHosts: true`。详见 host-guard.ts。
  */
 
-import { classifyUrl, type HostCheckResult } from "./host-guard";
-
-/** HTTP 请求错误 */
-export class HttpError extends Error {
-    constructor(
-        public readonly status: number,
-        public readonly statusText: string,
-        public readonly body?: string,
-    ) {
-        super(`HTTP ${status}: ${statusText}`);
-        this.name = "HttpError";
-    }
-}
-
-/**
- * SSRF 防护拦截到不安全的目标地址时抛出。应用层可以 catch 它来给出业务友好的错误，
- * 不需要靠 message 字符串匹配。
- */
-export class HostGuardError extends Error {
-    constructor(
-        public readonly url: string,
-        public readonly reason: string,
-    ) {
-        super(`Refused to fetch ${url}: ${reason}`);
-        this.name = "HostGuardError";
-    }
-}
-
+export { HostGuardError, HttpError } from "./errors";
+import { HttpError } from "./errors";
+import { enforceHostGuard, type DnsLookup } from "./target-guard";
 /** 请求拦截器 — 在发送前修改请求 */
 export interface RequestInterceptor {
     (url: string, init: RequestInit): RequestInit | Promise<RequestInit>;
@@ -53,7 +28,7 @@ export interface HttpClientConfig {
     /** 默认请求头 */
     defaultHeaders?: Record<string, string>;
     /** 自定义 fetch 实现（便于测试或 SSR） */
-    fetch?: typeof globalThis.fetch;
+    fetch: typeof globalThis.fetch;
     /** 请求拦截器（按注册顺序执行） */
     requestInterceptors?: RequestInterceptor[];
     /** 响应拦截器（按注册顺序执行） */
@@ -69,11 +44,12 @@ export interface HttpClientConfig {
     /**
      * 是否在请求前 DNS 解析 hostname 并对解析结果做 IP 段校验。
      *
-     * **默认 true**（仅 Node 环境有效；浏览器静默跳过）。配合 `allowInternalHosts`
+     * **默认 true**（须显式提供 lookup；浏览器可显式选择 false）。配合 `allowInternalHosts`
      * 防御 DNS rebinding：如果 hostname 不是 IP 字面量，框架会 resolve 它的 A/AAAA
      * 记录并按 IP 段校验。`false` 关闭只剩 IP 字面量同步校验。
      */
     validateDns?: boolean;
+    lookup?: DnsLookup;
 }
 
 /**
@@ -98,15 +74,17 @@ export abstract class HttpClient {
     private readonly responseInterceptors: ResponseInterceptor[];
     private readonly allowInternalHosts: boolean;
     private readonly validateDns: boolean;
+    private readonly lookup?: DnsLookup;
 
     constructor(config: HttpClientConfig) {
         this.baseUrl = config.baseUrl;
         this.defaultHeaders = config.defaultHeaders ?? {};
-        this.fetchFn = config.fetch ?? globalThis.fetch.bind(globalThis);
+        this.fetchFn = config.fetch;
         this.requestInterceptors = [...(config.requestInterceptors ?? [])];
         this.responseInterceptors = [...(config.responseInterceptors ?? [])];
         this.allowInternalHosts = config.allowInternalHosts ?? false;
         this.validateDns = config.validateDns ?? true;
+        this.lookup = config.lookup;
     }
 
     /** 动态添加请求拦截器 */
@@ -172,7 +150,7 @@ export abstract class HttpClient {
         const url = this.buildUrl(path, options?.params);
 
         if (!this.allowInternalHosts) {
-            await this.enforceHostGuard(url);
+            await enforceHostGuard(url, { validateDns: this.validateDns, lookup: this.lookup });
         }
 
         const headers: Record<string, string> = {
@@ -211,7 +189,7 @@ export abstract class HttpClient {
         }
 
         try {
-            return await response.json();
+            return (await response.json()) as T;
         } catch (e) {
             if (e instanceof SyntaxError) {
                 throw new HttpError(
@@ -242,81 +220,4 @@ export abstract class HttpClient {
         }
         return `${url.pathname}${url.search}`;
     }
-
-    private async enforceHostGuard(url: string): Promise<void> {
-        // 相对 URL（baseUrl 不是绝对）不做检查 —— 调用方已经知道在自己的域内。
-        // 任何带 scheme 的绝对 URL 都走 classifyUrl，由它判 scheme + host。
-        let parsed: URL;
-        try {
-            parsed = new URL(url);
-        } catch {
-            return;
-        }
-
-        const verdict = classifyUrl(url);
-        if (!verdict.ok) {
-            throw new HostGuardError(url, verdict.reason);
-        }
-
-        if (this.validateDns && parsed.hostname && !isIpLiteral(parsed.hostname)) {
-            const dnsVerdict = await resolveAndClassify(parsed.hostname);
-            if (!dnsVerdict.ok) {
-                throw new HostGuardError(url, dnsVerdict.reason);
-            }
-        }
-    }
-}
-
-function isIpLiteral(host: string): boolean {
-    // brackets stripped by URL parser, so IPv6 here is bare like "::1"
-    if (host.includes(":")) return true;
-    return /^[0-9.]+$/.test(host) || /^0x[0-9a-f]+$/i.test(host);
-}
-
-/**
- * Resolve `hostname` to its A and AAAA records and run each through host-guard.
- * Returns the first failing verdict; ok if every record passes.
- *
- * Only operates on Node. In browser / edge runtimes where `node:dns/promises`
- * cannot be imported, this silently returns ok — the SOP / CSP / network
- * sandbox are expected to do the actual blocking there.
- */
-interface NodeDns {
-    resolve4(hostname: string): Promise<string[]>;
-    resolve6(hostname: string): Promise<string[]>;
-}
-
-async function resolveAndClassify(hostname: string): Promise<HostCheckResult> {
-    let dns: NodeDns;
-    try {
-        // Dynamic import via a variable specifier keeps Node-only "node:dns/promises"
-        // out of TS module resolution (no @types/node needed for @finesoft/core) and
-        // out of bundler-resolved browser graphs.
-        const specifier = "node:dns/promises";
-        const mod = (await import(specifier)) as { default?: NodeDns } & NodeDns;
-        dns = mod.default ?? mod;
-    } catch {
-        return { ok: true };
-    }
-
-    const settled = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname)]);
-    const addrs: string[] = [];
-    for (const r of settled) {
-        if (r.status === "fulfilled") addrs.push(...r.value);
-    }
-
-    if (addrs.length === 0) {
-        // Hostname doesn't resolve. Let the actual fetch produce the real error
-        // — host-guard's job is to refuse known-bad addresses, not to gatekeep
-        // unrelated DNS failures.
-        return { ok: true };
-    }
-
-    for (const ip of addrs) {
-        const verdict = classifyUrl(`http://${ip.includes(":") ? `[${ip}]` : ip}/`);
-        if (!verdict.ok) {
-            return { ok: false, reason: `host resolves to ${ip} (${verdict.reason})` };
-        }
-    }
-    return { ok: true };
 }

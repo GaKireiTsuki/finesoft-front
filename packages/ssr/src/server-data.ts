@@ -5,7 +5,7 @@
  * Unicode-escape；行分隔符避免破坏 JS 解析；marker 字段按白名单裁剪 page 对象。
  */
 
-import { BASE_PAGE_FIELDS, getPublicFields, type PrefetchedIntent } from "@finesoft/core";
+import { BASE_PAGE_FIELDS, getPublicFields, type PrefetchedIntent } from "@finesoft/web";
 
 const LINE_SEPARATOR = "\u2028";
 const PARAGRAPH_SEPARATOR = "\u2029";

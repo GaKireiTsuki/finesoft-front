@@ -2,7 +2,8 @@
  * Action Handler 统一注册入口
  */
 
-import type { BasePage, Framework, Logger } from "@finesoft/core";
+import type { BasePage, Framework } from "@finesoft/web";
+import type { Logger } from "@finesoft/core";
 import { registerExternalUrlHandler } from "./external-url-action";
 import { registerFlowActionHandler, type FlowActionCallbacks } from "./flow-action";
 

@@ -33,7 +33,7 @@ import {
     type NavigationSnapshot,
     type RouteParams,
     type SerializedNavigation,
-} from "@finesoft/core";
+} from "@finesoft/web";
 import { History } from "./utils/history";
 
 /** History 中缓存的导航 State：序列化后的整棵树（JSON-safe）。 */

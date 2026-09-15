@@ -22,8 +22,8 @@ export interface PlatformInfo {
  *
  * @param ua - User-Agent 字符串（默认取 navigator.userAgent）
  */
-export function detectPlatform(ua?: string): PlatformInfo {
-    const agent = ua ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");
+export function detectPlatform(ua = "", maxTouchPoints = 0): PlatformInfo {
+    const agent = ua;
     const lower = agent.toLowerCase();
 
     return {
@@ -31,10 +31,7 @@ export function detectPlatform(ua?: string): PlatformInfo {
         browser: detectBrowser(lower),
         engine: detectEngine(lower),
         isMobile: /mobile|android|iphone|ipad|ipod/i.test(agent),
-        isTouch:
-            typeof navigator !== "undefined" && "maxTouchPoints" in navigator
-                ? navigator.maxTouchPoints > 0
-                : false,
+        isTouch: maxTouchPoints > 0,
     };
 }
 

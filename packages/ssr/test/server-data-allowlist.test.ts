@@ -1,5 +1,7 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { describe, expect, test, vi } from "vite-plus/test";
-import { markPublic, type BasePage } from "../../core/src/index";
+import { markPublic } from "@finesoft/web";
+import { type BasePage } from "@finesoft/web";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index"));
 

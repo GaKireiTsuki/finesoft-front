@@ -68,10 +68,6 @@ export function makeLocaleInfo(language: string, region?: string): LocaleInfo {
  *
  * 服务端渲染时可用于字符串拼接，浏览器端直接操作 DOM。
  */
-export function setHtmlLocaleAttributes(attrs: LocaleAttributes): void {
-    document.documentElement.lang = attrs.lang;
-    document.documentElement.dir = attrs.dir;
-}
 
 /**
  * 从 URL 前缀中提取 locale

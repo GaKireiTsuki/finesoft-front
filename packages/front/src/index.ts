@@ -37,3 +37,5 @@ export type {
 
 // ===== Server =====
 export * from "@finesoft/server";
+
+export { createServerContext, type ServerContextOptions } from "@finesoft/ssr";

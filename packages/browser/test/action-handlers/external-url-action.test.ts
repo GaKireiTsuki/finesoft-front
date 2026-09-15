@@ -1,9 +1,10 @@
+vi.mock("@finesoft/web", async () => import("../../../web/src/index.ts"));
 import type { Logger } from "@finesoft/core";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
 vi.mock("@finesoft/core", async () => import("../../../core/src/index.ts"));
 
-import { ACTION_KINDS } from "../../../core/src/index.ts";
+import { ACTION_KINDS } from "@finesoft/web";
 import { registerExternalUrlHandler } from "../../src/action-handlers/external-url-action";
 
 afterEach(() => {

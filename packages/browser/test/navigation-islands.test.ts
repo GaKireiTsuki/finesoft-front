@@ -1,3 +1,4 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { describe, expect, test, vi } from "vite-plus/test";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
@@ -7,10 +8,10 @@ import {
     sessionEntryKey,
     stack,
     tabs,
-    type BasePage,
     type NavigationSnapshot,
     type ResolvedDestination,
-} from "@finesoft/core";
+} from "@finesoft/web";
+import { type BasePage } from "@finesoft/web";
 import {
     createIslandOrchestrator,
     type IslandHandle,

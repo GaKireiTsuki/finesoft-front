@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import type { BasePage, Framework } from "../../core/src/index.ts";
+import type { BasePage, Framework } from "@finesoft/web";
 
 const { ssrRender } = vi.hoisted(() => ({
     ssrRender: vi.fn(),

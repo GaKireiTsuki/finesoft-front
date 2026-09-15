@@ -1,3 +1,4 @@
+import type { SecureFetchOptions } from "@finesoft/core";
 /**
  * ssrRender — 通用 SSR 渲染管线
  *
@@ -7,20 +8,17 @@
  * 4. 调用应用层提供的渲染函数
  */
 
+import { DEP_KEYS, type Logger, type TranslationMessages } from "@finesoft/core";
+import { Framework, type BasePage } from "@finesoft/web";
+import { createServerContext } from "./middleware/context";
 import {
-    DEP_KEYS,
-    Framework,
-    createServerContext,
     resolveConfiguredMessages,
-    type BasePage,
     type FrameworkConfig,
-    type Logger,
     type MessagesLoader,
     type MiddlewareResult,
     type PostLoadContext,
     type PrefetchedIntent,
-    type TranslationMessages,
-} from "@finesoft/core";
+} from "@finesoft/web";
 
 interface InternalSSRFrameworkConfig extends FrameworkConfig {
     _resolvedMessages?: TranslationMessages;
@@ -47,6 +45,7 @@ export interface SSRRenderOptions {
 
 /** SSR 请求级上下文 */
 export interface SSRContext {
+    safeFetch?: SecureFetchOptions;
     /** 自定义 fetch（如 Hono 内部路由回环） */
     fetch?: typeof globalThis.fetch;
     /** 原始 Request 对象（用于中间件读取 cookie/header） */
@@ -136,7 +135,8 @@ async function ssrRenderInternal(
     // 将 SSR 上下文中的 fetch 合并到 frameworkConfig，注入 DI 容器
     const mergedConfig: FrameworkConfig = {
         ...effectiveConfig,
-        fetch: ssrContext?.fetch ?? effectiveConfig.fetch,
+        fetch: getSSRFetch(ssrContext?.fetch ?? effectiveConfig.fetch),
+        safeFetch: { ...ssrContext?.safeFetch, ...effectiveConfig.safeFetch },
     };
 
     const framework = Framework.create({

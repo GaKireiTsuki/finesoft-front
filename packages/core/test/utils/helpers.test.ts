@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { isNone, isSome } from "../../src/utils/optional";
 import { detectPlatform } from "../../src/utils/platform";
-import { getPWADisplayMode } from "../../src/utils/pwa";
 import {
     buildUrl,
     getBaseUrl,
@@ -52,14 +51,10 @@ describe("utility helpers", () => {
     });
 
     test("detects platforms from user agents", () => {
-        vi.stubGlobal("navigator", {
-            userAgent: "ignored",
-            maxTouchPoints: 5,
-        });
-
         expect(
             detectPlatform(
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+                5,
             ),
         ).toEqual({
             os: "ios",
@@ -67,11 +62,6 @@ describe("utility helpers", () => {
             engine: "webkit",
             isMobile: true,
             isTouch: true,
-        });
-
-        vi.stubGlobal("navigator", {
-            userAgent: "ignored",
-            maxTouchPoints: 0,
         });
 
         expect(
@@ -96,14 +86,10 @@ describe("utility helpers", () => {
             engine: "gecko",
         });
 
-        vi.stubGlobal("navigator", {
-            userAgent: "ignored",
-            maxTouchPoints: 2,
-        });
-
         expect(
             detectPlatform(
                 "Mozilla/5.0 (Linux; Android 14; SAMSUNG SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/24.0 Chrome/120.0.0.0 Mobile Safari/537.36",
+                2,
             ),
         ).toMatchObject({
             os: "android",
@@ -113,11 +99,6 @@ describe("utility helpers", () => {
             isTouch: true,
         });
 
-        vi.stubGlobal("navigator", {
-            userAgent: "ignored",
-            maxTouchPoints: 0,
-        });
-
         expect(detectPlatform("CustomAgent/1.0")).toMatchObject({
             os: "unknown",
             browser: "unknown",
@@ -125,39 +106,5 @@ describe("utility helpers", () => {
             isMobile: false,
             isTouch: false,
         });
-    });
-
-    test("detects PWA display modes", () => {
-        expect(getPWADisplayMode()).toBe("browser");
-
-        vi.stubGlobal("window", {
-            matchMedia: vi.fn(() => ({ matches: false })),
-            navigator: {},
-        });
-        vi.stubGlobal("document", {
-            referrer: "android-app://com.example.app",
-        });
-        expect(getPWADisplayMode()).toBe("twa");
-
-        vi.stubGlobal("window", {
-            matchMedia: vi.fn(() => ({ matches: true })),
-            navigator: {},
-        });
-        vi.stubGlobal("document", { referrer: "" });
-        expect(getPWADisplayMode()).toBe("standalone");
-
-        vi.stubGlobal("window", {
-            matchMedia: vi.fn(() => ({ matches: false })),
-            navigator: { standalone: true },
-        });
-        vi.stubGlobal("document", { referrer: "" });
-        expect(getPWADisplayMode()).toBe("standalone");
-
-        vi.stubGlobal("window", {
-            matchMedia: vi.fn(() => ({ matches: false })),
-            navigator: {},
-        });
-        vi.stubGlobal("document", { referrer: "" });
-        expect(getPWADisplayMode()).toBe("browser");
     });
 });

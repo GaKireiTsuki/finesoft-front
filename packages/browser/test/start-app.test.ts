@@ -1,5 +1,7 @@
+import { DEP_KEYS, HostGuardError } from "../../core/src/index";
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import type { Framework } from "../../core/src/index.ts";
+import type { Framework } from "@finesoft/web";
 
 const { registerActionHandlers } = vi.hoisted(() => ({
     registerActionHandlers: vi.fn(),
@@ -104,6 +106,23 @@ describe("startBrowserApp", () => {
         expect(events).toEqual(["loader:start", "loader:end", "mount"]);
         expect(mount).toHaveBeenCalledTimes(1);
         expect(capturedFramework?.getTranslator()?.t("hello")).toBe("Hello");
+    });
+
+    test("browser host explicitly installs hostname-only fetch protection", async () => {
+        let safeFetch: typeof globalThis.fetch | undefined;
+        await startBrowserApp({
+            bootstrap(framework) {
+                framework.router.add("/", "home");
+                safeFetch = framework.container.resolve(DEP_KEYS.SAFE_FETCH);
+            },
+            mount() {
+                return vi.fn();
+            },
+            callbacks: makeCallbacks(),
+        });
+        expect(safeFetch).toBeTypeOf("function");
+        await expect(safeFetch!("https://example.com")).resolves.toBeInstanceOf(Response);
+        await expect(safeFetch!("http://127.0.0.1")).rejects.toBeInstanceOf(HostGuardError);
     });
 
     test("falls back to <html lang> when frameworkConfig.locale is missing", async () => {
@@ -248,7 +267,10 @@ describe("startBrowserApp", () => {
     });
 
     test("mount context 收到就绪的 navigation handle（snapshot.tree 为 initial 树）", async () => {
-        const { leaf, stack, BaseController } = await import("../../core/src/index.ts");
+        const { leaf, stack, BaseController } = {
+            ...(await import("../../core/src/index.ts")),
+            ...(await import("../../web/src/index.ts")),
+        };
 
         // 真实 History 需要 window.history 写入面；popstate 通过 addEventListener 注册。
         const popListeners = new Map<string, (event: PopStateEvent) => void>();
@@ -498,8 +520,10 @@ describe("startBrowserApp — islands（navigation.mountEntry）", () => {
     });
 
     test("提供 mountEntry：首屏可见目标挂为 outlet 内的 island", async () => {
-        const { leaf, stack, BaseController, sessionEntryKey } =
-            await import("../../core/src/index.ts");
+        const { leaf, stack, BaseController, sessionEntryKey } = {
+            ...(await import("../../core/src/index.ts")),
+            ...(await import("../../web/src/index.ts")),
+        };
 
         // Build a FakeElement tree:  #app → <header data-chrome> + <main data-fs-outlet>
         // We do this in the mount callback (DOM API, no innerHTML parser).
@@ -561,7 +585,10 @@ describe("startBrowserApp — islands（navigation.mountEntry）", () => {
     });
 
     test("不提供 mountEntry：走原有路径，outlet 内无 island", async () => {
-        const { leaf, stack, BaseController } = await import("../../core/src/index.ts");
+        const { leaf, stack, BaseController } = {
+            ...(await import("../../core/src/index.ts")),
+            ...(await import("../../web/src/index.ts")),
+        };
 
         const appRoot = new FakeElement("div");
 
@@ -634,8 +661,10 @@ describe("startBrowserApp — domRestore（islands + session）", () => {
     });
 
     test("opt-in domRestore：boot 时从会话 scope 回填 island 表单值", async () => {
-        const { leaf, stack, BaseController, sessionEntryKey, SESSION_DEFAULT_VERSION } =
-            await import("../../core/src/index.ts");
+        const { leaf, stack, BaseController, sessionEntryKey, SESSION_DEFAULT_VERSION } = {
+            ...(await import("../../core/src/index.ts")),
+            ...(await import("../../web/src/index.ts")),
+        };
 
         // Build seeded core Storage with a SessionSnapshot containing __dom state.
         const entryKey = sessionEntryKey("home", {});
@@ -705,8 +734,10 @@ describe("startBrowserApp — domRestore（islands + session）", () => {
     });
 
     test("domRestore:false（缺省）：不恢复，既有路径不受影响", async () => {
-        const { leaf, stack, BaseController, sessionEntryKey, SESSION_DEFAULT_VERSION } =
-            await import("../../core/src/index.ts");
+        const { leaf, stack, BaseController, sessionEntryKey, SESSION_DEFAULT_VERSION } = {
+            ...(await import("../../core/src/index.ts")),
+            ...(await import("../../web/src/index.ts")),
+        };
 
         const entryKey = sessionEntryKey("home", {});
         const snapshot = {
@@ -806,7 +837,10 @@ describe("startBrowserApp — flat-islands + session", () => {
         storage: import("@finesoft/core").Storage;
         callbacks: ReturnType<typeof makeCallbacks>;
     }> {
-        const { leaf, BaseController } = await import("../../core/src/index.ts");
+        const { leaf, BaseController } = {
+            ...(await import("../../core/src/index.ts")),
+            ...(await import("../../web/src/index.ts")),
+        };
         void leaf;
         const appRoot = new FakeElement("div");
         appRoot.setAttribute("id", "app");

@@ -28,6 +28,7 @@
         "dev": "vp pack --watch"
     },
     "dependencies": {
-        "@finesoft/core": "workspace:*"
+        "@finesoft/core": "workspace:*",
+        "@finesoft/web": "workspace:*"
     }
 }

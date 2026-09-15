@@ -28,7 +28,9 @@
         "dev": "vp pack --watch"
     },
     "dependencies": {
-        "@finesoft/ssr": "workspace:*"
+        "@finesoft/core": "workspace:*",
+        "@finesoft/ssr": "workspace:*",
+        "@finesoft/web": "workspace:*"
     },
     "devDependencies": {
         "@hono/node-server": "^2.1.0",

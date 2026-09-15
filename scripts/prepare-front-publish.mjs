@@ -6,6 +6,7 @@ const backupPath = resolve(process.cwd(), "package.json.publish-backup");
 
 const INTERNAL_PACKAGES = [
     "@finesoft/core",
+    "@finesoft/web",
     "@finesoft/browser",
     "@finesoft/ssr",
     "@finesoft/server",

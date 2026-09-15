@@ -58,25 +58,32 @@ export { tryScroll } from "./utils/try-scroll";
 export { createPrefetchedIntentsFromDom, deserializeServerData } from "./server-data";
 
 // ===== Re-exports from @finesoft/core (convenience) =====
+export { BaseController, HttpClient, HttpError } from "@finesoft/core";
+export { Framework } from "@finesoft/web";
 export {
-    BaseController,
-    Framework,
-    HttpClient,
-    HttpError,
     defineRoutes,
     isExternalUrlAction,
     isFlowAction,
     makeExternalUrlAction,
     makeFlowAction,
-} from "@finesoft/core";
+} from "@finesoft/web";
 export type {
     Action,
     BaseItem,
-    BasePage,
     BaseShelf,
-    Container,
     ExternalUrlAction,
     FlowAction,
-    Intent,
     RouteDefinition,
-} from "@finesoft/core";
+} from "@finesoft/web";
+export type { BasePage } from "@finesoft/web";
+export type { Container, Intent } from "@finesoft/core";
+
+export { resetFilterCache, shouldLog } from "./logger/local-storage-filter";
+export { getPWADisplayMode, type PWADisplayMode } from "./utils/pwa";
+export {
+    IntersectionImpressionObserver,
+    type ImpressionObserverOptions,
+} from "./metrics/impression-observer";
+export { setHtmlLocaleAttributes } from "./i18n/locale";
+export type { ImpressionObserver } from "./metrics/types";
+export { createBrowserContext, type BrowserContextOptions } from "./middleware/context";

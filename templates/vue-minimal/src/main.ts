@@ -67,7 +67,10 @@ void startBrowserApp({
         onModal() {},
     },
     // 结构化导航 + islands：每屏 per-entry 挂为独立 root、保活。
-    navigation: { ...navigation.toBrowserConfig(), mountEntry },
+    navigation: {
+        ...navigation.toBrowserConfig(window.location.pathname + window.location.search),
+        mountEntry,
+    },
     // 重载 DOM 自动恢复：data-restore-root 内字段/滚动自动捕获回填。
     domRestore: true,
     // 会话恢复：注册全局切片 provider；导航位置 + 作用域状态由框架自动捕获。

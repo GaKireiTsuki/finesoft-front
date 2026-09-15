@@ -6,12 +6,8 @@
  * 标记与客户端 orchestrator 同源 → 浏览器按 `data-fs-key` 收养水合。
  */
 
-import {
-    islandContainerAttributes,
-    sessionEntryKey,
-    type NavigationSnapshot,
-    type ResolvedEntry,
-} from "@finesoft/core";
+import { islandContainerAttributes, sessionEntryKey, type NavigationSnapshot } from "@finesoft/web";
+import { type ResolvedEntry } from "@finesoft/web";
 
 /** 应用提供：把一个目标渲成 HTML（mountEntry 的 SSR 平行物）。可异步（容纳 Vue renderToString）。 */
 export type RenderEntry = (entry: ResolvedEntry) => string | Promise<string>;

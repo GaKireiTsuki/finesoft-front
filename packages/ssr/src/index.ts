@@ -23,5 +23,6 @@ export { serializeServerData, type SerializeServerDataOptions } from "./server-d
 export { renderIslandsHtml, type RenderEntry } from "./islands";
 
 // ===== Re-exports from @finesoft/core (convenience) =====
-export { Framework } from "@finesoft/core";
-export type { BasePage } from "@finesoft/core";
+export { Framework } from "@finesoft/web";
+export type { BasePage } from "@finesoft/web";
+export { createServerContext, type ServerContextOptions } from "./middleware/context";

@@ -87,8 +87,15 @@ importers:
       '@finesoft/core':
         specifier: workspace:*
         version: link:../core
+      '@finesoft/web':
+        specifier: workspace:*
+        version: link:../web
 
-  packages/core: {}
+  packages/core:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
 
   packages/create-app:
     dependencies:
@@ -127,6 +134,9 @@ importers:
       '@finesoft/ssr':
         specifier: workspace:*
         version: link:../ssr
+      '@finesoft/web':
+        specifier: workspace:*
+        version: link:../web
       '@hono/node-server':
         specifier: ^2.1.0
         version: 2.1.0(hono@4.13.1)
@@ -148,9 +158,15 @@ importers:
 
   packages/server:
     dependencies:
+      '@finesoft/core':
+        specifier: workspace:*
+        version: link:../core
       '@finesoft/ssr':
         specifier: workspace:*
         version: link:../ssr
+      '@finesoft/web':
+        specifier: workspace:*
+        version: link:../web
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -200,6 +216,15 @@ importers:
         version: 2.0.0-alpha.17(@types/node@22.20.1)(oxc-minify@0.143.0)(postcss@8.5.26)(typescript@6.0.3)
 
   packages/ssr:
+    dependencies:
+      '@finesoft/core':
+        specifier: workspace:*
+        version: link:../core
+      '@finesoft/web':
+        specifier: workspace:*
+        version: link:../web
+
+  packages/web:
     dependencies:
       '@finesoft/core':
         specifier: workspace:*

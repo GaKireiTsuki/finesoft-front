@@ -1,9 +1,10 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { describe, expect, test } from "vite-plus/test";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import { vi } from "vite-plus/test";
-import { createNavigationScopedState } from "@finesoft/core";
+import { createNavigationScopedState } from "@finesoft/web";
 import { FakeCustomEvent, FakeElement, FakeEvent, stubDomGlobals } from "./fake-dom";
 import { createDomRestore } from "../src/dom-restore";
 

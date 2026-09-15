@@ -1,3 +1,4 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 /**
  * Phase 4 spike target spec — un-skipped in Task 3.
  *
@@ -122,7 +123,9 @@ vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 // Imports (after mocks are set up)
 // ---------------------------------------------------------------------------
 
-import { BaseController, makeFlowAction, sessionEntryKey } from "@finesoft/core";
+import { BaseController } from "@finesoft/core";
+import { makeFlowAction } from "@finesoft/web";
+import { sessionEntryKey } from "@finesoft/web";
 import { startBrowserApp } from "../src/start-app";
 import {
     FakeCustomEvent,
@@ -219,7 +222,7 @@ async function buildApp(
 
     const mountCalls: string[] = [];
 
-    let capturedFramework: import("@finesoft/core").Framework | undefined;
+    let capturedFramework: import("@finesoft/web").Framework | undefined;
 
     await startBrowserApp({
         bootstrap: (fw) => {

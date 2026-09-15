@@ -1,6 +1,9 @@
+import { DEP_KEYS, HostGuardError } from "../../core/src/index";
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import type { BasePage, IntentController } from "../../core/src/index.ts";
-import { defineRoutes } from "../../core/src/index.ts";
+import type { BasePage } from "@finesoft/web";
+import type { IntentController } from "@finesoft/core";
+import { defineRoutes } from "@finesoft/web";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
@@ -11,6 +14,30 @@ describe("ssrRender", () => {
         globalThis.__FINESOFT_I18N_LOADER__ = undefined;
         vi.unstubAllGlobals();
         vi.restoreAllMocks();
+    });
+
+    test("SSR installs the host resolver in the request's protected fetch", async () => {
+        const fetch = vi.fn(async () => new Response("ok"));
+        const lookup = vi.fn(async () => ["127.0.0.1"]);
+        let safeFetch: typeof globalThis.fetch | undefined;
+        await ssrRender({
+            url: "/",
+            frameworkConfig: {},
+            ssrContext: { fetch, safeFetch: { lookup } },
+            bootstrap(framework) {
+                safeFetch = framework.container.resolve(DEP_KEYS.SAFE_FETCH);
+                defineRoutes(framework, [
+                    { path: "/", intentId: "home", controller: makeController(makePage()) },
+                ]);
+            },
+            getErrorPage: makeErrorPage,
+            renderApp() {
+                return { html: "ok", head: "", css: "" };
+            },
+        });
+        await expect(safeFetch!("https://example.com")).rejects.toBeInstanceOf(HostGuardError);
+        expect(lookup).toHaveBeenCalledWith("example.com");
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     test("uses the Vite-generated loader when loadMessages is omitted", async () => {

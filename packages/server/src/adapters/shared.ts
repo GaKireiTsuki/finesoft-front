@@ -1,3 +1,5 @@
+import { getLocaleAttributes } from "@finesoft/core";
+import { nodeDnsLookup } from "../node/dns";
 /**
  * 适配器共享工具函数
  *
@@ -25,6 +27,7 @@ export const NODE_BUILTINS = [
     "node:buffer",
     "node:crypto",
     "node:fs",
+    "node:dns/promises",
     "node:http",
     "node:http2",
     "node:module",
@@ -75,6 +78,7 @@ async function platformCacheSet(url, html) {
     return `
 import { Hono } from "hono";
 ${opts.platformImport}
+${opts.dnsPolicy === "hostname" ? "" : 'import { nodeDnsLookup as _dnsLookup } from "@finesoft/front/node";'}
 import { render, serializeServerData } from "./${ctx.ssrEntry}";
 ${setupImport}
 
@@ -171,7 +175,7 @@ app.get("*", async (c) => {
     const cached = await platformCacheGet(url);
     if (cached) return c.html(cached);
 
-    const { html: appHtml, head, css, serverData, renderMode, locale } = await render(url, { fetch: _createInternalFetch(_ssrDepth + 1) });
+    const { html: appHtml, head, css, serverData, renderMode, locale } = await render(url, { fetch: _createInternalFetch(_ssrDepth + 1), safeFetch: ${opts.dnsPolicy === "hostname" ? "{ validateDns: false }" : "{ lookup: _dnsLookup }"} });
     const localeAttrs = getLocaleAttrs(locale || DEFAULT_LOCALE);
 
     // 路由级 CSR
@@ -325,7 +329,13 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
 
     for (const url of prerenderPaths) {
         try {
-            const { html: appHtml, head, css, serverData, locale } = await ssrModule.render(url);
+            const {
+                html: appHtml,
+                head,
+                css,
+                serverData,
+                locale,
+            } = await ssrModule.render(url, { safeFetch: { lookup: nodeDnsLookup } });
 
             const serializedData = ssrModule.serializeServerData(serverData);
 
@@ -346,7 +356,6 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
 
             // 注入 locale 到 <html> 标签
             if (locale) {
-                const { getLocaleAttributes } = await dynamicImport("@finesoft/core");
                 const attrs = getLocaleAttributes(locale);
                 finalHtml = finalHtml.replace(/<html([^>]*)>/i, (_m: string, a: string) => {
                     const cleaned = a

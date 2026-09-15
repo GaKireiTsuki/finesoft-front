@@ -2,7 +2,7 @@
  * Server Data (browser side) — 从 DOM 反序列化服务端嵌入数据
  */
 
-import { PrefetchedIntents, type PrefetchedIntent } from "@finesoft/core";
+import { PrefetchedIntents, type PrefetchedIntent } from "@finesoft/web";
 
 /** DOM 中嵌入数据的 script 标签 ID */
 export const SERVER_DATA_ID = "serialized-server-data";

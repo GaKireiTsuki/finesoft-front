@@ -53,6 +53,8 @@ export interface AdapterContext {
 }
 
 export interface GenerateSSREntryOptions {
+    /** Host capability for protected outbound requests. */
+    dnsPolicy?: "node" | "hostname";
     /** 平台特定的导入语句（如 `import { handle } from "hono/vercel";`） */
     platformImport: string;
     /** 平台特定的导出语句（如 `export default handle(app);`） */

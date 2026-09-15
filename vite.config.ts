@@ -6,6 +6,7 @@ const coverage: CoverageV8Options = {
     reportsDirectory: "./reports/coverage",
     include: [
         "packages/core/src/**/*.ts",
+        "packages/web/src/**/*.ts",
         "packages/browser/src/**/*.ts",
         "packages/ssr/src/**/*.ts",
         "packages/server/src/**/*.ts",
@@ -63,6 +64,10 @@ export default defineConfig({
         "*.{ts,tsx,js,jsx,mjs,cjs}": "vp check --fix",
     },
     test: {
+        alias: {
+            "@finesoft/core": new URL("./packages/core/src/index.ts", import.meta.url).pathname,
+            "@finesoft/web": new URL("./packages/web/src/index.ts", import.meta.url).pathname,
+        },
         coverage,
     },
 });

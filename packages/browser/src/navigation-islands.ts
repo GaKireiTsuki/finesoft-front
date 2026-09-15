@@ -16,12 +16,12 @@ import {
     collectAllLeaves,
     islandContainerAttributes,
     sessionEntryKey,
-    type BasePage,
     type NavigationSnapshot,
-    type ResolvedEntry,
-} from "@finesoft/core";
+} from "@finesoft/web";
+import { type BasePage } from "@finesoft/web";
+import { type ResolvedEntry } from "./navigation-islands";
 
-export type { ResolvedEntry } from "@finesoft/core";
+export type { ResolvedEntry } from "@finesoft/web";
 
 /** `mountEntry` 返回的 island 句柄。 */
 export interface IslandHandle {

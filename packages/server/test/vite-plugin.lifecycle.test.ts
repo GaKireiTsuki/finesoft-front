@@ -1,3 +1,4 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import * as nodePath from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";

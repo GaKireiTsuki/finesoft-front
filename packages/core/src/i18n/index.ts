@@ -12,14 +12,7 @@ export {
     isRtl,
     makeLocaleInfo,
     resolveLocaleFromUrl,
-    setHtmlLocaleAttributes,
 } from "./locale";
-export {
-    resolveConfiguredMessages,
-    resolveMessages,
-    type MessagesLoader,
-    type MessagesLoaderContext,
-    type TranslationMessages,
-} from "./messages";
+export { resolveMessages, type TranslationMessages } from "./messages";
 export { SimpleTranslator, type SimpleTranslatorOptions } from "./translator";
 export type { LocaleAttributes, LocaleInfo, TextDirection, Translator } from "./types";

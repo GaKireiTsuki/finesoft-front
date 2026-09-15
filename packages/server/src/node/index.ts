@@ -1,0 +1,1 @@
+export { nodeDnsLookup } from "./dns";

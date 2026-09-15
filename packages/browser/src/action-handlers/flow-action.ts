@@ -5,8 +5,12 @@
  * 不直接依赖任何 UI 框架的 store。
  */
 
-import type { BasePage, FlowAction, Framework, Logger, PostLoadContext } from "@finesoft/core";
-import { ACTION_KINDS, createBrowserContext } from "@finesoft/core";
+import type { BasePage, Framework } from "@finesoft/web";
+import type { FlowAction } from "@finesoft/web";
+import type { Logger } from "@finesoft/core";
+import type { PostLoadContext } from "@finesoft/web";
+import { ACTION_KINDS } from "@finesoft/web";
+import { createBrowserContext } from "../middleware/context";
 import { History } from "../utils/history";
 
 /** FlowAction handler 的 History state */

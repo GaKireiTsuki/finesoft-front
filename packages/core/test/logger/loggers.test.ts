@@ -1,58 +1,22 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { CompositeLogger, CompositeLoggerFactory } from "../../src/logger/composite";
 import { ConsoleLoggerFactory } from "../../src/logger/console";
-import { resetFilterCache, shouldLog } from "../../src/logger/local-storage-filter";
 import { ReportingLogger, ReportingLoggerFactory } from "../../src/logger/reporting";
 
-beforeEach(() => {
-    resetFilterCache();
-});
-
 afterEach(() => {
-    resetFilterCache();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
 });
 
 describe("logger utilities", () => {
-    test("evaluates localStorage logging rules and tolerates storage errors", () => {
-        vi.stubGlobal("localStorage", {
-            getItem: vi.fn(() => "*=info,Foo=off,Bar=error"),
-        });
-
-        expect(shouldLog("Any", "debug")).toBe(false);
-        expect(shouldLog("Any", "info")).toBe(true);
-        expect(shouldLog("Foo", "error")).toBe(false);
-        expect(shouldLog("Bar", "warn")).toBe(false);
-        expect(shouldLog("Bar", "error")).toBe(true);
-        expect(shouldLog("Baz", "debug")).toBe(false);
-
-        vi.stubGlobal("localStorage", {
-            getItem: vi.fn(() => "Foo=warn"),
-        });
-        resetFilterCache();
-
-        expect(shouldLog("Bar", "debug")).toBe(true);
-
-        vi.stubGlobal("localStorage", {
-            getItem: vi.fn(() => {
-                throw new Error("denied");
-            }),
-        });
-        resetFilterCache();
-
-        expect(shouldLog("Any", "debug")).toBe(true);
-    });
-
     test("console loggers respect filters and always log errors", () => {
-        vi.stubGlobal("localStorage", {
-            getItem: vi.fn(() => "*=info"),
-        });
         const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
         const info = vi.spyOn(console, "info").mockImplementation(() => {});
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const error = vi.spyOn(console, "error").mockImplementation(() => {});
-        const logger = new ConsoleLoggerFactory().loggerFor("UI");
+        const logger = new ConsoleLoggerFactory((_category, level) => level !== "debug").loggerFor(
+            "UI",
+        );
 
         logger.debug("debug");
         logger.info("info");

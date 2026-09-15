@@ -5,7 +5,6 @@ import {
     isRtl,
     makeLocaleInfo,
     resolveLocaleFromUrl,
-    setHtmlLocaleAttributes,
 } from "../../src/i18n/locale";
 
 afterEach(() => {
@@ -37,20 +36,6 @@ describe("locale helpers", () => {
             bcp47: "en",
             dir: "ltr",
         });
-    });
-
-    test("applies locale attributes to the html element", () => {
-        vi.stubGlobal("document", {
-            documentElement: {
-                lang: "",
-                dir: "",
-            },
-        });
-
-        setHtmlLocaleAttributes({ lang: "ar-SA", dir: "rtl" });
-
-        expect(document.documentElement.lang).toBe("ar-SA");
-        expect(document.documentElement.dir).toBe("rtl");
     });
 
     test("extracts supported locales from URLs", () => {

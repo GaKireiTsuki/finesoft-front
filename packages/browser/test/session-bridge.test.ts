@@ -1,12 +1,9 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
-import type {
-    SessionNavigationAdapter,
-    SessionSnapshot,
-    SessionStore,
-} from "../../core/src/index.ts";
+import type { SessionNavigationAdapter, SessionSnapshot, SessionStore } from "@finesoft/web";
 import {
     createSessionBridge,
     defaultShouldRestore,

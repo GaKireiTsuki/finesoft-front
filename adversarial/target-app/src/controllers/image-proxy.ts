@@ -1,4 +1,11 @@
-import { BaseController, type BasePage, HostGuardError, HttpClient } from "@finesoft/front";
+import {
+    BaseController,
+    type BasePage,
+    type Container,
+    DEP_KEYS,
+    HostGuardError,
+    HttpClient,
+} from "@finesoft/front";
 
 class GenericHttpClient extends HttpClient {
     fetchRoot(): Promise<unknown> {
@@ -17,7 +24,7 @@ interface ImageProxyPage extends BasePage {
 export class ImageProxyController extends BaseController<ImageProxyParams, ImageProxyPage> {
     readonly intentId = "image-proxy";
 
-    async execute(params: ImageProxyParams): Promise<ImageProxyPage> {
+    async execute(params: ImageProxyParams, container: Container): Promise<ImageProxyPage> {
         if (!params.url) {
             return {
                 id: "image-proxy",
@@ -30,7 +37,11 @@ export class ImageProxyController extends BaseController<ImageProxyParams, Image
         // HttpClient defaults to SSRF defense (allowInternalHosts: false). Passing
         // a loopback / private / reserved host or a non-http(s) scheme makes the
         // request throw HostGuardError before any network call.
-        const client = new GenericHttpClient({ baseUrl: params.url });
+        const client = new GenericHttpClient({
+            baseUrl: params.url,
+            fetch: container.resolve<typeof globalThis.fetch>(DEP_KEYS.SAFE_FETCH),
+            validateDns: false,
+        });
         let proxyResult: unknown;
         try {
             proxyResult = await client.fetchRoot();

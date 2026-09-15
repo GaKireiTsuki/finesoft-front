@@ -1,3 +1,4 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

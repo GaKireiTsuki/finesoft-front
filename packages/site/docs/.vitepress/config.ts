@@ -60,7 +60,11 @@ export default defineConfig({
             alias: {
                 "@finesoft/core": aliasFor("core"),
                 "@finesoft/browser": aliasFor("browser"),
+                "@finesoft/front/web": fileURLToPath(
+                    new URL("../../../front/src/web.ts", import.meta.url),
+                ),
                 "@finesoft/front": aliasFor("front"),
+                "@finesoft/web": aliasFor("web"),
             },
         },
         ssr: {

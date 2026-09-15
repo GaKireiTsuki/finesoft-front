@@ -2,7 +2,7 @@
     "name": "@finesoft/core",
     "version": "0.1.0",
     "private": true,
-    "description": "Core framework: router, DI container, actions, intents, and data pipeline",
+    "description": "Portable service contracts, intent execution, validation, and utilities",
     "license": "MIT",
     "files": [
         "dist"
@@ -26,5 +26,8 @@
     "scripts": {
         "build": "vp pack",
         "dev": "vp pack --watch"
+    },
+    "devDependencies": {
+        "@types/node": "catalog:"
     }
 }

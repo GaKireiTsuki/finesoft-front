@@ -2,6 +2,7 @@ name: finesoft-front-codeql
 
 paths:
     - packages/core
+    - packages/web
     - packages/browser
     - packages/ssr
     - packages/server

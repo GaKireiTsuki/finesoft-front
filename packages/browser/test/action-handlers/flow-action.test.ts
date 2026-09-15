@@ -1,3 +1,4 @@
+vi.mock("@finesoft/web", async () => import("../../../web/src/index.ts"));
 import type { Logger } from "@finesoft/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -49,7 +50,8 @@ vi.mock("../../src/utils/history", () => ({
 
 vi.mock("@finesoft/core", async () => import("../../../core/src/index.ts"));
 
-import { ACTION_KINDS, type BasePage } from "../../../core/src/index.ts";
+import { ACTION_KINDS } from "@finesoft/web";
+import { type BasePage } from "@finesoft/web";
 import { registerFlowActionHandler } from "../../src/action-handlers/flow-action";
 
 afterEach(() => {

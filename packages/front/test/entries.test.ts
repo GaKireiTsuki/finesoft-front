@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 
-vi.mock("@finesoft/core", () => ({
+vi.mock("@finesoft/core", () => ({}));
+vi.mock("@finesoft/web", () => ({
     Framework: "FrameworkExport",
     makeFlowAction: (url: string) => ({
         kind: "flow",

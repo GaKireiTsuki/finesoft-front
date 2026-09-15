@@ -67,3 +67,31 @@ describe("secureFetch", () => {
         });
     });
 });
+
+test("DNS protection requires an explicit resolver", async () => {
+    const base = fakeFetch();
+    await expect(secureFetch(base)("https://example.com")).rejects.toMatchObject({
+        reason: expect.stringContaining("DNS lookup capability"),
+    });
+    expect(base).not.toHaveBeenCalled();
+});
+
+test("injected DNS checks every resolved address and fails closed", async () => {
+    const base = fakeFetch();
+    const lookup = vi.fn(async () => ["1.1.1.1", "127.0.0.1"]);
+    await expect(secureFetch(base, { lookup })("https://example.com")).rejects.toBeInstanceOf(
+        HostGuardError,
+    );
+    expect(lookup).toHaveBeenCalledWith("example.com");
+    expect(base).not.toHaveBeenCalled();
+    await expect(
+        secureFetch(base, { lookup: async () => [] })("https://example.com"),
+    ).rejects.toBeInstanceOf(HostGuardError);
+    await expect(
+        secureFetch(base, {
+            lookup: async () => {
+                throw new Error("DNS unavailable");
+            },
+        })("https://example.com"),
+    ).rejects.toBeInstanceOf(HostGuardError);
+});

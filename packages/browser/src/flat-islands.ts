@@ -13,15 +13,12 @@
  * 依赖：Phase 0 NavigationBridge + Phase 2 IslandOrchestrator（均已落地）。
  */
 
-import type { Framework, Logger, NavigationController } from "@finesoft/core";
-import {
-    createBrowserContext,
-    createFlatStackCodec,
-    createNavigationController,
-    leaf,
-    makeFlowAction,
-    stack,
-} from "@finesoft/core";
+import type { Framework } from "@finesoft/web";
+import type { Logger } from "@finesoft/core";
+import type { NavigationController } from "@finesoft/web";
+import { createBrowserContext } from "./middleware/context";
+import { createFlatStackCodec, createNavigationController, leaf, stack } from "@finesoft/web";
+import { makeFlowAction } from "@finesoft/web";
 import type { MountEntry } from "./navigation-islands";
 import { createIslandOrchestrator } from "./navigation-islands";
 import type { NavigationHandle } from "./navigation-bridge";

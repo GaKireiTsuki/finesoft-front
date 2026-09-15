@@ -1,9 +1,10 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { describe, expect, test, vi } from "vite-plus/test";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import { renderIslandsHtml } from "../src/islands";
-import type { NavigationSnapshot } from "@finesoft/core";
+import type { NavigationSnapshot } from "@finesoft/web";
 
 function snap(destinations: NavigationSnapshot["destinations"]): NavigationSnapshot {
     return { tree: { kind: "leaf", intent: "x", params: {} }, destinations };

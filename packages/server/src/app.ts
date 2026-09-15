@@ -1,3 +1,5 @@
+import type { SecureFetchOptions } from "@finesoft/core";
+import { nodeDnsLookup } from "./node/dns";
 /**
  * createSSRApp — 创建 Hono SSR 应用
  *
@@ -35,6 +37,7 @@ export interface SSRModule {
         url: string,
         ssrContext?: {
             fetch?: typeof globalThis.fetch;
+            safeFetch?: SecureFetchOptions;
             request?: Request;
         },
     ) => Promise<{
@@ -190,8 +193,9 @@ export function createSSRApp(options: SSRAppOptions): Hono {
 
             const ssrContext: {
                 fetch?: typeof globalThis.fetch;
+                safeFetch?: SecureFetchOptions;
                 request?: Request;
-            } = { request: c.req.raw };
+            } = { request: c.req.raw, safeFetch: { lookup: nodeDnsLookup } };
             if (requestFetch) ssrContext.fetch = requestFetch;
 
             const {

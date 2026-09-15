@@ -1,3 +1,4 @@
+vi.mock("@finesoft/web", async () => import("../../../web/src/index.ts"));
 import type { Logger } from "@finesoft/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 

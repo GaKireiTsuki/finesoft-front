@@ -2,8 +2,10 @@
  * ExternalUrl Action Handler — 外部链接处理器
  */
 
-import type { ExternalUrlAction, Framework, Logger } from "@finesoft/core";
-import { ACTION_KINDS } from "@finesoft/core";
+import type { ExternalUrlAction } from "@finesoft/web";
+import type { Framework } from "@finesoft/web";
+import type { Logger } from "@finesoft/core";
+import { ACTION_KINDS } from "@finesoft/web";
 
 export interface ExternalUrlDependencies {
     framework: Framework;

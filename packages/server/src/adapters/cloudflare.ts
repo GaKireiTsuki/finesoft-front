@@ -23,6 +23,7 @@ export function cloudflareAdapter(): Adapter {
 
             // Hono 原生支持 CF Workers 的 fetch 接口，直接 export default app
             const entrySource = generateSSREntry(ctx, {
+                dnsPolicy: "hostname",
                 platformImport: ``,
                 platformExport: `export default app;`,
                 // Cloudflare Cache API — 持久化 ISR 缓存到 CDN 边缘节点

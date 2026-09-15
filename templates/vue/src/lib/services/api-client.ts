@@ -6,14 +6,17 @@ import { HttpClient, type HttpClientConfig } from "@finesoft/front";
  * Showcases HttpClient subclass pattern with base URL and custom fetch.
  */
 export class ApiClient extends HttpClient {
-    constructor(config?: Partial<HttpClientConfig>) {
+    constructor(config: Partial<HttpClientConfig> & Pick<HttpClientConfig, "fetch">) {
         super({
             baseUrl: config?.baseUrl ?? "/api",
             defaultHeaders: {
                 "Content-Type": "application/json",
                 ...config?.defaultHeaders,
             },
-            fetch: config?.fetch,
+            fetch: config.fetch,
+            validateDns: config.validateDns,
+            lookup: config.lookup,
+            allowInternalHosts: config.allowInternalHosts,
         });
     }
 

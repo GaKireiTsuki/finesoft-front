@@ -6,7 +6,8 @@
  * 与 @finesoft/server 的 SSRModule 接口对齐。
  */
 
-import type { BasePage, Framework, FrameworkConfig, MessagesLoader } from "@finesoft/core";
+import type { BasePage, Framework } from "@finesoft/web";
+import type { FrameworkConfig, MessagesLoader } from "@finesoft/web";
 import { ssrRender, type SSRAppResult, type SSRContext, type SSRRenderResult } from "./render";
 
 export interface SSRRenderConfig {

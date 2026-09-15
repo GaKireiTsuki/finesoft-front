@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Router, type RouteMatch } from "@finesoft/core";
+import { Router, type RouteMatch } from "@finesoft/front/web";
 import { computed, ref } from "vue";
 import { sampleRoutes, sampleUrls } from "../fixtures/sample-routes";
 import JsonInspector from "../primitives/JsonInspector.vue";

@@ -67,3 +67,23 @@ describe("HttpClient SSRF defense", () => {
         expect(res).toEqual({ ok: 1 });
     });
 });
+
+test("HttpClient shares the injected resolver policy and refuses missing DNS", async () => {
+    const fetch = fakeFetch();
+    await expect(
+        new TestClient({ baseUrl: "https://example.com", fetch }).fetchAt("/"),
+    ).rejects.toMatchObject({ reason: "DNS lookup capability is required" });
+    const lookup = vi.fn(async () => ["93.184.216.34", "::1"]);
+    await expect(
+        new TestClient({ baseUrl: "https://example.com", fetch, lookup }).fetchAt("/"),
+    ).rejects.toBeInstanceOf(HostGuardError);
+    expect(lookup).toHaveBeenCalledWith("example.com");
+    expect(fetch).not.toHaveBeenCalled();
+    const client = new TestClient({
+        baseUrl: "https://example.com",
+        fetch,
+        lookup: async () => ["93.184.216.34"],
+    });
+    await expect(client.fetchAt("/")).resolves.toEqual({ ok: 1 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+});

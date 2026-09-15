@@ -76,7 +76,7 @@ export default function App({ initialSnapshot, nav, controller, nameStore }: App
                             setName(e.target.value);
                             nameStore?.set(e.target.value);
                         }}
-                        onBlur={() => void controller?.save()}
+                        onBlur={() => controller?.save()}
                     />
                 </label>
                 {name && <span>👋 {name}</span>}

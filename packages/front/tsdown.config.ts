@@ -13,6 +13,7 @@ export default defineConfig({
         compilerOptions: {
             paths: {
                 "@finesoft/core": ["../core/src/index.ts"],
+                "@finesoft/web": ["../web/src/index.ts"],
                 "@finesoft/browser": ["../browser/src/index.ts"],
                 "@finesoft/ssr": ["../ssr/src/index.ts"],
                 "@finesoft/server": ["../server/src/index.ts"],
@@ -31,5 +32,11 @@ export default defineConfig({
         "node:url",
         "node:http",
     ],
-    noExternal: ["@finesoft/core", "@finesoft/browser", "@finesoft/ssr", "@finesoft/server"],
+    noExternal: [
+        "@finesoft/core",
+        "@finesoft/web",
+        "@finesoft/browser",
+        "@finesoft/ssr",
+        "@finesoft/server",
+    ],
 });

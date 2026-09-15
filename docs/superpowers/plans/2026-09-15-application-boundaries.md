@@ -22,7 +22,7 @@
 - 保留 SSR/CSR/prerender、Tabs/Stack/Split、公开数据控制、网络保护及滚动恢复回归约束。
 - 普通页面/接口无需手动创建 Scope、维护内部 ID 或重复装配；模块、持久化和复杂导航按需启用。
 - 可逆的本地编辑、测试和 git 可直接执行；不 push、部署、外发消息、改共享凭据或发布。
-- 不覆盖用户改动；每项任务只提交自己的明确文件。CI 工作流文件不在本地实现授权范围内。
+- 不覆盖用户改动；每项任务只提交自己的明确文件。用户已单独授权给 `.github/codeql/codeql-config.yml` 增加 `packages/web` 扫描路径；其余 CI 工作流不在修改范围内。
 
 ## Baseline and Execution
 
@@ -43,7 +43,7 @@
 
 - Create: `packages/web/{package.json,tsconfig.json,tsdown.config.ts,src/index.ts}`; move Web source/tests from core with git history.
 - Modify: `packages/core/src/index.ts`, `packages/core/src/dependencies/make-dependencies.ts`, `packages/core/src/http/{client,secure-fetch}.ts`, `packages/core/src/i18n/locale.ts`, `packages/core/src/logger/{console,local-storage-filter}.ts` and their focused tests.
-- Modify: source/test imports, workspace dependencies, `packages/*/tsconfig.json`, relevant tsdown maps, root test coverage list and lockfile. Do not edit `.github` workflows.
+- Modify: source/test imports, workspace dependencies, `packages/*/tsconfig.json`, relevant tsdown maps, root test coverage list and lockfile. Add the separately authorized `packages/web` path to `.github/codeql/codeql-config.yml`; do not edit workflows.
 - Test: `packages/core/test/boundaries.test.ts`.
 
 **Interfaces:**

@@ -1,3 +1,5 @@
+import { detectPlatform } from "@finesoft/core";
+import { shouldLog } from "./logger/local-storage-filter";
 /**
  * startBrowserApp — 客户端 hydration 一站式启动
  *
@@ -11,33 +13,30 @@
 
 import type {
     AfterLoadGuard,
-    BasePage,
     BeforeLoadGuard,
     FrameworkConfig,
-    Logger,
     MessagesLoader,
     NavigationCodec,
     NavigationController,
     NavigationNode,
     SessionSnapshot,
     SessionStateProvider,
-    Storage,
-    TranslationMessages,
-} from "@finesoft/core";
+} from "@finesoft/web";
+import type { BasePage } from "@finesoft/web";
+import type { Logger, Storage, TranslationMessages } from "@finesoft/core";
 import {
     createActiveLeafCodec,
-    createBrowserContext,
     createNavigationController,
     createNavigationSessionAdapter,
     createSessionStore,
     createUrlSessionAdapter,
-    DEP_KEYS,
-    Framework,
-    makeFlowAction,
     resolveConfiguredMessages,
-    setHtmlLocaleAttributes,
-    type LoggerFactory,
-} from "@finesoft/core";
+} from "@finesoft/web";
+import { createBrowserContext } from "./middleware/context";
+import { DEP_KEYS, type LoggerFactory } from "@finesoft/core";
+import { Framework } from "@finesoft/web";
+import { makeFlowAction } from "@finesoft/web";
+import { setHtmlLocaleAttributes } from "./i18n/locale";
 import { registerActionHandlers, type FlowActionCallbacks } from "./action-handlers/register";
 import { createAppHandle, type AppHandle } from "./app-handle";
 import { createDomRestore } from "./dom-restore";
@@ -158,7 +157,7 @@ export interface BrowserAppConfig {
      * 传入后会在 Framework.create() 时合并。
      * prefetchedIntents 由框架自动从 DOM 提取，无需传入。
      */
-    frameworkConfig?: Omit<import("@finesoft/core").FrameworkConfig, "prefetchedIntents">;
+    frameworkConfig?: Omit<import("@finesoft/web").FrameworkConfig, "prefetchedIntents">;
 
     /**
      * 异步加载当前 locale 的翻译字典。
@@ -240,6 +239,15 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<void> {
     // 2. 初始化 Framework + 注册 Controllers
     const framework = Framework.create({
         ...frameworkConfig,
+        fetch: getBrowserFetch(frameworkConfig.fetch),
+        safeFetch: { validateDns: false, ...frameworkConfig.safeFetch },
+        platform:
+            frameworkConfig.platform ??
+            detectPlatform(
+                typeof navigator !== "undefined" ? navigator.userAgent : "",
+                typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+            ),
+        logFilter: frameworkConfig.logFilter ?? shouldLog,
         locale,
         _resolvedMessages: resolvedMessages,
         prefetchedIntents,
@@ -410,6 +418,7 @@ async function activateNavigationCore(args: {
     const codec = navigation.codec ?? createActiveLeafCodec();
 
     const controller = createNavigationController({
+        isServer: false,
         intentDispatcher: framework.intentDispatcher,
         router: framework.router,
         initial: navigation.initial,

@@ -1,21 +1,19 @@
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import type {
-    BasePage,
-    IntentController,
-    NavigationCodec,
-    NavigationNode,
-} from "../../core/src/index.ts";
+import type { BasePage } from "@finesoft/web";
+import type { IntentController } from "@finesoft/core";
+import type { NavigationCodec, NavigationNode } from "@finesoft/web";
 import {
     createActiveLeafCodec,
     createFullStateCodec,
-    defineRoutes,
     leaf,
     PrefetchedIntents,
     serializeNavigation,
     split,
     stack,
     tabs,
-} from "../../core/src/index.ts";
+} from "@finesoft/web";
+import { defineRoutes } from "@finesoft/web";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 

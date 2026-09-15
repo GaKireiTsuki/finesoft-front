@@ -25,9 +25,10 @@ class TestHttpClient extends HttpClient {
 
 describe("HttpClient", () => {
     test("builds relative and absolute URLs with query params", () => {
-        const relativeClient = new TestHttpClient({ baseUrl: "/api" });
+        const relativeClient = new TestHttpClient({ baseUrl: "/api", fetch: vi.fn() });
         const absoluteClient = new TestHttpClient({
             baseUrl: "https://example.com/api/",
+            fetch: vi.fn(),
         });
 
         expect(relativeClient.build("products", { page: "1" })).toBe("/api/products?page=1");
