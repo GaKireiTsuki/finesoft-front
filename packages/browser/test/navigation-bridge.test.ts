@@ -17,6 +17,7 @@ const { HistoryMock } = vi.hoisted(() => {
         readonly pushState = vi.fn();
         readonly replaceUrl = vi.fn();
         readonly pushUrl = vi.fn();
+        readonly updateState = vi.fn();
         readonly onPopState = vi.fn(
             (listener: (url: string, state?: State) => void | Promise<void>) => {
                 this.popListener = listener;
@@ -217,7 +218,9 @@ describe("createNavigationBridge", () => {
         const before = controller.getTree();
         const history = HistoryMock.latest<NavigationHistoryState>();
 
-        await history.popListener?.("https://app.example/unknown", undefined);
+        await expect(
+            history.popListener?.("https://app.example/unknown", undefined),
+        ).rejects.toThrow("Cannot restore");
 
         // 树保持不变；记 warn。
         expect(controller.getTree()).toBe(before);
@@ -267,7 +270,9 @@ describe("createNavigationBridge", () => {
         const before = controller.getTree();
         const history = HistoryMock.latest<NavigationHistoryState>();
 
-        await history.popListener?.("https://app.example/x", undefined);
+        await expect(history.popListener?.("https://app.example/x", undefined)).rejects.toThrow(
+            "Cannot restore",
+        );
 
         expect(controller.getTree()).toBe(before);
         expect(log.error).toHaveBeenCalledWith(

@@ -48,6 +48,7 @@ export {
     encodeNavigationTreeParam,
     findNearestStack,
     findNode,
+    mapNavigationLeaves,
     isLeafNode,
     isSplitNode,
     isStackNode,

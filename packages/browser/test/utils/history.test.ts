@@ -86,6 +86,31 @@ afterEach(() => {
 });
 
 describe("History", () => {
+    test("canonicalizing a ready pop preserves its identity and pending scroll restoration", async () => {
+        generateUuid.mockReturnValueOnce("id-home").mockReturnValueOnce("id-detail");
+        const log = makeLogger();
+        const history = new History<HistoryState>(log, {
+            getScrollablePageElement: () => scrollableElement as HTMLElement,
+            persistInHistoryState: true,
+        });
+        let ready!: () => void;
+        const gate = new Promise<void>((resolve) => (ready = resolve));
+        history.onPopState(async () => {
+            await gate;
+            history.updateState(() => ({ page: "canonical" }), "/canonical");
+        });
+        history.replaceState({ page: "home" }, "/home");
+        scrollableElement.scrollTop = 96;
+        history.beforeTransition();
+        history.pushState({ page: "detail" }, "/detail");
+        triggerPopState({ id: "id-home" }, "https://example.com/home");
+        expect(tryScroll).not.toHaveBeenCalled();
+        ready();
+        await flushMicrotasks();
+        expect(historyState).toEqual({ id: "id-home", state: { page: "canonical" } });
+        expect(locationState.pathname).toBe("/canonical");
+        expect(tryScroll).toHaveBeenCalledWith(log, expect.any(Function), 96);
+    });
     test("returns early when beforeTransition has no active browser history state", () => {
         const log = makeLogger();
         const history = createHistory(log);

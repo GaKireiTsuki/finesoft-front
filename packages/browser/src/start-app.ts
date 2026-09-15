@@ -1,7 +1,6 @@
 import { DEP_KEYS, detectPlatform, type LoggerFactory } from "@finesoft/core";
 import {
     Framework,
-    loadPage,
     type BasePage,
     ACTION_KINDS,
     createNavigationController,
@@ -11,6 +10,8 @@ import {
     createSessionStore,
     leaf,
     stack,
+    mapNavigationLeaves,
+    collectVisibleDestinations,
     deserializeNavigation,
     PrefetchedIntents,
     resolveConfiguredMessages,
@@ -88,9 +89,10 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
         closed = false,
         disposing: Promise<void> | undefined;
     let lastEntry: string | undefined;
+    let lastPageType: string | undefined;
     let navigationSequence = 0;
-    const cancellation = new AbortController();
     const modalWork = new Set<Promise<void>>();
+    const modalControllers = new Set<NavigationController>();
     const localeBefore = {
         lang: target.getAttribute("lang"),
         dir: target.getAttribute("dir"),
@@ -100,7 +102,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
     const dispose = (): Promise<void> =>
         (disposing ??= (async () => {
             closed = true;
-            cancellation.abort();
+            for (const modal of modalControllers) modal.cancel();
             controller?.cancel();
             bridge?.dispose();
             const errors: unknown[] = [];
@@ -197,17 +199,19 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
             ? deserializeNavigation(sentinel.tree)
             : (resolved?.tree ?? stack(leaf("@finesoft/not-found")));
         let handle: BrowserAppHandle;
+        let renderSnapshot: NavigationSnapshot;
         const context: RenderContext = {
             framework: fw,
             get app() {
                 return handle;
             },
             get snapshot() {
-                return controller!.getSnapshot();
+                return renderSnapshot;
             },
         };
         async function render(snapshot: NavigationSnapshot) {
             if (closed) return;
+            renderSnapshot = snapshot;
             const page =
                 snapshot.destinations.at(-1)?.page ??
                 definition.getErrorPage(404, "Page not found");
@@ -226,10 +230,14 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
                 await entries.sync(snapshot);
             } else {
                 const entry = snapshot.destinations.at(-1)?.entryId;
-                if (root && lastEntry !== entry) {
+                const resetType = lastEntry === entry && lastPageType !== page.pageType;
+                if (root && (lastEntry !== entry || resetType)) {
                     await root.dispose();
                     root = undefined;
                     target.replaceChildren();
+                    // Unmounting a focused native input can emit a final change event.
+                    // Discard its captured draft only after the previous view is gone.
+                    if (resetType) target.dispatchEvent(new Event("fs:reset", { bubbles: true }));
                 }
                 if (root) await root.update(page);
                 else
@@ -248,26 +256,59 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
                 }
                 if (lastEntry !== entry) dom?.restoreEntry(target);
                 lastEntry = entry;
+                lastPageType = page.pageType;
+            }
+            fw.currentEntry = collectVisibleDestinations(snapshot.tree).at(-1);
+            try {
+                fw.didEnterPage(page);
+            } catch (error) {
+                log.error("didEnterPage error:", error);
             }
         }
+        const createContext = ({
+            intent,
+            params,
+            url,
+        }: {
+            intent: string;
+            params: Record<string, unknown>;
+            url?: string;
+        }) => ({
+            container: fw.container,
+            navigation: createBrowserContext({
+                url: url ?? codec.encode(leaf(intent, params), fw.router),
+                intent: { id: intent, params },
+                container: fw.container,
+            }),
+            url,
+        });
+        const redirect = async ({ url }: { url: string }, candidate: NavigationSnapshot) => {
+            const destination = new URL(url, window.location.origin);
+            if (destination.origin !== window.location.origin) {
+                window.location.assign(destination.href);
+                return;
+            }
+            const path = destination.pathname + destination.search + destination.hash;
+            const match = await fw.router.resolve(path);
+            const redirectedEntry = candidate.destinations.find(
+                (item) => item.status && item.status >= 300 && item.status < 400,
+            )?.entryId;
+            return mapNavigationLeaves(candidate.tree, (item) =>
+                item.entryId === redirectedEntry
+                    ? leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
+                          url: path,
+                      })
+                    : item,
+            );
+        };
         controller = createNavigationController({
             framework: fw,
             isServer: false,
             initial,
             getErrorPage: definition.getErrorPage,
             viewReady: render,
-            createContext: ({ intent, params, url }) => ({
-                container: fw.container,
-                navigation: createBrowserContext({
-                    url: url ?? codec.encode(leaf(intent, params), fw.router),
-                    intent: { id: intent, params },
-                    container: fw.container,
-                }),
-                url,
-            }),
-            onRedirect: ({ url }) => {
-                void handle.navigate(url);
-            },
+            createContext,
+            onRedirect: redirect,
         });
         const nav = controller;
         if (browserHistory)
@@ -276,6 +317,17 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
                 codec,
                 router: fw.router,
                 log,
+                onPopStart: () => {
+                    ++navigationSequence;
+                },
+                resolveUrl: async (url) => {
+                    const sequence = navigationSequence;
+                    const resolved = await resolveInitialNavigation(fw, url, {
+                        codec,
+                        initial: definition.navigation,
+                    });
+                    return !closed && sequence === navigationSequence ? resolved?.tree : undefined;
+                },
                 getScrollablePageElement: () =>
                     target.querySelector<HTMLElement>("[data-fs-scroll]") ?? target,
             });
@@ -323,33 +375,39 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
             dispose,
         };
         fw.onAction(ACTION_KINDS.FLOW, (action: FlowAction) => {
-            if (action.presentationContext !== "modal") return handle.navigate(action.url);
+            if (action.presentationContext !== "modal")
+                return action.entryId
+                    ? nav.reuseEntry(action.entryId).then(() => {})
+                    : handle.navigate(action.url);
             const work = (async () => {
-                const execution = fw.createExecution({ signal: cancellation.signal });
+                const match = await fw.router.resolve(action.url);
+                if (closed) return;
+                const modal = createNavigationController({
+                    framework: fw,
+                    isServer: false,
+                    initial: stack(
+                        leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
+                            url: action.url,
+                        }),
+                    ),
+                    getErrorPage: definition.getErrorPage,
+                    createContext,
+                    onRedirect: redirect,
+                    viewReady: async (snapshot) => {
+                        if (!closed)
+                            await config.onModal?.(snapshot.destinations.at(-1)!.page, {
+                                framework: fw,
+                                app: handle,
+                                snapshot,
+                            });
+                    },
+                });
+                modalControllers.add(modal);
                 try {
-                    const result = await loadPage({
-                        framework: fw,
-                        target: action.url,
-                        execution,
-                        signal: cancellation.signal,
-                        createContext: ({ url, intent, execution }) =>
-                            createBrowserContext({
-                                url,
-                                intent,
-                                container: execution.context.container,
-                            }),
-                    });
-                    if (closed) return;
-                    if (result.kind === "redirect") await handle.navigate(result.url);
-                    else
-                        await config.onModal?.(
-                            result.kind === "page"
-                                ? result.page
-                                : definition.getErrorPage(result.status, result.message),
-                            context,
-                        );
+                    await modal.resolve();
                 } finally {
-                    await execution.dispose();
+                    await modal.dispose();
+                    modalControllers.delete(modal);
                 }
             })();
             modalWork.add(work);
@@ -358,7 +416,14 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
         });
         registerExternalUrlHandler({ framework: fw, log });
         const firstSnapshot = await nav.resolve();
-        if (!root && !entries) await render(firstSnapshot);
+        if (
+            !root &&
+            !entries &&
+            !firstSnapshot.destinations.some(
+                (item) => item.status && item.status >= 300 && item.status < 400,
+            )
+        )
+            await render(firstSnapshot);
         if (session) {
             await session.restore(initialUrl);
             if (config.domRestore) {

@@ -238,3 +238,126 @@ test("modal flow loads guarded data without replacing the root navigation snapsh
     );
     expect(a.getSnapshot()).toBe(initial);
 });
+
+test("initial error render context describes the rendered candidate while later denial keeps the committed view", async () => {
+    const snapshots: string[][] = [];
+    const view: BrowserRenderer = {
+        mount: ({ page, context }) => {
+            snapshots.push(context.snapshot.destinations.map((item) => item.page.title!));
+            expect(context.snapshot.destinations.at(-1)?.page).toBe(page);
+            return {
+                update(next) {
+                    expect(context.snapshot.destinations.at(-1)?.page).toBe(next);
+                },
+                dispose() {},
+            };
+        },
+    };
+    const app = await start({
+        app: definition(),
+        renderer: view,
+        target: target(),
+        history: "memory",
+        url: "/missing",
+    });
+    expect(snapshots).toEqual([["404"]]);
+    await app.navigate("/");
+    const committed = app.getSnapshot();
+    app.framework.beforeLoad(() => ({ kind: "deny", status: 403, message: "Denied" }));
+    await app.navigate("/alias");
+    expect(app.getSnapshot()).toBe(committed);
+});
+
+test("root type reset clears DOM state after old native view disposal and before new mount", async () => {
+    const events: string[] = [];
+    const element = Object.assign(new EventTarget(), target());
+    element.addEventListener("fs:reset", () => events.push("reset"));
+    let pageType = "home";
+    const app = await start({
+        app: definition({
+            controllers: [
+                { id: "home", handler: () => ({ id: "home", pageType, title: pageType }) },
+            ],
+        }),
+        renderer: {
+            mount() {
+                events.push("mount");
+                return {
+                    update() {
+                        events.push("update");
+                    },
+                    dispose() {
+                        events.push("unmount-final-change");
+                    },
+                };
+            },
+        },
+        target: element as unknown as HTMLElement,
+        history: "memory",
+    });
+    events.length = 0;
+    pageType = "other";
+    await app.refresh();
+    expect(events).toEqual(["unmount-final-change", "reset", "mount"]);
+});
+
+test("redirect navigation remains pending through final data and renderer readiness", async () => {
+    let releaseData!: () => void, releaseView!: () => void;
+    const data = new Promise<void>((resolve) => (releaseData = resolve));
+    const ready = new Promise<void>((resolve) => (releaseView = resolve));
+    const load = vi.fn(async () => {
+        await data;
+        return { id: "slow", pageType: "home", title: "Slow" };
+    });
+    const view: BrowserRenderer = {
+        mount: async ({ page }) => {
+            if (page.id === "slow") await ready;
+            return {
+                async update(page) {
+                    if (page.id === "slow") await ready;
+                },
+                dispose() {},
+            };
+        },
+    };
+    const app = await start({
+        app: definition({
+            routes: [
+                { path: "/", intentId: "home" },
+                { path: "/redirect", intentId: "home" },
+                { path: "/slow", intentId: "slow" },
+            ],
+            controllers: [
+                { id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) },
+                { id: "slow", handler: load },
+            ],
+            beforeLoad: [
+                (ctx) =>
+                    ctx.path === "/redirect"
+                        ? { kind: "redirect", url: "/slow", status: 302 }
+                        : { kind: "next" },
+            ],
+        }),
+        renderer: view,
+        target: target(),
+        history: "memory",
+    });
+    let settled = false;
+    const pending = app.navigate("/redirect").then(() => {
+        settled = true;
+    });
+    try {
+        await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+        expect(settled).toBe(false);
+        releaseData();
+        await vi.waitFor(() => expect(app.getSnapshot().destinations[0]?.page.title).toBe("Slow"));
+        expect(settled).toBe(false);
+        releaseView();
+        await pending;
+        expect(settled).toBe(true);
+    } finally {
+        releaseData();
+        releaseView();
+        await pending;
+    }
+});

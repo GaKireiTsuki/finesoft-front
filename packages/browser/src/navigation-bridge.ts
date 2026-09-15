@@ -6,9 +6,8 @@
  * - **快照 → history**：订阅 controller，快照变更时用 `serializeNavigation(tree)` 作为
  *   HistoryState 推入 LRU、用 `codec.encode(tree, router)` 作为地址栏 URL；首屏 / 同 URL
  *   用 `replaceState`，否则 `pushState`（对齐 FlowAction handler 的 first-page 语义）。
- * - **popstate → controller**：优先从 `History` 缓存的 State 读回整棵树
- *   （`deserializeNavigation`），缓存未命中（硬刷新 / 超过 LRU 容量的深层 entry）时回退
- *   `codec.decode(url, router)`；再调 `controller.hydrate(tree)` 重解析。
+ * - **popstate → controller**：先读缓存/嵌入 history.state 的树，再尝试 codec，最后由标准
+ *   host 解析普通 URL。hydrate Promise 覆盖守卫、重定向链与原生视图就绪。
  * - **navigation handle**：向应用暴露 push/pop/popToRoot/replaceTop/selectTab/selectColumn
  *   + getSnapshot/subscribe，应用照常用自己的 UI 渲染。
  *
@@ -16,9 +15,8 @@
  * 制造冗余 entry / 循环）。用 `isApplyingHistory` 闸门把「来自 history 的提交」与「来自
  * 应用操作的提交」区分开 —— 只有后者写 history。
  *
- * `History` 的真实 State 存在内存 LRU（容量 10），window.history.state 只放 `{id}`。因此
- * 缓存未命中是常态（硬刷新 / 深层回退），codec.decode 回退是**必需**而非可选；codec 无法从
- * URL 同步还原时（默认 codec 对无 `__nav` 覆盖的 URL 返回 undefined），保留当前树不动。
+ * 无法解析或守卫拒绝时保留当前快照并拒绝 pop listener，防止恢复旧页面的滚动位置。
+ * rewrite/redirect 只更新当前 history entry 的 canonical URL，不新增 entry 或重置滚动身份。
  */
 
 import type { Logger } from "@finesoft/core";
@@ -43,6 +41,10 @@ interface NavigationHistoryState {
 
 /** NavigationBridge 构造依赖。 */
 export interface NavigationBridgeDependencies {
+    /** Invalidate a host URL resolution when browser history starts a newer navigation. */
+    readonly onPopStart?: () => void;
+    /** Standard host fallback for uncached URLs without an encoded navigation tree. */
+    readonly resolveUrl?: (url: string) => Promise<NavigationNode | undefined>;
     /** 已构建好的导航控制器（持有 initial 树、intentDispatcher、router 等）。 */
     readonly controller: NavigationController;
     readonly viewReady?: () => void | Promise<void>;
@@ -134,6 +136,7 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
             // 该快照源于 popstate 的 hydrate：地址栏/历史栈已是目标状态，不再回写。
             return;
         }
+        ++popSequence;
 
         const url = codec.encode(snapshot.tree, router);
         const state: NavigationHistoryState = { tree: serializeNavigation(snapshot.tree) };
@@ -159,19 +162,31 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
     history.onPopState(async (url, cachedState) => {
         log.debug(`[navigation] popstate → ${url}, cached=${!!cachedState}`);
 
-        const tree = restoreTree(url, cachedState);
+        const pop = ++popSequence;
+        deps.onPopStart?.();
+        controller.cancel?.();
+        isApplyingHistory = false;
+        const tree = restoreTree(url, cachedState) ?? (await deps.resolveUrl?.(url));
+        if (pop !== popSequence) return;
         if (tree === undefined) {
             // 缓存未命中且 codec 无法从 URL 同步还原 → 保留当前树不动（避免误清空）。
             log.warn(`[navigation] popstate: cannot restore tree for ${url}, keeping current`);
-            return;
+            throw Error(`Cannot restore navigation for ${url}`);
         }
 
-        const pop = ++popSequence;
-        controller.cancel?.();
         isApplyingHistory = true;
         try {
-            await controller.hydrate(tree);
+            const result = await controller.hydrate(tree);
+            if (result !== controller.getSnapshot()) throw Error(`Navigation rejected for ${url}`);
             await deps.viewReady?.();
+            if (pop !== popSequence) return;
+            const canonical = codec.encode(result.tree, router);
+            if (
+                new URL(canonical, window.location.origin).href !==
+                new URL(url, window.location.origin).href
+            )
+                history.updateState(() => ({ tree: serializeNavigation(result.tree) }), canonical);
+            lastEntryId = result.destinations.at(-1)?.entryId;
         } finally {
             if (pop === popSequence) isApplyingHistory = false;
         }

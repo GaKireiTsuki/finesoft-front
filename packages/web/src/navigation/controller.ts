@@ -221,11 +221,15 @@ export interface NavigationControllerOptions {
      */
     readonly getErrorPage?: (status: number, message: string) => Page;
     /**
-     * redirect 处理器——beforeLoad/afterLoad 返回 redirect 时调用（SPA 内跳 / 外链）。
-     * 控制器不持有 history，把「怎么跳」交给应用（浏览器侧 → `framework.perform`）。
-     * 缺省为 no-op（该目标不 dispatch、不再跳，仅保留当前页/兜底页）。
+     * Called after the redirecting execution finishes. Return a tree to follow within
+     * this same queued operation (at most five follows), preserving cancellation and
+     * history mode. Return void to report an HTTP redirect or finish an external handoff.
+     * Do not call queued controller operations from this callback.
      */
-    readonly onRedirect?: (redirect: { url: string; status: number }) => void;
+    readonly onRedirect?: (
+        redirect: { url: string; status: number },
+        candidate: NavigationSnapshot,
+    ) => void | NavigationNode | Promise<void | NavigationNode>;
 }
 
 /** 导航控制器对外接口。 */
@@ -322,6 +326,34 @@ export function createNavigationController(
         historyMode?: "push" | "replace",
     ): Promise<NavigationSnapshot> {
         const ownGeneration = generation;
+        const check = () => {
+            if (closed || signal?.aborted || ownGeneration !== generation)
+                throw new ExecutionError("cancelled");
+        };
+        for (let redirects = 0; ; redirects++) {
+            check();
+            const result = await resolveCandidate(nextTree, signal, historyMode);
+            check();
+            if (!result.redirect) return result.snapshot;
+            if (redirects === 5)
+                throw new ExecutionError(
+                    "configuration",
+                    "Too many navigation redirects (maximum 5)",
+                );
+            // The previous execution has finished. Continue inside this queue operation,
+            // never await another enqueue from the same queue.
+            const redirectedTree = await options.onRedirect?.(result.redirect, result.snapshot);
+            check();
+            if (!redirectedTree) return result.snapshot;
+            nextTree = redirectedTree;
+        }
+    }
+    async function resolveCandidate(
+        nextTree: NavigationNode,
+        signal?: AbortSignal,
+        historyMode?: "push" | "replace",
+    ): Promise<{ snapshot: NavigationSnapshot; redirect?: { url: string; status: number } }> {
+        const ownGeneration = generation;
         const ids = new Set<string>();
         for (const dest of collectAllLeaves(nextTree)) {
             if (ids.has(dest.entryId)) throw new Error(`Duplicate entry ID: ${dest.entryId}`);
@@ -417,10 +449,13 @@ export function createNavigationController(
                 historyMode,
             };
             if (redirect) {
-                options.onRedirect?.({ url: redirect.url, status: redirect.status });
-                return candidate;
+                return {
+                    snapshot: candidate,
+                    redirect: { url: redirect.url, status: redirect.status },
+                };
             }
-            if (destinations.some((dest) => dest.status !== undefined)) return candidate;
+            if (destinations.some((dest) => dest.status !== undefined))
+                return { snapshot: candidate };
             for (const dest of destinations) pageCache.set(dest.entryId, dest);
             for (const id of pageCache.keys()) if (!ids.has(id)) pageCache.delete(id);
             tree = candidate.tree;
@@ -428,7 +463,7 @@ export function createNavigationController(
             for (const listener of listeners) listener(snapshot);
             await options.viewReady?.(snapshot);
             check();
-            return snapshot;
+            return { snapshot };
         } finally {
             unbind();
             if (!options.execution) await execution.dispose();

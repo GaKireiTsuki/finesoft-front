@@ -3,12 +3,6 @@ export {
     registerExternalUrlHandler,
     type ExternalUrlDependencies,
 } from "./action-handlers/external-url-action";
-export {
-    registerFlowActionHandler,
-    type FlowActionCallbacks,
-    type FlowActionDependencies,
-} from "./action-handlers/flow-action";
-export { registerActionHandlers, type ActionHandlerDependencies } from "./action-handlers/register";
 
 // ===== Browser App =====
 export {

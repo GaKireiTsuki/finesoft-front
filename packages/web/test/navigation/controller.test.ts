@@ -24,6 +24,63 @@ import {
 import { split, stack, tabs } from "../../src/navigation/nodes";
 import { SPLIT_VISIBILITIES, type NavigationNode } from "../../src/navigation/types";
 
+test("one queued redirect chain disposes each execution before following and commits only the final native-ready snapshot", async () => {
+    const events: string[] = [];
+    const options = makeOptions({
+        controllers: ["home", "login", "final"].map((id) => ({
+            id,
+            handler: (_params, context) => {
+                events.push(`load:${id}`);
+                context.onDispose(() => {
+                    events.push(`dispose:${id}`);
+                });
+                return pageFor(id, {});
+            },
+        })),
+        initial: stack([leaf("home")]),
+        afterLoad: [
+            (ctx) =>
+                ctx.intent.id === "home"
+                    ? redirect("/login")
+                    : ctx.intent.id === "login"
+                      ? redirect("/final")
+                      : next(),
+        ],
+        onRedirect: async ({ url }, candidate) => {
+            const previous = candidate.destinations[0].intent;
+            expect(events.at(-1)).toBe(`dispose:${previous}`);
+            events.push(`follow:${url}`);
+            return stack([leaf(url.slice(1))]);
+        },
+        viewReady: async (snapshot) => {
+            await Promise.resolve();
+            events.push(`ready:${snapshot.destinations[0].intent}`);
+        },
+    });
+    const controller = createNavigationController(options);
+    const commits = vi.fn();
+    controller.subscribe(commits);
+    try {
+        const snapshot = await controller.apply({ kind: "replaceTop", intent: "home" });
+        expect(snapshot.historyMode).toBe("replace");
+        expect(commits).toHaveBeenCalledOnce();
+        expect(events).toEqual([
+            "load:home",
+            "dispose:home",
+            "follow:/login",
+            "load:login",
+            "dispose:login",
+            "follow:/final",
+            "load:final",
+            "ready:final",
+            "dispose:final",
+        ]);
+    } finally {
+        await controller.dispose();
+        await options.framework.dispose();
+    }
+});
+
 // =====================================================================
 // 测试替身（仅存在于测试文件，源码无 mock）
 // =====================================================================
@@ -554,7 +611,7 @@ describe("beforeLoad guards (primary destination)", () => {
 
         const snap = await controller.resolve();
 
-        expect(onRedirect).toHaveBeenCalledWith({ url: "/login", status: 302 });
+        expect(onRedirect).toHaveBeenCalledWith({ url: "/login", status: 302 }, snap);
         expect(calls).toEqual([]);
         expect(snap.destinations[0].status).toBe(302);
     });
@@ -667,7 +724,10 @@ describe("afterLoad guards (primary destination)", () => {
         );
 
         const snap = await controller.resolve();
-        expect(onRedirect).toHaveBeenCalledWith({ url: "/elsewhere", status: 302 });
+        expect(onRedirect).toHaveBeenCalledWith(
+            { url: "/elsewhere", status: 302 },
+            expect.anything(),
+        );
         expect(snap.destinations[0].page.pageType).toBe("error");
         expect(snap.destinations[0].status).toBe(302);
     });

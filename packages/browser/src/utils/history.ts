@@ -170,7 +170,7 @@ export class History<State> {
         this.log.info("replaceUrl (no state)", url, id);
     }
 
-    updateState(update: (current?: State) => State): void {
+    updateState(update: (current?: State) => State, url?: string): void {
         if (!this.currentStateId) {
             this.log.warn("failed: encountered a null currentStateId inside updateState");
             return;
@@ -185,6 +185,16 @@ export class History<State> {
             scrollY: currentState?.scrollY ?? 0,
             state: newState,
         });
+        // Canonicalize the current popstate entry without changing its identity or
+        // cancelling the restoration that waits on the navigation listener.
+        if (url !== undefined || this.persistInHistoryState)
+            window.history.replaceState(
+                this.persistInHistoryState
+                    ? { id: this.currentStateId, state: newState }
+                    : { id: this.currentStateId },
+                "",
+                url,
+            );
     }
 
     private get scrollTop(): number {

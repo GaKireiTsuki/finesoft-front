@@ -14,19 +14,20 @@ const vue = (await import(pathToFileURL(requireAt("vue").resolve("@vitejs/plugin
 const { svelte } = await import(
     pathToFileURL(requireAt("svelte").resolve("@sveltejs/vite-plugin-svelte"))
 );
-await build({
-    configFile: false,
-    root,
-    build: {
-        lib: {
-            entry: root + "adversarial/runtime-app/src/browser-worker.ts",
-            formats: ["es"],
-            fileName: "worker",
+if (!process.env.NATIVE_FIX_ONLY)
+    await build({
+        configFile: false,
+        root,
+        build: {
+            lib: {
+                entry: root + "adversarial/runtime-app/src/browser-worker.ts",
+                formats: ["es"],
+                fileName: "worker",
+            },
+            outDir: root + "reports/native-renderers/worker",
+            emptyOutDir: true,
         },
-        outDir: root + "reports/native-renderers/worker",
-        emptyOutDir: true,
-    },
-});
+    });
 const fixture = "/test/native-app/";
 const server = await createServer({
     configFile: false,
@@ -58,7 +59,9 @@ const { prerenderRoutes } = await server.ssrLoadModule(
 const { injectSSRContent, injectCSRShell } = await server.ssrLoadModule(
     root + "packages/ssr/src/inject.ts",
 );
-for (const ui of process.env.NATIVE_ERRORS_ONLY ? [] : ["react", "vue", "svelte"])
+for (const ui of process.env.NATIVE_ERRORS_ONLY || process.env.NATIVE_FIX_ONLY
+    ? []
+    : ["react", "vue", "svelte"])
     for (const mode of ["root", "entries"]) {
         const output = root + "reports/native-renderers/static/" + ui + "-" + mode;
         await build({
@@ -111,6 +114,7 @@ server.middlewares.use(async (req, res, next) => {
                 url.searchParams.get("route") ?? (renderMode === "csr" ? "/csr" : "/"),
                 mode,
                 url.searchParams.has("structured"),
+                url.searchParams.has("chrome"),
             );
             res.statusCode = result.status ?? 200;
             html =
@@ -134,7 +138,9 @@ const browser = await chromium.launch({ channel: "chrome", headless: true });
 await server.listen();
 const results = [];
 try {
-    for (const ui of ["react", "vue", "svelte"])
+    for (const ui of process.env.NATIVE_ERRORS_ONLY || process.env.NATIVE_FIX_ONLY
+        ? []
+        : ["react", "vue", "svelte"])
         for (const mode of ["root", "entries"])
             for (const renderMode of ["ssr", "csr", "prerender"]) {
                 const page = await browser.newPage();
@@ -340,7 +346,7 @@ try {
                 console.log(ui, mode, renderMode, "passed");
                 await page.close();
             }
-    if (!process.env.NATIVE_ERRORS_ONLY) {
+    if (!process.env.NATIVE_ERRORS_ONLY && !process.env.NATIVE_FIX_ONLY) {
         const structured = await browser.newPage();
         const structuredErrors = [];
         structured.on("pageerror", (error) => structuredErrors.push(String(error)));
@@ -422,13 +428,29 @@ try {
             const errors = [];
             page.on("pageerror", (error) => errors.push(String(error)));
             const response = await page.goto(
-                "http://127.0.0.1:5197/probe?ui=" + ui + "&mode=" + mode + "&route=/missing",
+                "http://127.0.0.1:5197/probe?ui=" +
+                    ui +
+                    "&mode=" +
+                    mode +
+                    "&route=/missing&chrome=1",
             );
             assert.equal(response.status(), 404);
             const html = await response.text();
             assert.match(html, /404/);
+            assert.match(html, /data-snapshot-title="404/);
+            if (mode === "entries") assert.match(html, /data-chrome[^>]*>404/);
             await page.waitForFunction(() => globalThis.ready === true);
             assert.match(await page.locator("#a h1").innerText(), /404/);
+            assert.match(
+                await page.locator("#b [data-snapshot-title]").getAttribute("data-snapshot-title"),
+                /404/,
+            );
+            assert.match(
+                await page.locator("#a [data-snapshot-title]").getAttribute("data-snapshot-title"),
+                /404/,
+            );
+            if (mode === "entries")
+                assert.match(await page.locator("#a [data-chrome]").innerText(), /404/);
             await page.evaluate(async () => {
                 await globalThis.apps.a.navigate("/");
             });
@@ -436,27 +458,110 @@ try {
             await page.evaluate(async () => {
                 const app = globalThis.apps.a;
                 globalThis.beforeDenied = app.getSnapshot();
-                app.framework.beforeLoad(() => ({ kind: "deny", status: 403, message: "blocked" }));
+                app.framework.beforeLoad((ctx) =>
+                    ctx.path === "/other"
+                        ? { kind: "deny", status: 403, message: "blocked" }
+                        : { kind: "next" },
+                );
                 await app.navigate("/other");
                 if (app.getSnapshot() !== globalThis.beforeDenied)
                     throw Error("rejected candidate committed");
             });
             assert.match(await page.locator("#a h1").innerText(), /first/);
+            const redirected = await page.evaluate(async () => {
+                const app = globalThis.apps.a;
+                let release;
+                globalThis.nativeGate = new Promise((resolve) => (release = resolve));
+                app.framework.beforeLoad((ctx) =>
+                    ctx.path === "/redirect"
+                        ? { kind: "redirect", url: "/slow", status: 302 }
+                        : { kind: "next" },
+                );
+                let settled = false;
+                const work = app.navigate("/redirect").then(() => {
+                    settled = true;
+                });
+                await new Promise((resolve) => setTimeout(resolve, 30));
+                const beforeRelease = settled;
+                release();
+                await work;
+                return {
+                    beforeRelease,
+                    title: document.querySelector("#a h1").textContent,
+                    snapshot: app.getSnapshot().destinations.at(-1).page.title,
+                };
+            });
+            assert.deepEqual(redirected, {
+                beforeRelease: false,
+                title: "Slow target",
+                snapshot: "Slow target",
+            });
+            if (mode === "entries")
+                assert.equal(await page.locator("#a [data-chrome]").innerText(), "Slow target");
             await page.evaluate(async () => {
                 await globalThis.apps.a.dispose();
                 await globalThis.apps.b.dispose();
             });
             assert.equal(await page.locator("input").count(), 0);
             assert.deepEqual(errors, []);
-            console.log(ui, mode, "initial404/rejected-navigation passed");
+            console.log(
+                ui,
+                mode,
+                "initial404/snapshot-chrome/rejected-navigation/redirect-ready passed",
+            );
             results.push({
                 ui,
                 mode,
                 initial404: true,
+                snapshotAligned: true,
+                redirectAwaitedNativeReady: true,
                 rejectedNavigationPreserved: true,
                 status: "passed",
             });
             await page.close();
+        }
+    if (process.env.NATIVE_FIX_ONLY)
+        for (const ui of ["react", "vue", "svelte"]) {
+            const page = await browser.newPage();
+            const errors = [];
+            page.on("pageerror", (error) => errors.push(String(error)));
+            await page.goto("http://127.0.0.1:5197/probe?ui=" + ui + "&mode=root");
+            await page.waitForFunction(() => globalThis.ready === true);
+            await page.locator("#b input").fill("previous-view-draft");
+            await page.evaluate(async () => {
+                const app = globalThis.apps.b;
+                const id = app.getSnapshot().destinations[0].entryId;
+                app.session.scope.set(id, { ...app.session.scope.get(id), business: "keep" });
+                await app.session.save();
+                globalThis.setType(app, "other");
+                await app.refresh();
+                const bag = app.session.scope.get(id);
+                if (bag.business !== "keep" || bag.__dom)
+                    throw Error("root reset must clear only DOM state");
+                await app.session.save();
+                await app.dispose();
+                globalThis.apps.b = await globalThis.mount(
+                    document.getElementById("b"),
+                    "native-b",
+                    "ar",
+                    "second",
+                    "memory",
+                    "other",
+                );
+            });
+            assert.equal(await page.locator("#b input").inputValue(), "");
+            assert.equal(await page.locator("#b span").innerText(), "");
+            await page.evaluate(() => globalThis.apps.b.refresh());
+            assert.equal(await page.locator("#b input").inputValue(), "");
+            assert.equal(await page.locator("#b span").innerText(), "");
+            await page.evaluate(async () => {
+                await globalThis.apps.a.dispose();
+                await globalThis.apps.b.dispose();
+            });
+            assert.deepEqual(errors, []);
+            await page.close();
+            results.push({ ui, mode: "root", resetSaveRemount: true, status: "passed" });
+            console.log(ui, "root reset/save/remount passed");
         }
 } finally {
     await browser.close();
@@ -465,7 +570,11 @@ try {
     await fs.writeFile(
         root +
             "reports/native-renderers/" +
-            (process.env.NATIVE_ERRORS_ONLY ? "errors-results.json" : "results.json"),
+            (process.env.NATIVE_FIX_ONLY
+                ? "fix-results.json"
+                : process.env.NATIVE_ERRORS_ONLY
+                  ? "errors-results.json"
+                  : "results.json"),
         JSON.stringify(results, null, 2),
     );
 }

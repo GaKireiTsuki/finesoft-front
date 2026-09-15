@@ -1,10 +1,20 @@
 import { createVueSSRRender, serializeServerData } from "@finesoft/front/renderers/vue/server";
+import Chrome from "./VueChrome.vue";
 import Probe from "./VueProbe.vue";
 import { definition } from "./definition";
-export async function render(url: string, mode: "root" | "entries", structured = false) {
+export async function render(
+    url: string,
+    mode: "root" | "entries",
+    structured = false,
+    chrome = false,
+) {
     const factory = createVueSSRRender({
         app: definition("en", "first", { pageType: "probe" }, structured),
-        renderer: { mode, views: { probe: Probe, other: Probe } },
+        renderer: {
+            mode,
+            chrome: chrome ? Chrome : undefined,
+            views: { probe: Probe, other: Probe },
+        },
     });
     try {
         const result = await factory(url);

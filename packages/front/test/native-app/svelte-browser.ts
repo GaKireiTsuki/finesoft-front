@@ -1,10 +1,15 @@
 import { startBrowserApp } from "@finesoft/front/browser";
 import { createSvelteRenderer } from "@finesoft/front/renderers/svelte/browser";
 import Other from "./SvelteOther.svelte";
+import Chrome from "./SvelteChrome.svelte";
 import Probe from "./SvelteProbe.svelte";
 import { definition } from "./definition";
 const mode = new URL(location.href).searchParams.get("mode") === "entries" ? "entries" : "root";
-const renderer = createSvelteRenderer({ mode, views: { probe: Probe, other: Other } });
+const renderer = createSvelteRenderer({
+    mode,
+    chrome: new URL(location.href).searchParams.has("chrome") ? Chrome : undefined,
+    views: { probe: Probe, other: Other },
+});
 const changes = new WeakMap<object, (type: string) => void>();
 export const setType = (app: object, type: string) => changes.get(app)?.(type);
 export async function mount(
@@ -13,8 +18,9 @@ export async function mount(
     locale = "en",
     label = "first",
     history: "memory" | "browser" = "memory",
+    pageType = "probe",
 ) {
-    const state = { pageType: "probe" };
+    const state = { pageType };
     const handle = await startBrowserApp({
         app: definition(
             locale,

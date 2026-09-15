@@ -31,10 +31,19 @@ export function definition(
                     title: label + " " + ++version,
                 }),
             },
+            {
+                id: "slow",
+                handler: async () => {
+                    await (globalThis as any).nativeGate;
+                    return { id: "slow", pageType: "probe", title: "Slow target" };
+                },
+            },
             { id: "other", handler: () => ({ id: "other", pageType: "other", title: "Other" }) },
         ],
         routes: [
             { path: "/", intentId: "probe" },
+            { path: "/redirect", intentId: "probe" },
+            { path: "/slow", intentId: "slow" },
             { path: "/other", intentId: "other" },
             { path: "/csr", intentId: "probe", renderMode: "csr" },
             { path: "/static", intentId: "probe", renderMode: "prerender", cache: "public" },

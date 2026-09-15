@@ -51,6 +51,7 @@ export {
     collectVisibleDestinations,
     findNearestStack,
     findNode,
+    mapNavigationLeaves,
     pop,
     popTo,
     popToRoot,
