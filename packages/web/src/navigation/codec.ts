@@ -124,12 +124,13 @@ function reverseFromRoutes(
     intentId: string,
     params: RouteParams,
 ): string | undefined {
-    for (const route of routes) {
-        if (route.intentId !== intentId) continue;
-        const built = substitutePattern(route.pattern, params);
-        if (built) return built;
-    }
-    return undefined;
+    const matches = routes
+        .filter((route) => route.intentId === intentId)
+        .map((route) => substitutePattern(route.pattern, params))
+        .filter((url): url is string => !!url);
+    if (matches.length > 1)
+        throw new NavigationError(`Ambiguous route for ${intentId}; provide the matched URL`);
+    return matches[0];
 }
 
 /** 单条 pattern 的占位替换；任一必填段缺失则返回 undefined（视为不匹配）。 */
@@ -321,11 +322,11 @@ function utf8Decode(bytes: Uint8Array): string {
  * 这与 controller 的「primary destination = 激活叶子」一致：URL 反映用户当前聚焦的目标
  * （stack 顶 / active tab / split 最后一个非空列）。
  */
-function activeLeaf(tree: NavigationNode): { intent: string; params: RouteParams } | undefined {
-    if (isLeafNode(tree)) return { intent: tree.intent, params: tree.params };
+function activeLeaf(tree: NavigationNode): import("./types").LeafNode | undefined {
+    if (isLeafNode(tree)) return tree;
     const node = findNode(tree, resolveActivePath(tree));
     if (node !== undefined && isLeafNode(node)) {
-        return { intent: node.intent, params: node.params };
+        return node;
     }
     return undefined;
 }
@@ -341,7 +342,7 @@ export function createActiveLeafCodec(): NavigationCodec {
         encode(tree, router) {
             const target = activeLeaf(tree);
             if (target === undefined) return "/";
-            return reverseUrl(router, target.intent, target.params) ?? "/";
+            return target.url ?? reverseUrl(router, target.intent, target.params) ?? "/";
         },
         decode(url) {
             const { query } = parseUrlParts(url);
@@ -373,7 +374,9 @@ export function createFullStateCodec(options: FullStateCodecOptions = {}): Navig
     return {
         encode(tree, router) {
             const target = activeLeaf(tree);
-            const base = target ? (reverseUrl(router, target.intent, target.params) ?? "/") : "/";
+            const base = target
+                ? (target.url ?? reverseUrl(router, target.intent, target.params) ?? "/")
+                : "/";
             const { path, query } = parseUrlParts(base);
             query.set(param, encodeNavigationTreeParam(tree));
             return buildRelativeUrl(path, query);
@@ -464,12 +467,12 @@ export function createFlatStackCodec(): NavigationCodec {
             const routes = compileRoutes(router);
             const match = syncMatch(url, routes);
             if (!match) return undefined;
-            return stack([leaf(match.intentId, match.params)]);
+            return stack([leaf(match.intentId, match.params, { url })]);
         },
         encode(tree, router) {
             const target = activeLeaf(tree);
             if (target === undefined) return "/";
-            return reverseUrl(router, target.intent, target.params) ?? "/";
+            return target.url ?? reverseUrl(router, target.intent, target.params) ?? "/";
         },
     };
 }

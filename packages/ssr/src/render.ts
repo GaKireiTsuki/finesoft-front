@@ -8,15 +8,13 @@ import type { SecureFetchOptions } from "@finesoft/core";
  * 4. 调用应用层提供的渲染函数
  */
 
-import { DEP_KEYS, type Logger, type TranslationMessages } from "@finesoft/core";
-import { Framework, type BasePage } from "@finesoft/web";
+import { type TranslationMessages } from "@finesoft/core";
+import { Framework, loadPage, type BasePage } from "@finesoft/web";
 import { createServerContext } from "./middleware/context";
 import {
     resolveConfiguredMessages,
     type FrameworkConfig,
     type MessagesLoader,
-    type MiddlewareResult,
-    type PostLoadContext,
     type PrefetchedIntent,
 } from "@finesoft/web";
 
@@ -30,7 +28,7 @@ export interface SSRRenderOptions {
     /** Framework 配置（含路由注册等） */
     frameworkConfig: FrameworkConfig;
     /** 注册 controllers 和路由的引导函数 */
-    bootstrap: (framework: Framework) => void;
+    bootstrap?: (framework: Framework) => void;
     /** 获取错误页面 */
     getErrorPage: (status: number, message: string) => BasePage;
     /** 应用层渲染函数（如 Svelte SSR render / Vue renderToString） */
@@ -45,6 +43,8 @@ export interface SSRRenderOptions {
 
 /** SSR 请求级上下文 */
 export interface SSRContext {
+    identity?: string;
+    traceId?: string;
     safeFetch?: SecureFetchOptions;
     /** 自定义 fetch（如 Hono 内部路由回环） */
     fetch?: typeof globalThis.fetch;
@@ -122,9 +122,10 @@ async function ssrRenderInternal(
 
     // 先解析 locale（如果提供了 resolveLocale 回调），使 DI 容器获得正确的 locale
     const resolvedLocale = resolveLocale?.(url, ssrContext?.request);
+    const defaults = { ...frameworkConfig.definition?.frameworkConfig, ...frameworkConfig };
     const effectiveConfig: FrameworkConfig = resolvedLocale
-        ? { ...frameworkConfig, locale: resolvedLocale.lang }
-        : frameworkConfig;
+        ? { ...defaults, locale: resolvedLocale.lang }
+        : defaults;
     const resolvedMessages = await resolveConfiguredMessages({
         locale: effectiveConfig.locale,
         loadMessages,
@@ -149,7 +150,14 @@ async function ssrRenderInternal(
         ...mergedConfig,
         _resolvedMessages: resolvedMessages,
     } as InternalSSRFrameworkConfig);
-    bootstrap(framework);
+    bootstrap?.(framework);
+    const execution = framework.createExecution({
+        signal: ssrContext?.request?.signal,
+        identity: ssrContext?.identity,
+        traceId: ssrContext?.traceId,
+        fetch: ssrContext?.fetch,
+        bindings: { ...ssrContext?.bindings, request: ssrContext?.request },
+    });
 
     try {
         const match = await framework.routeUrl(fullPath);
@@ -165,67 +173,41 @@ async function ssrRenderInternal(
             };
         }
 
-        let page: BasePage;
-        let serverData: PrefetchedIntent[] = [];
-        let rewriteUrl: string | undefined;
-
-        if (match) {
-            // ===== beforeLoad 中间件 =====
-            const navCtx = createServerContext({
-                url: fullPath,
-                intent: match.intent,
-                container: framework.container,
-                request: ssrContext?.request,
-            });
-            const beforeResult = await framework.runBeforeLoad(navCtx, match.beforeGuards);
-
-            // beforeLoad rewrite: 内部用新 URL 重新走完整 SSR 流程（route + dispatch）
-            // 当前 framework 在 finally 中销毁，递归 call 自带新 framework
-            if (beforeResult.kind === "rewrite") {
-                return ssrRenderInternal({ ...options, url: beforeResult.url }, rewriteDepth + 1);
-            }
-            if (beforeResult.kind !== "next") {
-                const earlyReturn = await handleMiddlewareResult(
-                    beforeResult,
-                    getErrorPage,
-                    renderApp,
-                    framework,
-                );
-                if (earlyReturn) return earlyReturn;
-            }
-
-            try {
-                page = (await framework.dispatch(match.intent)) as BasePage;
-                serverData = [{ intent: match.intent, data: page }];
-            } catch (e) {
-                const logger = framework.container.resolve<Logger>(DEP_KEYS.LOGGER);
-                logger.error(`[SSR] dispatch failed for intent "${match.intent.id}":`, e);
-                page = getErrorPage(500, "Internal error");
-            }
-
-            // ===== afterLoad 中间件 =====
-            const postCtx: PostLoadContext = {
-                ...navCtx,
-                page,
+        const loaded = await loadPage({
+            framework,
+            target: fullPath,
+            execution,
+            createContext: ({ url: destinationUrl, intent, execution: active }) =>
+                createServerContext({
+                    url: destinationUrl,
+                    intent,
+                    container: active.context.container,
+                    request: ssrContext?.request,
+                }),
+        });
+        if (loaded.kind === "redirect")
+            return {
+                html: "",
+                head: "",
+                css: "",
+                serverData: [],
+                redirect: { url: loaded.url, status: loaded.status },
             };
-            const afterResult = await framework.runAfterLoad(postCtx, match.afterGuards);
+        const page =
+            loaded.kind === "page" ? loaded.page : getErrorPage(loaded.status, loaded.message);
+        const serverData: PrefetchedIntent[] =
+            loaded.kind === "page"
+                ? [
+                      {
+                          entryId: loaded.target.entryId,
+                          intent: { id: loaded.target.intent, params: loaded.target.params },
+                          data: page,
+                      },
+                  ]
+                : [];
+        const rewriteUrl = loaded.kind === "page" ? loaded.rewriteUrl : undefined;
 
-            // afterLoad rewrite: 数据已加载，按当前 page 渲染但记录 rewriteUrl
-            if (afterResult.kind === "rewrite") {
-                rewriteUrl = afterResult.url;
-            } else if (afterResult.kind !== "next") {
-                const lateReturn = await handleMiddlewareResult(
-                    afterResult,
-                    getErrorPage,
-                    renderApp,
-                    framework,
-                );
-                if (lateReturn) return lateReturn;
-            }
-        } else {
-            page = getErrorPage(404, "Page not found");
-        }
-
+        if (loaded.kind === "page") framework.currentEntry = loaded.target;
         const result = await renderApp(page, framework);
 
         // locale 属性：已在渲染前通过 resolveLocale 解析（若有），否则从 Framework 容器获取
@@ -236,10 +218,14 @@ async function ssrRenderInternal(
             head: result.head,
             css: result.css,
             serverData,
-            renderMode: match?.renderMode,
+            renderMode: loaded.kind === "page" ? loaded.match?.renderMode : match?.renderMode,
+            ...(loaded.kind === "page" && loaded.match?.cache === "public"
+                ? { cache: "public" as const }
+                : {}),
             slots: result.slots,
             locale,
             rewriteUrl,
+            ...(loaded.kind === "deny" ? { status: loaded.status } : {}),
         };
     } finally {
         await framework.dispose();
@@ -255,43 +241,4 @@ function getSSRFetch(fetchFn?: typeof globalThis.fetch): typeof globalThis.fetch
     return (() => {
         throw new Error("[ssrRender] loadMessages requires a fetch implementation.");
     }) as typeof globalThis.fetch;
-}
-
-/**
- * 将中间件结果转换为 SSRRenderResult（如果需要短路返回）。
- * 返回 null 表示继续正常流程。
- *
- * 注意：`rewrite` 不在此处理 — 它由 ssrRenderInternal 直接处理（内部重路由或标记 rewriteUrl）。
- */
-async function handleMiddlewareResult(
-    result: MiddlewareResult,
-    getErrorPage: (status: number, message: string) => BasePage,
-    renderApp: (page: BasePage, framework: Framework) => SSRAppResult | Promise<SSRAppResult>,
-    framework: Framework,
-): Promise<SSRRenderResult | null> {
-    switch (result.kind) {
-        case "next":
-        case "rewrite":
-            return null;
-        case "redirect":
-            return {
-                html: "",
-                head: "",
-                css: "",
-                serverData: [],
-                redirect: { url: result.url, status: result.status },
-            };
-        case "deny": {
-            const errorPage = getErrorPage(result.status, result.message);
-            const rendered = await renderApp(errorPage, framework);
-            return {
-                html: rendered.html,
-                head: rendered.head,
-                css: rendered.css,
-                serverData: [],
-                slots: rendered.slots,
-                status: result.status,
-            };
-        }
-    }
 }

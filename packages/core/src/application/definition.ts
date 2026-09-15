@@ -117,7 +117,11 @@ export function normalize(options: RuntimeOptions) {
     };
     for (const op of operations.values()) {
         if (!implementations.has(op)) configuration(`Unbound operation: ${op.id}`);
-        checkCapabilities(op.capabilities);
+        checkCapabilities(
+            op.capabilities?.filter(
+                (name) => name !== "fetch" || !options.invocationCapabilities?.includes("fetch"),
+            ),
+        );
     }
     for (const p of providers.values()) {
         if ((typeof p.create === "function") === Object.hasOwn(p, "value"))

@@ -5,6 +5,7 @@ import type { StandardSchemaV1 } from "../schema/standard";
 import type { EventRecorder } from "../metrics/types";
 
 export interface Invocation {
+    readonly fetch?: typeof globalThis.fetch;
     readonly signal?: AbortSignal;
     readonly traceId?: string;
     readonly bindings?: Readonly<Record<string, unknown>>;
@@ -67,6 +68,8 @@ export interface AppDefinition extends Omit<ModuleDefinition, "dependsOn"> {
     readonly modules?: readonly ModuleDefinition[];
 }
 export interface RuntimeOptions {
+    /** Capabilities the host promises to supply per invocation, checked before operation policies. */
+    readonly invocationCapabilities?: readonly "fetch"[];
     readonly app: AppDefinition;
     readonly implementations?: readonly Implementation[];
     readonly providers?: readonly Provider<any>[];

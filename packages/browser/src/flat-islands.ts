@@ -82,11 +82,11 @@ export async function activateFlatIslands(args: FlatIslandsArgs): Promise<Activa
     const codec = createFlatStackCodec();
 
     const controller = createNavigationController({
-        intentDispatcher: framework.intentDispatcher,
+        framework,
         router: framework.router,
         initial,
-        createContext: ({ intent, params }) => {
-            const url = codec.encode({ kind: "leaf", intent, params }, framework.router);
+        createContext: ({ intent, params, url: matchedUrl }) => {
+            const url = matchedUrl ?? codec.encode(leaf(intent, params), framework.router);
             return {
                 container: framework.container,
                 navigation: createBrowserContext({
@@ -141,6 +141,7 @@ export async function activateFlatIslands(args: FlatIslandsArgs): Promise<Activa
         await controller.push(
             match.intent.id,
             (match.intent.params ?? {}) as Record<string, string>,
+            { url },
         );
     }
 

@@ -1,3 +1,4 @@
+import { leaf, treeShape } from "../helpers/navigation";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { Container } from "@finesoft/core";
 import { IntentDispatcher } from "@finesoft/core";
@@ -18,7 +19,7 @@ import {
     type NavigationDispatchContext,
 } from "../../src/navigation/controller";
 import { sessionEntryKey } from "../../src/session/scoped-state";
-import { leaf, split, stack, tabs } from "../../src/navigation/nodes";
+import { split, stack, tabs } from "../../src/navigation/nodes";
 import { SPLIT_VISIBILITIES, type NavigationNode } from "../../src/navigation/types";
 
 // =====================================================================
@@ -104,7 +105,7 @@ describe("single leaf (backward-compatible flat page)", () => {
         expect(snap.destinations[0].params).toEqual({ a: 1 });
         expect(snap.destinations[0].page.pageType).toBe("home");
         expect(snap.destinations[0].status).toBeUndefined();
-        expect(snap.tree).toEqual(leaf("home", { a: 1 }));
+        expect(snap.tree).toMatchObject(treeShape(leaf("home", { a: 1 })));
     });
 
     test("getTree / getSnapshot reflect committed state", async () => {
@@ -114,7 +115,7 @@ describe("single leaf (backward-compatible flat page)", () => {
         );
 
         // 解析前：tree = initial，destinations 空
-        expect(controller.getTree()).toEqual(leaf("home"));
+        expect(controller.getTree()).toMatchObject(treeShape(leaf("home")));
         expect(controller.getSnapshot().destinations).toEqual([]);
 
         const snap = await controller.resolve();
@@ -155,7 +156,9 @@ describe("stack operations", () => {
         expect(snap.destinations[0].intent).toBe("detail");
         expect(snap.destinations[0].params).toEqual({ id: 7 });
         // 树结构：root + detail
-        expect(snap.tree).toEqual(stack([leaf("root"), leaf("detail", { id: 7 })]));
+        expect(snap.tree).toMatchObject(
+            treeShape(stack([leaf("root"), leaf("detail", { id: 7 })])),
+        );
     });
 
     test("pop reveals the still-present root from cache without re-dispatching", async () => {
@@ -170,7 +173,7 @@ describe("stack operations", () => {
         expect(calls).toEqual(["root", "detail"]);
         expect(snap.destinations).toHaveLength(1);
         expect(snap.destinations[0].intent).toBe("root");
-        expect(snap.tree).toEqual(stack([leaf("root")]));
+        expect(snap.tree).toMatchObject(treeShape(stack([leaf("root")])));
     });
 
     test("a destination unchanged FROM THE PREVIOUS snapshot is reused (split column)", async () => {
@@ -199,7 +202,7 @@ describe("stack operations", () => {
 
         const snap = await controller.pop(5);
 
-        expect(snap.tree).toEqual(stack([leaf("root")]));
+        expect(snap.tree).toMatchObject(treeShape(stack([leaf("root")])));
         expect(snap.destinations[0].intent).toBe("root");
     });
 
@@ -211,7 +214,7 @@ describe("stack operations", () => {
 
         const snap = await controller.replaceTop("edit", { id: 1 });
 
-        expect(snap.tree).toEqual(stack([leaf("root"), leaf("edit", { id: 1 })]));
+        expect(snap.tree).toMatchObject(treeShape(stack([leaf("root"), leaf("edit", { id: 1 })])));
         expect(snap.destinations[0].intent).toBe("edit");
         expect(calls).toEqual(["root", "detail", "edit"]);
     });
@@ -225,7 +228,7 @@ describe("stack operations", () => {
 
         const snap = await controller.apply({ kind: NAVIGATION_OP_KINDS.POP_TO_ROOT });
 
-        expect(snap.tree).toEqual(stack([leaf("root")]));
+        expect(snap.tree).toMatchObject(treeShape(stack([leaf("root")])));
         expect(snap.destinations[0].intent).toBe("root");
     });
 
@@ -245,7 +248,7 @@ describe("stack operations", () => {
 
         const snap = await controller.apply({ kind: NAVIGATION_OP_KINDS.POP_TO, index: 0 });
 
-        expect(snap.tree).toEqual(stack([leaf("a")]));
+        expect(snap.tree).toMatchObject(treeShape(stack([leaf("a")])));
         expect(snap.destinations[0].intent).toBe("a");
         expect(calls).toEqual(["c", "a"]);
     });
@@ -404,11 +407,13 @@ describe("split", () => {
         expect(snap.destinations.map((d) => d.intent)).toEqual(["list", "detail"]);
         // list 复用首屏，仅 detail 新 dispatch
         expect(calls).toEqual(["list", "detail"]);
-        expect(snap.tree).toEqual(
-            split([
-                { id: "list", content: leaf("list") },
-                { id: "detail", content: leaf("detail", { id: 9 }) },
-            ]),
+        expect(snap.tree).toMatchObject(
+            treeShape(
+                split([
+                    { id: "list", content: leaf("list") },
+                    { id: "detail", content: leaf("detail", { id: 9 }) },
+                ]),
+            ),
         );
     });
 
@@ -431,7 +436,9 @@ describe("split", () => {
         const snap = await controller.selectColumn("detail", undefined);
 
         expect(snap.destinations.map((d) => d.intent)).toEqual(["list"]);
-        expect(snap.tree).toEqual(split([{ id: "list", content: leaf("list") }, { id: "detail" }]));
+        expect(snap.tree).toMatchObject(
+            treeShape(split([{ id: "list", content: leaf("list") }, { id: "detail" }])),
+        );
     });
 });
 
@@ -526,7 +533,8 @@ describe("beforeLoad guards (primary destination)", () => {
         const calls: string[] = [];
         const router = new Router();
         router.add("/canonical/:id", "canonical");
-        const guard: BeforeLoadGuard = () => rewrite("/canonical/42");
+        const guard: BeforeLoadGuard = (ctx) =>
+            ctx.intent.id === "alias" ? rewrite("/canonical/42") : next();
         const dispatcher = makeDispatcher(
             { alias: (p) => pageFor("alias", p), canonical: (p) => pageFor("canonical", p) },
             calls,
@@ -547,7 +555,7 @@ describe("beforeLoad guards (primary destination)", () => {
         expect(snap.destinations[0].params).toEqual({ id: "42" });
     });
 
-    test("rewrite to an unroutable URL keeps the original destination", async () => {
+    test("rewrite to an unroutable URL refuses the destination", async () => {
         const calls: string[] = [];
         const router = new Router(); // 无路由 → resolve 返回 null
         const guard: BeforeLoadGuard = () => rewrite("/nope");
@@ -561,8 +569,9 @@ describe("beforeLoad guards (primary destination)", () => {
         });
 
         const snap = await controller.resolve();
-        // 回退：仍按原 intent 解析
-        expect(calls).toEqual(["alias"]);
+        // A failed rewrite must not load the original destination.
+        expect(calls).toEqual([]);
+        expect(snap.destinations[0].status).toBe(404);
         expect(snap.destinations[0].intent).toBe("alias");
     });
 });
@@ -593,7 +602,7 @@ describe("afterLoad guards (primary destination)", () => {
         expect(snap.destinations[0].status).toBeUndefined();
     });
 
-    test("afterLoad deny → status set but the already-loaded page is kept", async () => {
+    test("afterLoad deny returns an error destination without committing the loaded page", async () => {
         const guard: AfterLoadGuard = () => deny(403, "blocked");
         const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
         const controller = createNavigationController(
@@ -607,10 +616,10 @@ describe("afterLoad guards (primary destination)", () => {
         const snap = await controller.resolve();
         expect(snap.destinations[0].status).toBe(403);
         // 与现有 runner 一致：afterLoad deny 保留已加载页
-        expect(snap.destinations[0].page.pageType).toBe("home");
+        expect(snap.destinations[0].page.pageType).toBe("error");
     });
 
-    test("afterLoad redirect → onRedirect called, page kept (no status error page)", async () => {
+    test("afterLoad redirect invokes the callback without exposing the loaded page", async () => {
         const onRedirect = vi.fn();
         const guard: AfterLoadGuard = () => redirect("/elsewhere", 302);
         const dispatcher = makeDispatcher({ home: (p) => pageFor("home", p) });
@@ -625,7 +634,7 @@ describe("afterLoad guards (primary destination)", () => {
 
         const snap = await controller.resolve();
         expect(onRedirect).toHaveBeenCalledWith({ url: "/elsewhere", status: 302 });
-        expect(snap.destinations[0].page.pageType).toBe("home");
+        expect(snap.destinations[0].page.pageType).toBe("error");
         expect(snap.destinations[0].status).toBe(302);
     });
 
@@ -645,7 +654,7 @@ describe("afterLoad guards (primary destination)", () => {
         expect(snap.destinations[0].status).toBeUndefined();
     });
 
-    test("guards run ONLY for the primary destination, not for secondary split columns", async () => {
+    test("guards run for every visible split column", async () => {
         const guardCalls: string[] = [];
         const guard: BeforeLoadGuard = (ctx: NavigationContext) => {
             guardCalls.push(ctx.intent.id);
@@ -668,7 +677,7 @@ describe("afterLoad guards (primary destination)", () => {
 
         await controller.resolve();
         // 激活路径末端 = 最后一个非空列 detail → 仅它跑守卫
-        expect(guardCalls).toEqual(["detail"]);
+        expect(guardCalls).toEqual(["list", "detail"]);
     });
 });
 
@@ -829,7 +838,7 @@ describe("hydrate", () => {
         const incoming: NavigationNode = stack([leaf("home"), leaf("detail", { id: 3 })]);
         const snap = await controller.hydrate(incoming);
 
-        expect(snap.tree).toBe(incoming);
+        expect(snap.tree).toMatchObject(incoming);
         expect(snap.destinations[0].intent).toBe("detail");
         // home 复用首屏，detail 新 dispatch
         expect(calls).toEqual(["home", "detail"]);
@@ -899,7 +908,7 @@ describe("immutability", () => {
         await controller.push("detail");
 
         // 原 committed 树未被改动（结构共享，新树是新引用）
-        expect(before).toEqual(stack([leaf("root")]));
+        expect(before).toMatchObject(treeShape(stack([leaf("root")])));
         expect(controller.getTree()).not.toBe(before);
     });
 });
@@ -971,10 +980,12 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         const [snap1, snap2] = await Promise.all([p1, p2]);
 
         // 串行化后：第一次提交 stack([root, a])，第二次在其之上提交 stack([root, a, b])。
-        expect(snap1.tree).toEqual(stack([leaf("root"), leaf("a")]));
-        expect(snap2.tree).toEqual(stack([leaf("root"), leaf("a"), leaf("b")]));
+        expect(snap1.tree).toMatchObject(treeShape(stack([leaf("root"), leaf("a")])));
+        expect(snap2.tree).toMatchObject(treeShape(stack([leaf("root"), leaf("a"), leaf("b")])));
         // 最终已提交树两者都在，没有谁被丢。
-        expect(controller.getTree()).toEqual(stack([leaf("root"), leaf("a"), leaf("b")]));
+        expect(controller.getTree()).toMatchObject(
+            treeShape(stack([leaf("root"), leaf("a"), leaf("b")])),
+        );
     });
 
     test("many interleaved concurrent pushes apply in submission order", async () => {
@@ -988,8 +999,10 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         await Promise.all(pending);
 
         // 全部按提交顺序叠加，无丢失、无错序。
-        expect(controller.getTree()).toEqual(
-            stack([leaf("root"), leaf("x0"), leaf("x1"), leaf("x2"), leaf("x3"), leaf("x4")]),
+        expect(controller.getTree()).toMatchObject(
+            treeShape(
+                stack([leaf("root"), leaf("x0"), leaf("x1"), leaf("x2"), leaf("x3"), leaf("x4")]),
+            ),
         );
     });
 
@@ -1007,8 +1020,8 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
 
         await expect(bad).rejects.toThrow(/没有 tabs/);
         const snap = await good;
-        expect(snap.tree).toEqual(stack([leaf("root"), leaf("ok")]));
-        expect(controller.getTree()).toEqual(stack([leaf("root"), leaf("ok")]));
+        expect(snap.tree).toMatchObject(treeShape(stack([leaf("root"), leaf("ok")])));
+        expect(controller.getTree()).toMatchObject(treeShape(stack([leaf("root"), leaf("ok")])));
     });
 
     test("concurrent resolve() and apply() do not clobber each other", async () => {
@@ -1022,7 +1035,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         const p = controller.push("next");
         await Promise.all([r, p]);
 
-        expect(controller.getTree()).toEqual(stack([leaf("root"), leaf("next")]));
+        expect(controller.getTree()).toMatchObject(treeShape(stack([leaf("root"), leaf("next")])));
     });
 });
 

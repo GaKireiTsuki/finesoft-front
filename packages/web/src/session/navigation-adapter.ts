@@ -56,10 +56,11 @@ export function createNavigationSessionAdapter(
 
 /** `createUrlSessionAdapter` 选项（扁平单页）。 */
 export interface UrlAdapterOptions {
+    readonly currentEntry?: () => { entryId: string } | undefined;
     /** 读取当前 URL（如 `() => location.pathname + location.search`）。 */
     readonly currentUrl: () => string;
     /** 应用恢复的 URL（应用提供，如 `framework.perform(makeFlowAction(url))`）。 */
-    readonly navigate: (url: string) => void | Promise<void>;
+    readonly navigate: (url: string, entryId?: string) => void | Promise<void>;
     /** 可选：当前屏的 intent + params，用于 `presentKeys` 产出稳定身份键。 */
     readonly currentIntent?: () => { intent: string; params: RouteParams };
 }
@@ -74,16 +75,23 @@ export interface UrlAdapterOptions {
 export function createUrlSessionAdapter(opts: UrlAdapterOptions): SessionNavigationAdapter {
     return {
         capture(): SessionSnapshot["navigation"] {
-            return { url: opts.currentUrl() };
+            const entry = opts.currentEntry?.();
+            return { url: opts.currentUrl(), ...(entry ? { entryId: entry.entryId } : {}) };
         },
         apply(navigation: SessionSnapshot["navigation"]): void | Promise<void> {
             if (!isUrlLocation(navigation)) return undefined;
-            return opts.navigate(navigation.url);
+            return navigation.entryId
+                ? opts.navigate(navigation.url, navigation.entryId)
+                : opts.navigate(navigation.url);
         },
         captureUrl(): string | undefined {
             return opts.currentUrl();
         },
         presentKeys(): Iterable<string> {
+            if (opts.currentEntry) {
+                const entry = opts.currentEntry();
+                return entry ? [entry.entryId] : [];
+            }
             if (opts.currentIntent) {
                 const { intent, params } = opts.currentIntent();
                 return [sessionEntryKey(intent, params)];

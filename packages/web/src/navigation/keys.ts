@@ -1,10 +1,16 @@
-/**
- * 导航条目稳定身份键 —— controller 的 destinationKey 与 session 的 sessionEntryKey 的单一来源。
- * `intent` + 单个 ASCII 空格 + `stableStringify(params)`（params 键有序，故 {a,b} 与 {b,a} 同键）。
- */
+/** Resource key helpers. `entryKey` is a temporary compatibility helper, never page identity. */
 import { stableStringify } from "@finesoft/core";
 import type { RouteParams } from "../router/types";
 
 export function entryKey(intent: string, params: RouteParams): string {
     return `${intent} ${stableStringify(params)}`;
+}
+
+/** Resource identity never identifies a page instance. */
+export function resourceKey(
+    intent: string,
+    params: RouteParams,
+    partition: { identity?: string; locale?: string } = {},
+): string {
+    return stableStringify([intent, partition.identity ?? null, partition.locale ?? null, params]);
 }

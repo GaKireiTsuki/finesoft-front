@@ -11,6 +11,7 @@ import { stableStringify } from "@finesoft/core";
 
 /** 预获取的 Intent-Data 对 */
 export interface PrefetchedIntent {
+    entryId?: string;
     intent: Intent;
     data: unknown;
 }
@@ -18,20 +19,30 @@ export interface PrefetchedIntent {
 export class PrefetchedIntents {
     private intents: Map<string, unknown>;
 
-    private constructor(intents: Map<string, unknown>) {
+    private constructor(
+        intents: Map<string, unknown>,
+        private readonly entryIds = new Map<string, string[]>(),
+    ) {
         this.intents = intents;
     }
 
     /** 从 PrefetchedIntent 数组创建缓存实例 */
     static fromArray(items: PrefetchedIntent[]): PrefetchedIntents {
         const map = new Map<string, unknown>();
+        const entries = new Map<string, string[]>();
         for (const item of items) {
             if (item.intent && item.data !== undefined) {
-                const key = stableStringify(item.intent);
+                const key = item.entryId
+                    ? stableStringify([item.entryId, item.intent])
+                    : stableStringify(item.intent);
                 map.set(key, item.data);
+                if (item.entryId) {
+                    const intentKey = stableStringify(item.intent);
+                    entries.set(intentKey, [...(entries.get(intentKey) ?? []), item.entryId]);
+                }
             }
         }
-        return new PrefetchedIntents(map);
+        return new PrefetchedIntents(map, entries);
     }
 
     /** 创建空缓存实例 */
@@ -43,8 +54,9 @@ export class PrefetchedIntents {
      * 获取缓存的 Intent 结果（一次性使用）。
      * 命中后从缓存中删除。
      */
-    get<T>(intent: Intent<T>): T | undefined {
-        const key = stableStringify(intent);
+    get<T>(intent: Intent<T>, entryId?: string): T | undefined {
+        const entryKey = entryId && stableStringify([entryId, intent]);
+        const key = entryKey && this.intents.has(entryKey) ? entryKey : stableStringify(intent);
         const data = this.intents.get(key);
         if (data !== undefined) {
             this.intents.delete(key);
@@ -53,9 +65,19 @@ export class PrefetchedIntents {
         return undefined;
     }
 
+    /** Read identity metadata without consuming data or bypassing operation policies. */
+    entryIdFor(intent: Intent): string | undefined {
+        const ids = (this.entryIds.get(stableStringify(intent)) ?? []).filter((entryId) =>
+            this.has(intent, entryId),
+        );
+        return ids.length === 1 ? ids[0] : undefined;
+    }
+
     /** 检查缓存中是否有某个 Intent 的数据 */
-    has(intent: Intent): boolean {
-        return this.intents.has(stableStringify(intent));
+    has(intent: Intent, entryId?: string): boolean {
+        return this.intents.has(
+            entryId ? stableStringify([entryId, intent]) : stableStringify(intent),
+        );
     }
 
     /** 缓存中的条目数 */

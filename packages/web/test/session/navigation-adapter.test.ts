@@ -1,9 +1,10 @@
+import { leaf } from "../helpers/navigation";
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
     createNavigationSessionAdapter,
     createUrlSessionAdapter,
 } from "../../src/session/navigation-adapter";
-import { leaf, stack, tabs } from "../../src/navigation/nodes";
+import { stack, tabs } from "../../src/navigation/nodes";
 import { serializeNavigation } from "../../src/navigation/serialization";
 import { collectLeafKeys, sessionEntryKey } from "../../src/session/scoped-state";
 import type { NavigationController } from "../../src/navigation/controller";

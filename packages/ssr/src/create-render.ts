@@ -6,16 +6,17 @@
  * 与 @finesoft/server 的 SSRModule 接口对齐。
  */
 
-import type { BasePage, Framework } from "@finesoft/web";
+import { Framework, type BasePage, type WebAppDefinition } from "@finesoft/web";
 import type { FrameworkConfig, MessagesLoader } from "@finesoft/web";
 import { ssrRender, type SSRAppResult, type SSRContext, type SSRRenderResult } from "./render";
 
 export interface SSRRenderConfig {
     /** 注册 controllers 和路由的引导函数 */
-    bootstrap: (framework: Framework) => void;
+    bootstrap?: (framework: Framework) => void;
+    definition?: WebAppDefinition;
 
     /** 获取错误页面 */
-    getErrorPage: (status: number, message: string) => BasePage;
+    getErrorPage?: (status: number, message: string) => BasePage;
 
     /**
      * 应用层渲染函数
@@ -41,21 +42,34 @@ export interface SSRRenderConfig {
  *
  * @returns `render(url, ssrContext?)` — 供 @finesoft/server SSRModule 使用
  */
-export function createSSRRender(
-    config: SSRRenderConfig,
-): (url: string, ssrContext?: SSRContext) => Promise<SSRRenderResult> {
+export function createSSRRender(config: SSRRenderConfig): ((
+    url: string,
+    ssrContext?: SSRContext,
+) => Promise<SSRRenderResult>) & {
+    dispose(): Promise<void>;
+} {
     const { bootstrap, getErrorPage, renderApp, frameworkConfig, resolveLocale, loadMessages } =
         config;
 
-    return (url: string, ssrContext?: SSRContext) =>
+    const owner = config.definition
+        ? Framework.create({ ...frameworkConfig, definition: config.definition })
+        : undefined;
+    const render = (url: string, ssrContext?: SSRContext) =>
         ssrRender({
             url,
-            frameworkConfig: frameworkConfig ?? {},
+            frameworkConfig: {
+                ...frameworkConfig,
+                ...(owner ? { definition: config.definition, runtime: owner.runtime } : {}),
+            },
             bootstrap,
-            getErrorPage,
+            getErrorPage:
+                getErrorPage ??
+                config.definition?.getErrorPage ??
+                ((status, message) => ({ id: String(status), pageType: "error", title: message })),
             renderApp: (page, framework) => renderApp(page, framework),
             ssrContext,
             resolveLocale,
             loadMessages,
         });
+    return Object.assign(render, { dispose: () => owner?.dispose() ?? Promise.resolve() });
 }

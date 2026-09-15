@@ -1,3 +1,4 @@
+import { leaf } from "../helpers/navigation";
 import { describe, expect, test } from "vite-plus/test";
 import {
     createActiveLeafCodec,
@@ -7,7 +8,7 @@ import {
     encodeNavigationTreeParam,
     type NavigationRouterLike,
 } from "../../src/navigation/codec";
-import { leaf, split, stack, tabs } from "../../src/navigation/nodes";
+import { split, stack, tabs } from "../../src/navigation/nodes";
 import { NavigationError, type NavigationNode } from "../../src/navigation/types";
 import { Router } from "../../src/router/router";
 

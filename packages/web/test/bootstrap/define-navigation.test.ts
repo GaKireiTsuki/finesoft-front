@@ -1,7 +1,8 @@
+import { leaf } from "../helpers/navigation";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { defineNavigation } from "../../src/bootstrap/define-navigation";
 import { createActiveLeafCodec, type NavigationCodec } from "../../src/navigation/codec";
-import { leaf, stack, tabs } from "../../src/navigation/nodes";
+import { stack, tabs } from "../../src/navigation/nodes";
 import type { NavigationNode } from "../../src/navigation/types";
 import type { BasePage } from "../../src/models/page";
 
@@ -65,7 +66,7 @@ describe("defineNavigation.toBrowserConfig — 收敛为具体树", () => {
             initial: (): NavigationNode | undefined => undefined,
         });
         const cfg = def.toBrowserConfig("/whatever");
-        expect(cfg.initial).toEqual({
+        expect(cfg.initial).toMatchObject({
             kind: "leaf",
             intent: "@finesoft/navigation-root",
             params: {},

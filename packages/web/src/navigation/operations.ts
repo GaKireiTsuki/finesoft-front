@@ -588,3 +588,85 @@ function findActiveKind(
         }
     }
 }
+
+/** Reveal a particular existing entry, preserving its identity and retained state. */
+export function reuseEntry(tree: NavigationNode, entryId: string): NavigationNode {
+    const reveal = (node: NavigationNode): NavigationNode | undefined => {
+        switch (node.kind) {
+            case "leaf":
+                return node.entryId === entryId ? node : undefined;
+            case "stack": {
+                for (let index = 0; index < node.entries.length; index++) {
+                    const found = reveal(node.entries[index]);
+                    if (found)
+                        return { ...node, entries: [...node.entries.slice(0, index), found] };
+                }
+                return undefined;
+            }
+            case "tabs": {
+                for (const key of node.order) {
+                    const found = reveal(node.branches[key]);
+                    if (found)
+                        return {
+                            ...node,
+                            active: key,
+                            branches: { ...node.branches, [key]: found },
+                        };
+                }
+                return undefined;
+            }
+            case "split": {
+                for (let index = 0; index < node.columns.length; index++) {
+                    const column = node.columns[index];
+                    const found = column.content && reveal(column.content);
+                    if (found)
+                        return {
+                            ...node,
+                            visibility: "all",
+                            columns: node.columns.map((item, i) =>
+                                i === index ? { ...item, content: found } : item,
+                            ),
+                        };
+                }
+                return undefined;
+            }
+        }
+    };
+    const result = reveal(tree);
+    if (!result) throw new NavigationError(`Unknown entry ID: ${entryId}`);
+    return result;
+}
+
+/** Apply resolved route metadata to leaves without changing their instance identities. */
+export function mapNavigationLeaves(
+    tree: NavigationNode,
+    transform: (leaf: LeafNode) => LeafNode,
+): NavigationNode {
+    switch (tree.kind) {
+        case "leaf":
+            return transform(tree);
+        case "stack":
+            return {
+                ...tree,
+                entries: tree.entries.map((node) => mapNavigationLeaves(node, transform)),
+            };
+        case "tabs":
+            return {
+                ...tree,
+                branches: Object.fromEntries(
+                    Object.entries(tree.branches).map(([key, node]) => [
+                        key,
+                        mapNavigationLeaves(node, transform),
+                    ]),
+                ),
+            };
+        case "split":
+            return {
+                ...tree,
+                columns: tree.columns.map((column) => ({
+                    ...column,
+                    content: column.content && mapNavigationLeaves(column.content, transform),
+                })),
+            };
+    }
+}

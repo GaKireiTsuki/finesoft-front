@@ -18,6 +18,7 @@ import type { BasePage } from "../models/page";
 
 /** 导航上下文（beforeLoad 阶段可用） */
 export interface NavigationContext {
+    readonly signal?: AbortSignal;
     /** 完整 URL（path + query） */
     readonly url: string;
     /** 仅路径部分 */

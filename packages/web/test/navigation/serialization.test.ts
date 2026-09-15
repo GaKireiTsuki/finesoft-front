@@ -1,5 +1,6 @@
+import { leaf } from "../helpers/navigation";
 import { describe, expect, test } from "vite-plus/test";
-import { leaf, split, stack, tabs } from "../../src/navigation/nodes";
+import { split, stack, tabs } from "../../src/navigation/nodes";
 import {
     deserializeNavigation,
     serializeNavigation,
@@ -114,9 +115,14 @@ describe("deserializeNavigation validation", () => {
     });
 
     test("rejects leaf with non-object params", () => {
-        expect(() => deserializeNavigation({ kind: "leaf", intent: "x", params: "no" })).toThrow(
-            NavigationError,
-        );
+        expect(() =>
+            deserializeNavigation({
+                kind: "leaf",
+                entryId: "fixture-x",
+                intent: "x",
+                params: "no",
+            }),
+        ).toThrow(NavigationError);
     });
 
     test("rejects stack with non-array entries", () => {
@@ -131,7 +137,7 @@ describe("deserializeNavigation validation", () => {
                 kind: "tabs",
                 active: "ghost",
                 order: ["a"],
-                branches: { a: { kind: "leaf", intent: "a", params: {} } },
+                branches: { a: { kind: "leaf", entryId: "fixture-a", intent: "a", params: {} } },
             }),
         ).toThrow(NavigationError);
     });
@@ -142,7 +148,7 @@ describe("deserializeNavigation validation", () => {
                 kind: "tabs",
                 active: "a",
                 order: [1],
-                branches: { a: { kind: "leaf", intent: "a", params: {} } },
+                branches: { a: { kind: "leaf", entryId: "fixture-a", intent: "a", params: {} } },
             }),
         ).toThrow(NavigationError);
     });
@@ -154,7 +160,7 @@ describe("deserializeNavigation validation", () => {
                 active: "a",
                 // "ghost" 不在 branches → app 按 order 渲染时 branches["ghost"] === undefined。
                 order: ["a", "ghost"],
-                branches: { a: { kind: "leaf", intent: "a", params: {} } },
+                branches: { a: { kind: "leaf", entryId: "fixture-a", intent: "a", params: {} } },
             }),
         ).toThrow(/order 包含不在 branches 中的键 "ghost"/);
     });
@@ -165,7 +171,9 @@ describe("deserializeNavigation validation", () => {
                 kind: "tabs",
                 active: "feed",
                 order: ["feed", "profile"], // profile 缺失于 branches
-                branches: { feed: { kind: "leaf", intent: "feed", params: {} } },
+                branches: {
+                    feed: { kind: "leaf", entryId: "fixture-feed", intent: "feed", params: {} },
+                },
             }),
         ).toThrow(NavigationError);
     });
@@ -177,8 +185,8 @@ describe("deserializeNavigation validation", () => {
             active: "a",
             order: ["a"],
             branches: {
-                a: { kind: "leaf", intent: "a", params: {} },
-                b: { kind: "leaf", intent: "b", params: {} },
+                a: { kind: "leaf", entryId: "fixture-a", intent: "a", params: {} },
+                b: { kind: "leaf", entryId: "fixture-b", intent: "b", params: {} },
             },
         });
         expect((out as ReturnType<typeof tabs>).order).toEqual(["a"]);
@@ -204,7 +212,10 @@ describe("deserializeNavigation validation", () => {
         expect(() =>
             deserializeNavigation({
                 kind: "stack",
-                entries: [{ kind: "leaf", intent: "ok", params: {} }, { kind: "leaf" }],
+                entries: [
+                    { kind: "leaf", entryId: "fixture-ok", intent: "ok", params: {} },
+                    { kind: "leaf" },
+                ],
             }),
         ).toThrow(/entries\[1\]/);
     });

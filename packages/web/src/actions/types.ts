@@ -15,6 +15,8 @@ export const ACTION_KINDS = {
 
 /** FlowAction — SPA 导航 */
 export interface FlowAction {
+    /** Restore an existing page instance, e.g. from a session/history snapshot. */
+    entryId?: string;
     kind: typeof ACTION_KINDS.FLOW;
     url: string;
     /** 展示方式: 默认 push，modal 弹窗 */

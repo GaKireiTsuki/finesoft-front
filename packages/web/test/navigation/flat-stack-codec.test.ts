@@ -1,6 +1,7 @@
+import { leaf, treeShape } from "../helpers/navigation";
 import { describe, expect, test } from "vite-plus/test";
 import { createFlatStackCodec } from "../../src/navigation/codec";
-import { leaf, stack } from "../../src/navigation/nodes";
+import { stack } from "../../src/navigation/nodes";
 import { Router } from "../../src/router/router";
 
 describe("flat stack codec", () => {
@@ -8,15 +9,17 @@ describe("flat stack codec", () => {
         const router = new Router();
         router.add("/item/:id", "detail");
         const codec = createFlatStackCodec();
-        expect(codec.decode("/item/7", router)).toEqual(stack([leaf("detail", { id: "7" })]));
+        expect(codec.decode("/item/7", router)).toMatchObject(
+            treeShape(stack([leaf("detail", { id: "7" })])),
+        );
     });
 
     test("decode：多段路径 + 多参数", () => {
         const router = new Router();
         router.add("/user/:userId/post/:postId", "userPost");
         const codec = createFlatStackCodec();
-        expect(codec.decode("/user/42/post/99", router)).toEqual(
-            stack([leaf("userPost", { userId: "42", postId: "99" })]),
+        expect(codec.decode("/user/42/post/99", router)).toMatchObject(
+            treeShape(stack([leaf("userPost", { userId: "42", postId: "99" })])),
         );
     });
 
@@ -24,7 +27,7 @@ describe("flat stack codec", () => {
         const router = new Router();
         router.add("/home", "home");
         const codec = createFlatStackCodec();
-        expect(codec.decode("/home", router)).toEqual(stack([leaf("home", {})]));
+        expect(codec.decode("/home", router)).toMatchObject(treeShape(stack([leaf("home", {})])));
     });
 
     test("encode：取激活叶子的 URL", () => {
@@ -58,8 +61,8 @@ describe("flat stack codec", () => {
         const router = new Router();
         router.add("/search", "search");
         const codec = createFlatStackCodec();
-        expect(codec.decode("/search?q=hello", router)).toEqual(
-            stack([leaf("search", { q: "hello" })]),
+        expect(codec.decode("/search?q=hello", router)).toMatchObject(
+            treeShape(stack([leaf("search", { q: "hello" })])),
         );
     });
 });

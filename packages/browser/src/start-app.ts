@@ -27,6 +27,7 @@ import type { Logger, Storage, TranslationMessages } from "@finesoft/core";
 import {
     createActiveLeafCodec,
     createNavigationController,
+    leaf,
     createNavigationSessionAdapter,
     createSessionStore,
     createUrlSessionAdapter,
@@ -419,12 +420,12 @@ async function activateNavigationCore(args: {
 
     const controller = createNavigationController({
         isServer: false,
-        intentDispatcher: framework.intentDispatcher,
+        framework,
         router: framework.router,
         initial: navigation.initial,
         // 守卫上下文走 createBrowserContext（与 FlowAction handler 一致：读 document.cookie）。
-        createContext: ({ intent, params }) => {
-            const url = codec.encode({ kind: "leaf", intent, params }, framework.router);
+        createContext: ({ intent, params, url: matchedUrl }) => {
+            const url = matchedUrl ?? codec.encode(leaf(intent, params), framework.router);
             return {
                 container: framework.container,
                 navigation: createBrowserContext({
@@ -560,7 +561,8 @@ function activateSessionCore(args: {
         ? createNavigationSessionAdapter(navController, currentUrl)
         : createUrlSessionAdapter({
               currentUrl,
-              navigate: (url) => framework.perform(makeFlowAction(url)),
+              currentEntry: () => framework.currentEntry,
+              navigate: (url, entryId) => framework.perform({ ...makeFlowAction(url), entryId }),
           });
 
     const subscribeNavigation = navController

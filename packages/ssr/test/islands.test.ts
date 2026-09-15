@@ -6,8 +6,17 @@ vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 import { renderIslandsHtml } from "../src/islands";
 import type { NavigationSnapshot } from "@finesoft/web";
 
-function snap(destinations: NavigationSnapshot["destinations"]): NavigationSnapshot {
-    return { tree: { kind: "leaf", intent: "x", params: {} }, destinations };
+function snap(
+    destinations: Omit<NavigationSnapshot["destinations"][number], "entryId" | "resourceKey">[],
+): NavigationSnapshot {
+    return {
+        tree: { kind: "leaf", entryId: "fixture-root", intent: "x", params: {} },
+        destinations: destinations.map((d, i) => ({
+            ...d,
+            entryId: `fixture-${i}`,
+            resourceKey: d.intent,
+        })),
+    };
 }
 
 describe("renderIslandsHtml", () => {

@@ -125,7 +125,7 @@ vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import { BaseController } from "@finesoft/core";
 import { makeFlowAction } from "@finesoft/web";
-import { sessionEntryKey } from "@finesoft/web";
+
 import { startBrowserApp } from "../src/start-app";
 import {
     FakeCustomEvent,
@@ -142,8 +142,8 @@ stubDomGlobals();
 // Helpers
 // ---------------------------------------------------------------------------
 
-const KEY = (intent: string, params: Record<string, unknown> = {}): string =>
-    sessionEntryKey(intent, params);
+const allocatedKeys = new Map<string, string>();
+const KEY = (intent: string): string => allocatedKeys.get(intent)!;
 
 /** Attached (in outlet) island keys in DOM order. */
 function attachedKeys(outlet: FakeElement): string[] {
@@ -220,6 +220,7 @@ async function buildApp(
     const doc = makeFakeDocumentWithRoot("app", root);
     vi.stubGlobal("document", doc);
 
+    allocatedKeys.clear();
     const mountCalls: string[] = [];
 
     let capturedFramework: import("@finesoft/web").Framework | undefined;
@@ -242,6 +243,7 @@ async function buildApp(
         callbacks: { onNavigate() {}, onModal() {}, ...opts.callbacks },
         mountEntry: (entry, container) => {
             mountCalls.push(entry.entryKey);
+            if (!allocatedKeys.has(entry.intent)) allocatedKeys.set(entry.intent, entry.entryId);
             container.textContent = entry.page.title ?? "";
             return { unmount() {} };
         },
@@ -294,7 +296,7 @@ describe("flat islands（顶层 mountEntry，无 navigation）", () => {
         // then controller.hydrate(stack([leaf("a", {})])), which syncs orchestrator → A reattaches.
         const bridgeHistory = HistoryMock.latest<{ tree: unknown }>();
         // Simulate popstate: url = "/a", no cached state → codec.decode path
-        await bridgeHistory.popListener?.("/a", undefined);
+        await bridgeHistory.popListener?.("/a", bridgeHistory.replaceState.mock.calls[0][0]);
 
         // mountEntry NOT called again for A (reuse)
         expect(mountCalls).toEqual([KEY("a"), KEY("b")]);
@@ -314,13 +316,15 @@ describe("flat islands（顶层 mountEntry，无 navigation）", () => {
 
         // back to /a: hydrate(stack([leaf("a")])) → B 离 presentKeys → teardown
         const bridgeHistory = HistoryMock.latest<{ tree: unknown }>();
-        await bridgeHistory.popListener?.("/a", undefined);
+        await bridgeHistory.popListener?.("/a", bridgeHistory.replaceState.mock.calls[0][0]);
         expect(attachedKeys(outlet)).toEqual([KEY("a")]);
 
         // forward again to /b: B rebuilt (mount count grows to 3)
         await framework.perform(makeFlowAction("/b"));
-        expect(mountCalls).toEqual([KEY("a"), KEY("b"), KEY("b")]);
-        expect(attachedKeys(outlet)).toEqual([KEY("b")]);
+        expect(mountCalls).toHaveLength(3);
+        expect(mountCalls.slice(0, 2)).toEqual([KEY("a"), KEY("b")]);
+        expect(mountCalls[2]).not.toBe(KEY("b"));
+        expect(attachedKeys(outlet)).toEqual([mountCalls[2]]);
     });
 
     test("modal FlowAction 仍由扁平 handler 处理（不经过 controller.push）", async () => {

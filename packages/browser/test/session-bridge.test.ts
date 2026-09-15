@@ -316,7 +316,7 @@ describe("createSessionBridge — restore gate", () => {
 
     test("structured snapshot: at root / → restored", () => {
         const s = snap({
-            navigation: { kind: "leaf", intent: "home", params: {} },
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
         });
         const { store, bridge } = bridgeWith(s);
         void bridge.restore("/");
@@ -326,7 +326,7 @@ describe("createSessionBridge — restore gate", () => {
 
     test("structured snapshot: at non-root /x → NOT restored", () => {
         const s = snap({
-            navigation: { kind: "leaf", intent: "home", params: {} },
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
         });
         const { store, bridge } = bridgeWith(s);
         void bridge.restore("/x");
@@ -336,7 +336,12 @@ describe("createSessionBridge — restore gate", () => {
 
     test("structured snapshot with url: same deep link → restored", () => {
         const s = snap({
-            navigation: { kind: "leaf", intent: "detail", params: { id: "1" } },
+            navigation: {
+                kind: "leaf",
+                entryId: "fixture-detail",
+                intent: "detail",
+                params: { id: "1" },
+            },
             url: "/item/1",
         });
         const { store, bridge } = bridgeWith(s);
@@ -347,7 +352,12 @@ describe("createSessionBridge — restore gate", () => {
 
     test("structured snapshot with url: different deep link → NOT restored", () => {
         const s = snap({
-            navigation: { kind: "leaf", intent: "detail", params: { id: "1" } },
+            navigation: {
+                kind: "leaf",
+                entryId: "fixture-detail",
+                intent: "detail",
+                params: { id: "1" },
+            },
             url: "/item/1",
         });
         const { store, bridge } = bridgeWith(s);
@@ -471,14 +481,21 @@ describe("defaultShouldRestore", () => {
     });
 
     test("structured (no url): root true, non-root false（旧快照回退策略）", () => {
-        const s = snap({ navigation: { kind: "leaf", intent: "home", params: {} } });
+        const s = snap({
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
+        });
         expect(defaultShouldRestore(s, "/")).toBe(true);
         expect(defaultShouldRestore(s, "/x")).toBe(false);
     });
 
     test("structured with comparable url: same true, different false, root true（与扁平对称）", () => {
         const s = snap({
-            navigation: { kind: "leaf", intent: "detail", params: { id: "1" } },
+            navigation: {
+                kind: "leaf",
+                entryId: "fixture-detail",
+                intent: "detail",
+                params: { id: "1" },
+            },
             url: "/item/1",
         });
         expect(defaultShouldRestore(s, "/item/1")).toBe(true); // 重载同深链 → 恢复

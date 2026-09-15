@@ -284,3 +284,47 @@ test("query cache keys reflect nested mutation even through a new outer input", 
     expect(handler).toHaveBeenCalledTimes(3);
     await runtime.dispose();
 });
+
+test("invocation fetch isolates concurrent request capabilities and nested cleanup", async () => {
+    const cleaned: string[] = [];
+    const nested = defineOperation({
+        id: "request-fetch",
+        kind: "query",
+        capabilities: ["fetch"],
+        handler: async (_: undefined, ctx) => {
+            ctx.onDispose(() => {
+                cleaned.push(ctx.identity!);
+            });
+            const response = await ctx.fetch("https://app.test/value");
+            return [await response.text(), ctx.identity, ctx.locale];
+        },
+    });
+    const outer = defineOperation({
+        id: "request-outer",
+        kind: "query",
+        handler: (_: undefined, ctx) => ctx.execute(nested, undefined),
+    });
+    const runtime = createRuntime({
+        app: defineApp({ id: "requests", operations: [nested, outer] }),
+        invocationCapabilities: ["fetch"],
+    });
+    await expect(runtime.execute(nested, undefined)).rejects.toMatchObject({ code: "capability" });
+    const seen: AbortSignal[] = [];
+    const invoke = (identity: string, locale: string) =>
+        runtime.execute(outer, undefined, {
+            identity,
+            locale,
+            fetch: async (_input, init) => {
+                seen.push(init!.signal!);
+                await Promise.resolve();
+                return new Response(identity);
+            },
+        });
+    expect(await Promise.all([invoke("a", "en"), invoke("b", "zh")])).toEqual([
+        ["a", "a", "en"],
+        ["b", "b", "zh"],
+    ]);
+    expect(seen[0]).not.toBe(seen[1]);
+    expect(cleaned.sort()).toEqual(["a", "b"]);
+    await runtime.dispose();
+});

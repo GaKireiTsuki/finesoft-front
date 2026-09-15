@@ -22,6 +22,7 @@ export const SESSION_DEFAULT_VERSION = 1;
 
 /** 扁平单页的导航位置：一个 URL（区别于结构化树的 `SerializedNavigation`）。 */
 export interface SessionUrlLocation {
+    readonly entryId?: string;
     readonly url: string;
 }
 

@@ -38,6 +38,7 @@ export interface RouteDefinition<
     /** query 参数 codec；key 自由 */
     query?: Q;
     /** 渲染模式（可选，默认 "ssr"） */
+    cache?: "public";
     renderMode?: RenderMode;
     /** 路由级 beforeLoad 守卫 */
     beforeLoad?: BeforeLoadGuard[];
@@ -63,6 +64,7 @@ export function route<
         controller?: IntentController;
         params?: P;
         query?: Q;
+        cache?: "public";
         renderMode?: RenderMode;
         beforeLoad?: BeforeLoadGuard[];
         afterLoad?: AfterLoadGuard[];
@@ -111,6 +113,7 @@ export function defineRoute<
         query?: Q;
         handler: (params: HandlerParams<P, Q>, container: Container) => TResult | Promise<TResult>;
         fallback?: (params: HandlerParams<P, Q>, error: Error) => TResult | Promise<TResult>;
+        cache?: "public";
         renderMode?: RenderMode;
         beforeLoad?: BeforeLoadGuard[];
         afterLoad?: AfterLoadGuard[];
@@ -136,6 +139,7 @@ export function defineRoute<
         params: def.params,
         query: def.query,
         renderMode: def.renderMode,
+        cache: def.cache,
         beforeLoad: def.beforeLoad,
         afterLoad: def.afterLoad,
     } as RouteDefinition;
@@ -213,6 +217,7 @@ export function defineRoutes<const T extends readonly RouteDefinition[]>(
 
         const routeOpts = {
             renderMode: def.renderMode,
+            cache: def.cache,
             beforeGuards: def.beforeLoad,
             afterGuards: def.afterLoad,
             paramCodecs: def.params as Record<string, ParamSchema> | undefined,

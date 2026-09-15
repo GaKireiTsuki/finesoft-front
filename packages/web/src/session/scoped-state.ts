@@ -35,7 +35,7 @@ export function sessionEntryKey(intent: string, params: RouteParams): string {
  * 「全部存在」而非「可见」，用于 scoped 状态保留。
  */
 export function collectLeafKeys(tree: NavigationNode): string[] {
-    return collectAllLeaves(tree).map((l) => sessionEntryKey(l.intent, l.params));
+    return collectAllLeaves(tree).map((l) => l.entryId);
 }
 
 /**

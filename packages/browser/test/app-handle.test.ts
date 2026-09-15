@@ -11,7 +11,7 @@ import type { SessionHandle } from "../src/session-bridge";
 function fakeNav() {
     return {
         getSnapshot: vi.fn(() => ({
-            tree: { kind: "leaf", intent: "home", params: {} },
+            tree: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
             destinations: [],
         })),
         subscribe: vi.fn(() => () => {}),

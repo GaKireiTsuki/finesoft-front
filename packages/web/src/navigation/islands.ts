@@ -1,5 +1,5 @@
 /**
- * Island 条目类型 + 共享标记构造器（UI 无关，core 单点拥有）。
+ * Island 条目类型 + 共享标记构造器（UI 无关，Web 单点拥有）。
  *
  * `ResolvedEntry` 是交给挂载/渲染原语的单条目解析结果（客户端 mountEntry / 服务端 renderEntry 共用）。
  * `islandContainerAttributes` 是 island 容器标记的来源 —— 客户端 orchestrator 建容器、服务端
@@ -11,6 +11,8 @@ import type { RouteParams } from "../router/types";
 
 /** 交给挂载/渲染原语的单条目解析结果。 */
 export interface ResolvedEntry {
+    readonly entryId: string;
+    readonly resourceKey: string;
     readonly intent: string;
     readonly params: RouteParams;
     readonly entryKey: string;

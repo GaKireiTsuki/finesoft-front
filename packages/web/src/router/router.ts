@@ -13,6 +13,7 @@ import { runStandard, type ParamSchema } from "@finesoft/core";
 export interface RouteMatch {
     intent: Intent;
     action: FlowAction;
+    cache?: "public";
     renderMode?: string;
     /** 该路由绑定的 beforeLoad 守卫 */
     beforeGuards?: BeforeLoadGuard[];
@@ -22,6 +23,7 @@ export interface RouteMatch {
 
 /** 路由添加选项 */
 export interface RouteAddOptions {
+    cache?: "public";
     renderMode?: string;
     beforeGuards?: BeforeLoadGuard[];
     afterGuards?: AfterLoadGuard[];
@@ -34,6 +36,7 @@ interface InternalRouteDefinition {
     intentId: string;
     regex: RegExp;
     paramNames: string[];
+    cache?: "public";
     renderMode?: string;
     beforeGuards?: BeforeLoadGuard[];
     afterGuards?: AfterLoadGuard[];
@@ -48,11 +51,18 @@ function createNullPrototypeRecord<V = string>(source?: Record<string, V>): Reco
 
 export class Router {
     private routes: InternalRouteDefinition[] = [];
+    private sealed = false;
+
+    seal(): this {
+        this.sealed = true;
+        return this;
+    }
 
     constructor(private readonly debug?: (message: string) => void) {}
 
     /** 添加路由规则 */
     add(pattern: string, intentId: string, renderModeOrOptions?: string | RouteAddOptions): this {
+        if (this.sealed) throw new Error("Router is sealed");
         const opts: RouteAddOptions =
             typeof renderModeOrOptions === "string"
                 ? { renderMode: renderModeOrOptions }
@@ -85,6 +95,7 @@ export class Router {
             regex: new RegExp(`^${regexStr}/?$`),
             paramNames,
             renderMode: opts.renderMode,
+            cache: opts.cache,
             beforeGuards: opts.beforeGuards,
             afterGuards: opts.afterGuards,
             paramCodecs: opts.paramCodecs,
@@ -163,6 +174,7 @@ export class Router {
                 intent: { id: route.intentId, params },
                 action: makeFlowAction(urlOrPath),
                 renderMode: route.renderMode,
+                cache: route.cache,
                 beforeGuards: route.beforeGuards,
                 afterGuards: route.afterGuards,
             };

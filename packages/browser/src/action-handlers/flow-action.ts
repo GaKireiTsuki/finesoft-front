@@ -8,13 +8,14 @@
 import type { BasePage, Framework } from "@finesoft/web";
 import type { FlowAction } from "@finesoft/web";
 import type { Logger } from "@finesoft/core";
-import type { PostLoadContext } from "@finesoft/web";
-import { ACTION_KINDS } from "@finesoft/web";
+import { ExecutionError } from "@finesoft/core";
+import { ACTION_KINDS, loadPage } from "@finesoft/web";
 import { createBrowserContext } from "../middleware/context";
 import { History } from "../utils/history";
 
 /** FlowAction handler 的 History state */
 interface FlowState {
+    entryId?: string;
     page: BasePage;
 }
 
@@ -28,11 +29,15 @@ export interface FlowActionCallbacks {
 
 /** 注册 FlowAction handler 所需的依赖 */
 export interface FlowActionDependencies {
+    viewReady?: () => void | Promise<void>;
     framework: Framework;
     log: Logger;
     callbacks: FlowActionCallbacks;
     /** 更新应用 UI 的回调，page 可以是 Promise */
-    updateApp: (props: { page: Promise<BasePage> | BasePage; isFirstPage?: boolean }) => void;
+    updateApp: (props: {
+        page: Promise<BasePage> | BasePage;
+        isFirstPage?: boolean;
+    }) => void | Promise<void>;
     /** 获取可滚动页面元素，用于滚动位置保存/恢复 */
     getScrollablePageElement?: () => HTMLElement | null;
     /**
@@ -53,279 +58,133 @@ export interface FlowActionDependencies {
 
 export function registerFlowActionHandler(deps: FlowActionDependencies): void {
     const { framework, log, callbacks, updateApp } = deps;
-    const manageHistory = deps.manageHistory ?? true;
-    const { onForward } = deps;
-    let isFirstPage = true;
-    let navigationId = 0;
+    let first = true;
+    let sequence = 0;
+    let active: AbortController | undefined;
+    const history =
+        (deps.manageHistory ?? true)
+            ? new History<FlowState>(log, {
+                  getScrollablePageElement:
+                      deps.getScrollablePageElement ??
+                      (() =>
+                          document.getElementById("scrollable-page-override") ||
+                          document.getElementById("scrollable-page") ||
+                          document.documentElement),
+              })
+            : undefined;
 
-    /** 重定向循环保护计数器 */
-    const MAX_REDIRECTS = 5;
-
-    const defaultGetScrollable = (): HTMLElement | null =>
-        document.getElementById("scrollable-page-override") ||
-        document.getElementById("scrollable-page") ||
-        document.documentElement;
-
-    // nav 配置下 history 由 NavigationBridge 独占；本 handler 不建 History、不监听 popstate。
-    const history = manageHistory
-        ? new History<FlowState>(log, {
-              getScrollablePageElement: deps.getScrollablePageElement ?? defaultGetScrollable,
-          })
-        : undefined;
-
-    /**
-     * 核心导航逻辑（支持递归重定向）
-     * @param redirectCount 当前重定向次数，用于循环保护
-     */
-    async function navigateTo(url: string, redirectCount: number, thisNav: number): Promise<void> {
-        if (redirectCount >= MAX_REDIRECTS) {
-            log.error(
-                `Navigation redirect loop detected (${MAX_REDIRECTS} redirects), stopping at: ${url}`,
-            );
-            return;
-        }
-
-        const shouldReplace =
-            isFirstPage || url === window.location.pathname + window.location.search;
-
-        const match = await framework.routeUrl(url);
-        if (!match) {
-            log.warn(`FlowAction: no route for ${url}`);
-            return;
-        }
-
-        // ===== beforeLoad 中间件 =====
-        const navCtx = createBrowserContext({
-            url,
-            intent: match.intent,
-            container: framework.container,
-        });
-        const beforeResult = await framework.runBeforeLoad(navCtx, match.beforeGuards);
-
-        if (beforeResult.kind === "redirect") {
-            log.debug(`beforeLoad → redirect to ${beforeResult.url}`);
-            await navigateTo(beforeResult.url, redirectCount + 1, thisNav);
-            return;
-        }
-        if (beforeResult.kind === "deny") {
-            log.warn(`beforeLoad → denied (${beforeResult.status}): ${beforeResult.message}`);
-            return;
-        }
-        // rewrite in beforeLoad: 无数据可言，当作 redirect 处理
-        if (beforeResult.kind === "rewrite") {
-            log.debug(`beforeLoad → rewrite to ${beforeResult.url}`);
-            await navigateTo(beforeResult.url, redirectCount + 1, thisNav);
-            return;
-        }
-
-        const pagePromise = framework.dispatch(match.intent) as Promise<BasePage>;
-
-        await Promise.race([pagePromise, new Promise((r) => setTimeout(r, 500))]).catch(() => {});
-
-        if (thisNav !== navigationId) {
-            log.info("FlowAction superseded by newer navigation", url);
-            return;
-        }
-
-        history?.beforeTransition();
-
-        updateApp({
-            page: pagePromise.then(
-                async (page: BasePage): Promise<BasePage> => {
-                    if (thisNav !== navigationId) {
-                        log.info("FlowAction commit superseded", url);
-                        return page;
-                    }
-
-                    // ===== afterLoad 中间件 =====
-                    const postCtx: PostLoadContext = {
-                        ...navCtx,
-                        page,
-                    };
-                    const afterResult = await framework.runAfterLoad(postCtx, match.afterGuards);
-
-                    if (afterResult.kind === "redirect") {
-                        log.debug(`afterLoad → redirect to ${afterResult.url}`);
-                        void navigateTo(afterResult.url, redirectCount + 1, thisNav);
-                        return page;
-                    }
-
-                    let canonicalURL = url;
-
-                    if (afterResult.kind === "rewrite") {
-                        // rewrite: 仅更新地址栏，保留已加载的 page 数据
-                        canonicalURL = afterResult.url;
-                        log.debug(`afterLoad → rewrite URL to ${canonicalURL}`);
-                    }
-
-                    if (afterResult.kind === "deny") {
-                        log.warn(`afterLoad → denied (${afterResult.status})`);
-                        return page;
-                    }
-
-                    if (shouldReplace) {
-                        history?.replaceState({ page }, canonicalURL);
-                    } else {
-                        history?.pushState({ page }, canonicalURL);
-                    }
-
-                    callbacks.onNavigate(new URL(canonicalURL, window.location.origin).pathname);
-
-                    didEnterPage(page);
-                    return page;
-                },
-                (error: unknown) => {
-                    // 页面加载失败仍需推入历史记录，确保 back/forward 正常
-                    if (thisNav === navigationId) {
-                        const canonicalURL = url;
-                        if (shouldReplace) {
-                            history?.replaceUrl(canonicalURL);
-                        } else {
-                            history?.pushUrl(canonicalURL);
-                        }
-                        callbacks.onNavigate(
-                            new URL(canonicalURL, window.location.origin).pathname,
-                        );
-                    }
-                    throw error;
-                },
-            ),
-            isFirstPage,
-        });
-
-        isFirstPage = false;
-    }
-
-    // ===== FlowAction handler =====
-    framework.onAction(ACTION_KINDS.FLOW, async (action) => {
-        const flowAction = action as FlowAction;
-        const url = flowAction.url;
-        log.debug(`FlowAction → ${url}`);
-
-        // 模态展示
-        if (flowAction.presentationContext === "modal") {
-            const match = await framework.routeUrl(url);
-            if (match) {
-                const page = (await framework.dispatch(match.intent)) as BasePage;
-                callbacks.onModal(page);
-            }
-            return;
-        }
-
-        // flat-islands 正向导航：把控制权交给隐式单栈 controller（bypass navigateTo/updateApp）。
-        if (onForward) {
-            await onForward(url);
-            return;
-        }
-
-        const thisNav = ++navigationId;
-        await navigateTo(url, 0, thisNav);
-    });
-
-    // ===== popstate handler =====
-    // history 为 undefined（nav 配置）时不注册：popstate 由 NavigationBridge 独占处理。
-    history?.onPopState(async (url, cachedState) => {
-        log.debug(`popstate → ${url}, cached=${!!cachedState}`);
-
-        callbacks.onNavigate(new URL(url).pathname);
-
-        if (cachedState) {
-            const { page } = cachedState;
-            didEnterPage(page);
-            updateApp({ page, isFirstPage });
-            return;
-        }
-
-        const parsed = new URL(url);
-        const routeMatch = await framework.routeUrl(parsed.pathname + parsed.search);
-        if (!routeMatch) {
-            log.error("received popstate without data, but URL was unroutable:", url);
-            didEnterPage(null);
-            updateApp({
-                page: Promise.reject(new Error("404")),
-                isFirstPage,
-            });
-            return;
-        }
-
-        // ===== beforeLoad 中间件 =====
-        const navCtx = createBrowserContext({
-            url: parsed.pathname + parsed.search,
-            intent: routeMatch.intent,
-            container: framework.container,
-        });
-        const beforeResult = await framework.runBeforeLoad(navCtx, routeMatch.beforeGuards);
-
-        if (beforeResult.kind === "redirect") {
-            log.debug(`popstate beforeLoad → redirect to ${beforeResult.url}`);
-            const thisNav = ++navigationId;
-            await navigateTo(beforeResult.url, 0, thisNav);
-            return;
-        }
-        if (beforeResult.kind === "deny" || beforeResult.kind === "rewrite") {
-            // popstate 场景下 deny/rewrite 直接触发跳转
-            if (beforeResult.kind === "deny") {
-                log.warn(`popstate beforeLoad → denied`);
-            } else {
-                const thisNav = ++navigationId;
-                await navigateTo(beforeResult.url, 0, thisNav);
-            }
-            return;
-        }
-
-        const pagePromise = framework.dispatch(routeMatch.intent) as Promise<BasePage>;
-
-        await Promise.race([pagePromise, new Promise((r) => setTimeout(r, 500))]).catch(() => {});
-
-        const guardedPage = pagePromise.then(async (page: BasePage): Promise<BasePage> => {
-            // popstate 也需要执行 afterLoad guards，与正向导航保持一致
-            const postCtx: PostLoadContext = { ...navCtx, page };
-            const afterResult = await framework.runAfterLoad(postCtx, routeMatch.afterGuards);
-
-            if (afterResult.kind === "redirect") {
-                log.debug(`popstate afterLoad → redirect to ${afterResult.url}`);
-                const newNav = ++navigationId;
-                void navigateTo(afterResult.url, 0, newNav);
-                return page;
-            }
-            if (afterResult.kind === "rewrite") {
-                // page 已加载；仅 canonicalize URL 而不启动新 navigation，
-                // 否则 back/forward 时会 push 新 history entry 造成循环 + 重复 dispatch。
-                log.debug(`popstate afterLoad → rewrite URL to ${afterResult.url}`);
-                const stateId = (window.history.state as { id?: string } | null)?.id;
-                window.history.replaceState({ id: stateId }, "", afterResult.url);
-                callbacks.onNavigate(new URL(afterResult.url, window.location.origin).pathname);
-                didEnterPage(page);
-                return page;
-            }
-            if (afterResult.kind === "deny") {
-                log.warn(`popstate afterLoad → denied (${afterResult.status})`);
-                return page;
-            }
-
-            didEnterPage(page);
-            return page;
-        });
-
-        updateApp({
-            page: guardedPage,
-            isFirstPage,
-        });
-
-        // History 必须等目标页数据和 guards 完成后再启动滚动恢复；否则 tryScroll 会在
-        // 仍然可滚动的旧页/加载态上误判成功，随后目标页提交又把位置重置为 0。
-        await guardedPage;
-    });
-
-    function didEnterPage(page: BasePage | null): void {
-        void (async (): Promise<void> => {
-            try {
-                if (page) {
-                    framework.didEnterPage(page);
+    async function navigate(
+        url: string,
+        options: { pop?: boolean; cached?: FlowState; modal?: boolean; entryId?: string } = {},
+    ): Promise<void> {
+        active?.abort();
+        const abort = new AbortController();
+        active = abort;
+        const id = ++sequence;
+        const execution = framework.createExecution({ signal: abort.signal });
+        const current = () => {
+            if (abort.signal.aborted || id !== sequence) throw new ExecutionError("cancelled");
+        };
+        let redirected = false;
+        const loaded = (async () => {
+            const parsed = new URL(url, window.location.origin);
+            let target = parsed.pathname + parsed.search;
+            for (let depth = 0; depth < 5; depth++) {
+                const result = await loadPage({
+                    framework,
+                    target,
+                    execution,
+                    retained: options.cached?.page,
+                    entryId: options.entryId ?? options.cached?.entryId,
+                    createContext: ({ url: destinationUrl, intent, execution: scope }) =>
+                        createBrowserContext({
+                            url: destinationUrl,
+                            intent,
+                            container: scope.context.container,
+                        }),
+                });
+                current();
+                if (result.kind === "redirect") {
+                    redirected = true;
+                    target = result.url;
+                    continue;
                 }
-            } catch (e) {
-                log.error("didEnterPage error:", e);
+                if (result.kind === "deny")
+                    throw new ExecutionError(
+                        result.status === 404 ? "not_found" : "denied",
+                        result.message,
+                    );
+                return result;
             }
+            throw new ExecutionError("configuration", "Navigation redirect loop detected");
         })();
+        // Attach rejection handling before yielding to the loading threshold.
+        const settled = loaded.then(
+            () => true,
+            () => true,
+        );
+        try {
+            await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, 500))]);
+            current();
+            const pagePromise = loaded.then((result) => {
+                current();
+                return result.page;
+            });
+            void pagePromise.catch(() => {});
+            // An already rejected navigation never reaches the view.
+            if (await Promise.race([settled, Promise.resolve(false)])) await loaded;
+            if (options.modal) {
+                callbacks.onModal(await pagePromise);
+                return;
+            }
+            const view = updateApp({ page: pagePromise, isFirstPage: first });
+            const result = await loaded;
+            current();
+            const canonical = result.rewriteUrl ?? result.target.url ?? url;
+            if (options.pop && !redirected) {
+                if (
+                    canonical !==
+                    new URL(url, window.location.origin).pathname +
+                        new URL(url, window.location.origin).search
+                )
+                    window.history.replaceState(window.history.state, "", canonical);
+            } else {
+                history?.beforeTransition();
+                const state = { page: result.page, entryId: result.target.entryId };
+                if (first) history?.replaceState(state, canonical);
+                else history?.pushState(state, canonical);
+            }
+            framework.currentEntry = result.target;
+            callbacks.onNavigate(new URL(canonical, window.location.origin).pathname);
+            try {
+                framework.didEnterPage(result.page);
+            } catch (error) {
+                log.error("didEnterPage error:", error);
+            }
+            first = false;
+            await view;
+            await deps.viewReady?.();
+            current();
+        } catch (error) {
+            if (!(error instanceof ExecutionError && error.code === "cancelled"))
+                log.warn(
+                    "Navigation did not commit",
+                    error instanceof ExecutionError ? error.code : "failure",
+                );
+        } finally {
+            await execution.dispose();
+        }
     }
+    framework.onAction(ACTION_KINDS.FLOW, async (action) => {
+        const flow = action as FlowAction;
+        if (flow.presentationContext !== "modal" && deps.onForward) {
+            await deps.onForward(flow.url);
+            return;
+        }
+        await navigate(flow.url, {
+            modal: flow.presentationContext === "modal",
+            entryId: flow.entryId,
+        });
+    });
+    history?.onPopState((url, cached) => navigate(url, { pop: true, cached }));
 }

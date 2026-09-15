@@ -133,8 +133,8 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                     init?: RequestInit,
                 ) => {
                     assertActive();
-                    if (!options.capabilities?.fetch)
-                        throw new ExecutionError("capability", "Missing capability: fetch");
+                    const fetch = invocation.fetch ?? options.capabilities?.fetch;
+                    if (!fetch) throw new ExecutionError("capability", "Missing capability: fetch");
                     const supplied =
                         init?.signal ??
                         (typeof Request !== "undefined" && input instanceof Request
@@ -144,7 +144,7 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                         ? AbortSignal.any([abort.signal, supplied])
                         : abort.signal;
                     signal.throwIfAborted();
-                    const response = await options.capabilities.fetch(input, { ...init, signal });
+                    const response = await fetch(input, { ...init, signal });
                     signal.throwIfAborted();
                     return response;
                 },
@@ -156,6 +156,14 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                     assertActive();
                     if (plan.operations.get(operation.id) !== operation)
                         configuration(`Unknown operation reference: ${operation.id}`);
+                    for (const name of operation.capabilities ?? []) {
+                        const value =
+                            name === "fetch"
+                                ? (invocation.fetch ?? options.capabilities?.fetch)
+                                : options.capabilities?.[name];
+                        if (value == null)
+                            throw new ExecutionError("capability", `Missing capability: ${name}`);
+                    }
                     let validated = input;
                     if (operation.input) {
                         const result = await operation.input["~standard"].validate(input);

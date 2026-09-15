@@ -8,11 +8,11 @@ export interface SSRRequestContext {
     readonly fetch?: typeof globalThis.fetch;
     readonly safeFetch?: SecureFetchOptions;
 }
-export interface SSRResponseResult {
+export interface SSRResponseResult<TData = unknown> {
     html: string;
     head: string;
     css: string;
-    serverData: unknown;
+    serverData: TData;
     renderMode?: string;
     redirect?: { url: string; status: number };
     slots?: Record<string, string>;
@@ -23,12 +23,12 @@ export interface SSRResponseResult {
     /** Explicit guarantee that this result is public and independent of request bindings. */
     cache?: "public";
 }
-export interface SSRModule {
+export interface SSRModule<TData = unknown> {
     render: (
         url: string,
         context?: SSRRequestContext,
-    ) => SSRResponseResult | Promise<SSRResponseResult>;
-    serializeServerData: (data: unknown) => string;
+    ) => SSRResponseResult<TData> | Promise<SSRResponseResult<TData>>;
+    serializeServerData: (data: TData) => string;
 }
 export interface SSRCache {
     get(key: string): string | null | undefined | Promise<string | null | undefined>;
@@ -50,11 +50,11 @@ interface SSRHandlerBaseOptions {
     publicCacheHeaders?: Record<string, string>;
 }
 /** Load a module per invocation when the host selects its renderer/serializer dynamically. */
-export type SSRHandlerOptions = SSRHandlerBaseOptions &
+export type SSRHandlerOptions<TData = unknown> = SSRHandlerBaseOptions &
     (
-        | SSRModule
+        | SSRModule<TData>
         | {
-              loadModule: (request: Request) => SSRModule | Promise<SSRModule>;
+              loadModule: (request: Request) => SSRModule<TData> | Promise<SSRModule<TData>>;
           }
     );
 export function matchRenderModeOverride(
@@ -72,7 +72,7 @@ export function matchRenderModeOverride(
     return undefined;
 }
 /** Standard Request/Response HTML assembly; owns no Node, Hono, filesystem or Vite state. */
-export function createSSRHandler(options: SSRHandlerOptions) {
+export function createSSRHandler<TData = unknown>(options: SSRHandlerOptions<TData>) {
     const cache = options.cache ?? new LruMap<string, string>(1000);
     return async (
         request: Request,

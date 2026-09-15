@@ -154,7 +154,7 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
             path.resolve(root, "dist/server/_routes_prerender.mjs"),
         ).href;
         const routesMod = await dynamicImport(routesPath);
-        routes = routesMod.routes ?? routesMod.default ?? [];
+        routes = routesMod.routes ?? routesMod.default?.routes ?? routesMod.default ?? [];
 
         // 清理临时文件
         fs.rmSync(path.resolve(root, "dist/server/_routes_prerender.mjs"), {

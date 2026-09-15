@@ -45,6 +45,7 @@ interface NavigationHistoryState {
 export interface NavigationBridgeDependencies {
     /** 已构建好的导航控制器（持有 initial 树、intentDispatcher、router 等）。 */
     readonly controller: NavigationController;
+    readonly viewReady?: () => void | Promise<void>;
     /** URL 编解码器（默认 `createActiveLeafCodec`）。 */
     readonly codec: NavigationCodec;
     /** Router 的最小读取面（encode 反查 / decode 用）。 */
@@ -70,6 +71,8 @@ export interface NavigationHandle {
         params?: RouteParams,
         options?: { target?: NavigationPath },
     ): Promise<NavigationSnapshot>;
+    /** Reveal an existing page instance by EntryId. */
+    reuseEntry(entryId: string): Promise<NavigationSnapshot>;
     /** 从激活栈弹出 count 个（默认 1）。 */
     pop(count?: number): Promise<NavigationSnapshot>;
     /** 激活栈弹回根。 */
@@ -120,6 +123,8 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
     let isApplyingHistory = false;
     // first-page：首个快照用 replaceState（不新增历史栈条目）。
     let isFirstSnapshot = true;
+    let lastEntryId: string | undefined;
+    let popSequence = 0;
 
     // ===== 快照 → history =====
     controller.subscribe((snapshot) => {
@@ -131,9 +136,12 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
         const url = codec.encode(snapshot.tree, router);
         const state: NavigationHistoryState = { tree: serializeNavigation(snapshot.tree) };
 
-        const currentUrl =
-            typeof window !== "undefined" ? window.location.pathname + window.location.search : url;
-        const shouldReplace = isFirstSnapshot || url === currentUrl;
+        const entryId = snapshot.destinations.at(-1)?.entryId;
+        const shouldReplace =
+            isFirstSnapshot ||
+            snapshot.historyMode === "replace" ||
+            (snapshot.historyMode !== "push" && entryId !== undefined && entryId === lastEntryId);
+        lastEntryId = entryId;
 
         history.beforeTransition();
         if (shouldReplace) {
@@ -156,11 +164,14 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
             return;
         }
 
+        const pop = ++popSequence;
+        controller.cancel?.();
         isApplyingHistory = true;
         try {
             await controller.hydrate(tree);
+            await deps.viewReady?.();
         } finally {
-            isApplyingHistory = false;
+            if (pop === popSequence) isApplyingHistory = false;
         }
     });
 
@@ -201,6 +212,9 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
         },
         popToRoot() {
             return controller.popToRoot();
+        },
+        reuseEntry(entryId) {
+            return controller.reuseEntry(entryId);
         },
         replaceTop(intent, params) {
             return controller.replaceTop(intent, params);

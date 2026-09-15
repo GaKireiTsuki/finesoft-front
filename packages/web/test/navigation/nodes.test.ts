@@ -1,10 +1,10 @@
+import { leaf } from "../helpers/navigation";
 import { describe, expect, test } from "vite-plus/test";
 import {
     isLeafNode,
     isSplitNode,
     isStackNode,
     isTabsNode,
-    leaf,
     split,
     stack,
     tabs,
@@ -17,12 +17,12 @@ import {
 
 describe("navigation/nodes constructors", () => {
     test("leaf builds a leaf with default empty params", () => {
-        expect(leaf("home")).toEqual({
+        expect(leaf("home")).toMatchObject({
             kind: NAVIGATION_NODE_KINDS.LEAF,
             intent: "home",
             params: {},
         });
-        expect(leaf("product", { id: 42 })).toEqual({
+        expect(leaf("product", { id: 42 })).toMatchObject({
             kind: NAVIGATION_NODE_KINDS.LEAF,
             intent: "product",
             params: { id: 42 },

@@ -6,7 +6,7 @@
  * 标记与客户端 orchestrator 同源 → 浏览器按 `data-fs-key` 收养水合。
  */
 
-import { islandContainerAttributes, sessionEntryKey, type NavigationSnapshot } from "@finesoft/web";
+import { islandContainerAttributes, type NavigationSnapshot } from "@finesoft/web";
 import { type ResolvedEntry } from "@finesoft/web";
 
 /** 应用提供：把一个目标渲成 HTML（mountEntry 的 SSR 平行物）。可异步（容纳 Vue renderToString）。 */
@@ -33,11 +33,13 @@ export async function renderIslandsHtml(
 ): Promise<string> {
     const parts: string[] = [];
     for (const dest of snapshot.destinations) {
-        const entryKey = sessionEntryKey(dest.intent, dest.params);
+        const entryKey = dest.entryId;
         const entry: ResolvedEntry = {
             intent: dest.intent,
             params: dest.params,
             entryKey,
+            entryId: dest.entryId,
+            resourceKey: dest.resourceKey,
             page: dest.page,
         };
         const inner = await renderEntry(entry);

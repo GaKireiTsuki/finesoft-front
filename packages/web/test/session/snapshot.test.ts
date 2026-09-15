@@ -14,7 +14,10 @@ const snap = (over: Partial<SessionSnapshot> = {}): SessionSnapshot => ({
 describe("encode/decode snapshot", () => {
     test("round-trips a full snapshot", () => {
         const s = snap({
-            navigation: { kind: "stack", entries: [{ kind: "leaf", intent: "home", params: {} }] },
+            navigation: {
+                kind: "stack",
+                entries: [{ kind: "leaf", entryId: "fixture-home", intent: "home", params: {} }],
+            },
             slices: { theme: "dark" },
             scoped: { "home {}": { scroll: 40 } },
         });

@@ -50,7 +50,7 @@ vi.mock("../../src/utils/history", () => ({
 
 vi.mock("@finesoft/core", async () => import("../../../core/src/index.ts"));
 
-import { ACTION_KINDS } from "@finesoft/web";
+import { ACTION_KINDS, Framework } from "@finesoft/web";
 import { type BasePage } from "@finesoft/web";
 import { registerFlowActionHandler } from "../../src/action-handlers/flow-action";
 
@@ -69,6 +69,7 @@ beforeEach(() => {
             href: "https://app.example/current",
         },
         addEventListener: vi.fn(),
+        history: { state: { id: "history-entry" }, replaceState: vi.fn() },
     });
     vi.stubGlobal("document", {
         cookie: "session=abc",
@@ -143,7 +144,10 @@ describe("registerFlowActionHandler", () => {
 
         const history = HistoryMock.latest<{ page: BasePage }>();
         expect(history.beforeTransition).toHaveBeenCalledTimes(1);
-        expect(history.replaceState).toHaveBeenCalledWith({ page: homePage }, "/home");
+        expect(history.replaceState).toHaveBeenCalledWith(
+            expect.objectContaining({ page: homePage, entryId: expect.any(String) }),
+            "/home",
+        );
         expect(callbacks.onNavigate).toHaveBeenNthCalledWith(1, "/home");
         expect(framework.didEnterPage).toHaveBeenNthCalledWith(1, homePage);
 
@@ -151,10 +155,12 @@ describe("registerFlowActionHandler", () => {
         await expect(updateApp.mock.calls[1][0].page).resolves.toEqual(productPage);
 
         expect(history.beforeTransition).toHaveBeenCalledTimes(2);
-        expect(history.pushState).toHaveBeenCalledWith({ page: productPage }, "/products/1");
+        expect(history.pushState).toHaveBeenCalledWith(
+            expect.objectContaining({ page: productPage, entryId: expect.any(String) }),
+            "/products/1",
+        );
         expect(callbacks.onNavigate).toHaveBeenNthCalledWith(2, "/products/1");
         expect(framework.didEnterPage).toHaveBeenNthCalledWith(2, productPage);
-        expect(log.debug).toHaveBeenCalledWith("afterLoad → rewrite URL to /products/1");
     });
 
     test("follows beforeLoad redirects and warns when a route does not exist", async () => {
@@ -189,15 +195,13 @@ describe("registerFlowActionHandler", () => {
         const handler = getHandler();
         await handler({ kind: ACTION_KINDS.FLOW, url: "/start" });
         await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(redirectedPage);
-
-        expect(log.debug).toHaveBeenCalledWith("beforeLoad → redirect to /login");
         expect(HistoryMock.latest<{ page: BasePage }>().replaceState).toHaveBeenCalledWith(
-            { page: redirectedPage },
+            expect.objectContaining({ page: redirectedPage, entryId: expect.any(String) }),
             "/login",
         );
 
         await handler({ kind: ACTION_KINDS.FLOW, url: "/missing" });
-        expect(log.warn).toHaveBeenCalledWith("FlowAction: no route for /missing");
+        expect(log.warn).toHaveBeenCalledWith("Navigation did not commit", "not_found");
     });
 
     test("rewrites beforeLoad URLs before dispatching page data", async () => {
@@ -233,8 +237,10 @@ describe("registerFlowActionHandler", () => {
         await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(canonicalPage);
 
         const history = HistoryMock.latest<{ page: BasePage }>();
-        expect(log.debug).toHaveBeenCalledWith("beforeLoad → rewrite to /canonical");
-        expect(history.replaceState).toHaveBeenCalledWith({ page: canonicalPage }, "/canonical");
+        expect(history.replaceState).toHaveBeenCalledWith(
+            expect.objectContaining({ page: canonicalPage, entryId: expect.any(String) }),
+            "/canonical",
+        );
         expect(callbacks.onNavigate).toHaveBeenCalledWith("/canonical");
     });
 
@@ -277,10 +283,10 @@ describe("registerFlowActionHandler", () => {
         await getHandler()({ kind: ACTION_KINDS.FLOW, url: "/blocked" });
 
         expect(updateApp).not.toHaveBeenCalled();
-        expect(log.warn).toHaveBeenCalledWith("beforeLoad → denied (403): nope");
+        expect(log.warn).toHaveBeenCalledWith("Navigation did not commit", "denied");
     });
 
-    test("updates the URL when page loading fails", async () => {
+    test("leaves URL and view unchanged when page loading fails", async () => {
         const failure = new Error("boom");
         const { framework, getHandler } = makeFramework({
             routeUrl: vi.fn(() => makeMatch("broken")),
@@ -302,12 +308,12 @@ describe("registerFlowActionHandler", () => {
         await getHandler()({ kind: ACTION_KINDS.FLOW, url: "/broken" });
 
         const history = HistoryMock.latest<{ page: BasePage }>();
-        await expect(updateApp.mock.calls[0][0].page).rejects.toThrow("boom");
-        expect(history.replaceUrl).toHaveBeenCalledWith("/broken");
-        expect(callbacks.onNavigate).toHaveBeenCalledWith("/broken");
+        expect(updateApp).not.toHaveBeenCalled();
+        expect(history.replaceUrl).not.toHaveBeenCalled();
+        expect(callbacks.onNavigate).not.toHaveBeenCalled();
     });
 
-    test("returns the loaded page when afterLoad denies the navigation", async () => {
+    test("does not expose the loaded page when afterLoad denies the navigation", async () => {
         const deniedPage = makePage("denied");
         const { framework, getHandler } = makeFramework({
             routeUrl: vi.fn(() =>
@@ -334,16 +340,16 @@ describe("registerFlowActionHandler", () => {
         await getHandler()({ kind: ACTION_KINDS.FLOW, url: "/denied" });
 
         const history = HistoryMock.latest<{ page: BasePage }>();
-        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(deniedPage);
-        expect(history.beforeTransition).toHaveBeenCalledTimes(1);
+        expect(updateApp).not.toHaveBeenCalled();
+        expect(history.beforeTransition).not.toHaveBeenCalled();
         expect(history.replaceState).not.toHaveBeenCalled();
         expect(history.pushState).not.toHaveBeenCalled();
         expect(callbacks.onNavigate).not.toHaveBeenCalled();
         expect(framework.didEnterPage).not.toHaveBeenCalled();
-        expect(log.warn).toHaveBeenCalledWith("afterLoad → denied (403)");
+        expect(log.warn).toHaveBeenCalledWith("Navigation did not commit", "denied");
     });
 
-    test("pushes the URL when a non-initial navigation fails", async () => {
+    test("preserves the previous history entry when a later navigation fails", async () => {
         const homePage = makePage("home");
         const failure = new Error("broken push");
         const { framework, getHandler } = makeFramework({
@@ -381,9 +387,9 @@ describe("registerFlowActionHandler", () => {
         await handler({ kind: ACTION_KINDS.FLOW, url: "/broken" });
 
         const history = HistoryMock.latest<{ page: BasePage }>();
-        await expect(updateApp.mock.calls[1][0].page).rejects.toThrow("broken push");
-        expect(history.pushUrl).toHaveBeenCalledWith("/broken");
-        expect(callbacks.onNavigate).toHaveBeenNthCalledWith(2, "/broken");
+        expect(updateApp).toHaveBeenCalledTimes(1);
+        expect(history.pushUrl).not.toHaveBeenCalled();
+        expect(callbacks.onNavigate).toHaveBeenCalledTimes(1);
     });
 
     test("abandons stale navigations before updating the UI", async () => {
@@ -431,10 +437,7 @@ describe("registerFlowActionHandler", () => {
             await slowNavigation;
 
             expect(updateApp).toHaveBeenCalledTimes(1);
-            expect(log.info).toHaveBeenCalledWith(
-                "FlowAction superseded by newer navigation",
-                "/slow",
-            );
+            expect(framework.didEnterPage).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();
         }
@@ -496,19 +499,16 @@ describe("registerFlowActionHandler", () => {
             expect(updateApp).toHaveBeenCalledTimes(1);
 
             await handler({ kind: ACTION_KINDS.FLOW, url: "/redirect" });
-            await expect(updateApp.mock.calls[1][0].page).resolves.toEqual(redirectPage);
-            await Promise.resolve();
-            await Promise.resolve();
-            await expect(updateApp.mock.calls[2][0].page).resolves.toEqual(finalPage);
-
+            await expect(updateApp.mock.calls[1][0].page).resolves.toEqual(finalPage);
+            expect(updateApp).toHaveBeenCalledTimes(2);
             slowDeferred.resolve(slowPage);
             await slowNavigation;
-            await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(slowPage);
-
+            await expect(updateApp.mock.calls[0][0].page).rejects.toMatchObject({
+                code: "cancelled",
+            });
             const history = HistoryMock.latest<{ page: BasePage }>();
-            expect(log.info).toHaveBeenCalledWith("FlowAction commit superseded", "/slow");
-            expect(log.debug).toHaveBeenCalledWith("afterLoad → redirect to /final");
-            expect(history.pushState).toHaveBeenNthCalledWith(1, { page: finalPage }, "/final");
+            expect(history.replaceState).toHaveBeenCalledTimes(1);
+            expect(history.pushState).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
         }
@@ -517,7 +517,8 @@ describe("registerFlowActionHandler", () => {
     test("handles popstate with cached pages and unroutable URLs", async () => {
         const page = makePage("cached");
         const { framework } = makeFramework({
-            routeUrl: vi.fn(() => undefined),
+            routeUrl: vi.fn((url: string) => (url === "/back" ? makeMatch("cached") : undefined)),
+            dispatch: vi.fn(async () => page),
         });
         const callbacks = makeCallbacks();
         const updateApp = vi.fn();
@@ -535,21 +536,15 @@ describe("registerFlowActionHandler", () => {
         await history.popListener?.("https://app.example/back", { page });
 
         expect(callbacks.onNavigate).toHaveBeenNthCalledWith(1, "/back");
-        expect(updateApp).toHaveBeenNthCalledWith(1, {
-            page,
-            isFirstPage: true,
-        });
+        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(page);
         expect(framework.didEnterPage).toHaveBeenNthCalledWith(1, page);
 
         await history.popListener?.("https://app.example/missing", undefined);
 
-        expect(callbacks.onNavigate).toHaveBeenNthCalledWith(2, "/missing");
-        await expect(updateApp.mock.calls[1][0].page).rejects.toThrow("404");
+        expect(callbacks.onNavigate).toHaveBeenCalledTimes(1);
+        expect(updateApp).toHaveBeenCalledTimes(1);
         expect(framework.didEnterPage).toHaveBeenCalledTimes(1);
-        expect(log.error).toHaveBeenCalledWith(
-            "received popstate without data, but URL was unroutable:",
-            "https://app.example/missing",
-        );
+        expect(log.warn).toHaveBeenCalledWith("Navigation did not commit", "not_found");
     });
 
     test("keeps uncached popstate pending until the target page is ready", async () => {
@@ -617,9 +612,7 @@ describe("registerFlowActionHandler", () => {
         await getHandler()({ kind: ACTION_KINDS.FLOW, url: "/loop" });
 
         expect(updateApp).not.toHaveBeenCalled();
-        expect(log.error).toHaveBeenCalledWith(
-            "Navigation redirect loop detected (5 redirects), stopping at: /loop",
-        );
+        expect(log.warn).toHaveBeenCalledWith("Navigation did not commit", "configuration");
     });
 
     test("handles popstate redirects, rewrites, and denied routes before data loading", async () => {
@@ -680,17 +673,17 @@ describe("registerFlowActionHandler", () => {
         await expect(updateApp.mock.calls[1][0].page).resolves.toEqual(profilePage);
 
         await history.popListener?.("https://app.example/denied", undefined);
-
-        expect(log.debug).toHaveBeenCalledWith("popstate beforeLoad → redirect to /login");
-        expect(history.replaceState).toHaveBeenCalledWith({ page: loginPage }, "/login");
-        expect(history.pushState).toHaveBeenCalledWith({ page: profilePage }, "/profile");
-        expect(callbacks.onNavigate).toHaveBeenNthCalledWith(1, "/redirect");
-        expect(callbacks.onNavigate).toHaveBeenNthCalledWith(2, "/login");
-        expect(callbacks.onNavigate).toHaveBeenNthCalledWith(3, "/rewrite");
-        expect(callbacks.onNavigate).toHaveBeenNthCalledWith(4, "/profile");
-        expect(callbacks.onNavigate).toHaveBeenNthCalledWith(5, "/denied");
+        expect(history.replaceState).toHaveBeenCalledWith(
+            expect.objectContaining({ page: loginPage, entryId: expect.any(String) }),
+            "/login",
+        );
+        expect(history.pushState).not.toHaveBeenCalled();
+        expect(
+            (window.history as unknown as { replaceState: ReturnType<typeof vi.fn> }).replaceState,
+        ).toHaveBeenCalledWith({ id: "history-entry" }, "", "/profile");
+        expect(callbacks.onNavigate.mock.calls).toEqual([["/login"], ["/profile"]]);
         expect(updateApp).toHaveBeenCalledTimes(2);
-        expect(log.warn).toHaveBeenCalledWith("popstate beforeLoad → denied");
+        expect(log.warn).toHaveBeenCalledWith("Navigation did not commit", "denied");
     });
 
     test("runs afterLoad guards on popstate (regression: previously skipped)", async () => {
@@ -717,9 +710,9 @@ describe("registerFlowActionHandler", () => {
             "https://app.example/article",
             undefined,
         );
-        // updateApp 仍被调用，但 afterLoad deny 阻止 didEnterPage
-        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(page);
-        expect(log.warn).toHaveBeenCalledWith("popstate afterLoad → denied (403)");
+        // Denied data is never handed to the view.
+        expect(updateApp).not.toHaveBeenCalled();
+        expect(log.warn).toHaveBeenCalledWith("Navigation did not commit", "denied");
         expect(framework.didEnterPage).not.toHaveBeenCalled();
     });
 
@@ -858,8 +851,11 @@ describe("registerFlowActionHandler", () => {
 
 function makeFramework(overrides: Partial<Record<string, unknown>> = {}) {
     const actionHandlers = new Map<string, (action: Record<string, unknown>) => Promise<void>>();
+    const owner = Framework.create();
     const framework = {
-        container: {},
+        container: owner.container,
+        prefetchedIntents: owner.prefetchedIntents,
+        createExecution: owner.createExecution.bind(owner),
         onAction: vi.fn(
             (kind: string, handler: (action: Record<string, unknown>) => Promise<void>) => {
                 actionHandlers.set(kind, handler);

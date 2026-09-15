@@ -18,6 +18,7 @@ export interface AppHandle {
     getSnapshot: NavigationHandle["getSnapshot"];
     subscribe: NavigationHandle["subscribe"];
     push: NavigationHandle["push"];
+    reuseEntry: NavigationHandle["reuseEntry"];
     pop: NavigationHandle["pop"];
     popToRoot: NavigationHandle["popToRoot"];
     replaceTop: NavigationHandle["replaceTop"];
@@ -42,6 +43,7 @@ export function createAppHandle(
         app.getSnapshot = (...args) => navigation.getSnapshot(...args);
         app.subscribe = (...args) => navigation.subscribe(...args);
         app.push = (...args) => navigation.push(...args);
+        app.reuseEntry = (...args) => navigation.reuseEntry(...args);
         app.pop = (...args) => navigation.pop(...args);
         app.popToRoot = (...args) => navigation.popToRoot(...args);
         app.replaceTop = (...args) => navigation.replaceTop(...args);

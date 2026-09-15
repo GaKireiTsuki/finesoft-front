@@ -1,3 +1,4 @@
+import { leaf, treeShape } from "../../web/test/helpers/navigation";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import type { BasePage } from "@finesoft/web";
@@ -6,7 +7,6 @@ import type { NavigationCodec, NavigationNode } from "@finesoft/web";
 import {
     createActiveLeafCodec,
     createFullStateCodec,
-    leaf,
     PrefetchedIntents,
     serializeNavigation,
     split,
@@ -105,8 +105,8 @@ describe("ssrRenderNavigation", () => {
 
         // tree round-trips out of the sentinel
         const restored = extractNavigationTree(result.serverData);
-        expect(restored).toEqual(leaf("home", { from: "test" }));
-        expect(result.snapshot.tree).toEqual(leaf("home", { from: "test" }));
+        expect(restored).toMatchObject(treeShape(leaf("home", { from: "test" })));
+        expect(result.snapshot.tree).toMatchObject(treeShape(leaf("home", { from: "test" })));
     });
 
     test("split prefetches ALL visible columns (multi-region)", async () => {
@@ -155,11 +155,13 @@ describe("ssrRenderNavigation", () => {
         // serverData = 2 destinations + sentinel
         expect(result.serverData).toHaveLength(3);
         const restored = extractNavigationTree(result.serverData);
-        expect(restored).toEqual(
-            split([
-                { id: "list", content: leaf("list") },
-                { id: "detail", content: leaf("detail", { itemId: "42" }) },
-            ]),
+        expect(restored).toMatchObject(
+            treeShape(
+                split([
+                    { id: "list", content: leaf("list") },
+                    { id: "detail", content: leaf("detail", { itemId: "42" }) },
+                ]),
+            ),
         );
     });
 
@@ -230,10 +232,10 @@ describe("ssrRenderNavigation", () => {
         });
 
         // tree restored from the URL overlay; stack top (detail) is the primary/visible destination
-        expect(result.snapshot.tree).toEqual(deepTree);
+        expect(result.snapshot.tree).toMatchObject(deepTree);
         expect(result.snapshot.destinations.map((d) => d.intent)).toEqual(["detail"]);
         expect(result.html).toBe("detail");
-        expect(extractNavigationTree(result.serverData)).toEqual(deepTree);
+        expect(extractNavigationTree(result.serverData)).toMatchObject(deepTree);
     });
 
     test("prefetched destinations restore on the browser side via PrefetchedIntents (no refetch)", async () => {
@@ -274,13 +276,17 @@ describe("ssrRenderNavigation", () => {
 
         const cache = PrefetchedIntents.fromArray(destinationEntries);
         // each visible destination is hydrated by (intent id + params) key
-        expect(cache.has({ id: "list", params: {} })).toBe(true);
-        expect(cache.has({ id: "detail", params: { itemId: "9" } })).toBe(true);
-        expect(tree).toEqual(
-            split([
-                { id: "list", content: leaf("list") },
-                { id: "detail", content: leaf("detail", { itemId: "9" }) },
-            ]),
+        expect(cache.has({ id: "list", params: {} }, destinationEntries[0].entryId)).toBe(true);
+        expect(
+            cache.has({ id: "detail", params: { itemId: "9" } }, destinationEntries[1].entryId),
+        ).toBe(true);
+        expect(tree).toMatchObject(
+            treeShape(
+                split([
+                    { id: "list", content: leaf("list") },
+                    { id: "detail", content: leaf("detail", { itemId: "9" }) },
+                ]),
+            ),
         );
     });
 
@@ -362,7 +368,7 @@ describe("ssrRenderNavigation", () => {
         expect(result.html).toBe("Forbidden");
         expect(perform).not.toHaveBeenCalled();
         // deny still commits a tree; sentinel rides along
-        expect(extractNavigationTree(result.serverData)).toEqual(leaf("private"));
+        expect(extractNavigationTree(result.serverData)).toMatchObject(treeShape(leaf("private")));
     });
 
     test("dispatch failure falls back to a 500 page on that destination without throwing", async () => {
@@ -391,7 +397,7 @@ describe("ssrRenderNavigation", () => {
         });
 
         expect(result.status).toBe(500);
-        expect(result.html).toBe("Internal error");
+        expect(result.html).toBe("Execution failed");
         expect(result.snapshot.destinations[0].status).toBe(500);
     });
 
@@ -585,7 +591,7 @@ describe("createSSRNavigationRender", () => {
 
         const result = await render("/");
         expect(result.html).toBe("home");
-        expect(extractNavigationTree(result.serverData)).toEqual(leaf("home"));
+        expect(extractNavigationTree(result.serverData)).toMatchObject(treeShape(leaf("home")));
     });
 
     test("defaults frameworkConfig to an empty object", async () => {

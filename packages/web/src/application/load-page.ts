@@ -1,0 +1,149 @@
+import { ExecutionError, type ExecutionHandle, type Intent } from "@finesoft/core";
+import type { Framework } from "../framework";
+import type { BeforeLoadGuard, AfterLoadGuard, NavigationContext } from "../middleware/types";
+import type { BasePage } from "../models/page";
+import type { LeafNode } from "../navigation/types";
+import { leaf } from "../navigation/nodes";
+import { createActiveLeafCodec } from "../navigation/codec";
+import type { RouteMatch } from "../router/router";
+
+export interface LoadPageOptions {
+    readonly framework: Framework;
+    readonly target: string | LeafNode;
+    readonly execution?: ExecutionHandle;
+    readonly signal?: AbortSignal;
+    readonly retained?: BasePage;
+    readonly entryId?: string;
+    readonly createContext?: (input: {
+        url: string;
+        intent: Intent;
+        execution: ExecutionHandle;
+    }) => NavigationContext;
+    readonly beforeLoad?: readonly BeforeLoadGuard[];
+    readonly afterLoad?: readonly AfterLoadGuard[];
+}
+export type PageLoadResult =
+    | {
+          readonly kind: "page";
+          readonly page: BasePage;
+          readonly target: LeafNode;
+          readonly match?: RouteMatch;
+          readonly rewriteUrl?: string;
+      }
+    | { readonly kind: "redirect"; readonly url: string; readonly status: number }
+    | { readonly kind: "deny"; readonly status: number; readonly message: string };
+
+/** One page pipeline, shared by URL, SSR and every visible tree destination. */
+export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult> {
+    const { framework } = options;
+    const owned = !options.execution;
+    const execution = options.execution ?? framework.createExecution({ signal: options.signal });
+    const check = () => {
+        if (execution.context.signal.aborted || options.signal?.aborted)
+            throw new ExecutionError("cancelled");
+    };
+    try {
+        let target = options.target;
+        let entryId = typeof target === "string" ? options.entryId : target.entryId;
+        let retained = options.retained;
+        for (let depth = 0; depth < 5; depth++) {
+            check();
+            const direct = typeof target !== "string" ? target : undefined;
+            const hasRoutes =
+                direct &&
+                framework.router.getRoutes().some((route) => route.endsWith(` → ${direct.intent}`));
+            const url =
+                typeof target === "string"
+                    ? target
+                    : (target.url ??
+                      (hasRoutes ? createActiveLeafCodec().encode(target, framework.router) : ""));
+            const match: RouteMatch | null =
+                direct && !direct.url && !hasRoutes
+                    ? {
+                          intent: { id: direct.intent, params: direct.params },
+                          action: { kind: "flow" as const, url: "" },
+                      }
+                    : await framework.routeUrl(url);
+            check();
+            if (!match) return { kind: "deny", status: 404, message: "Page not found" };
+            if (direct && match.intent.id !== direct.intent)
+                throw new ExecutionError("configuration", "Leaf URL does not match its intent");
+            const destination =
+                typeof target === "string"
+                    ? leaf(match.intent.id, match.intent.params ?? {}, {
+                          url,
+                          entryId: entryId ?? framework.prefetchedIntents.entryIdFor(match.intent),
+                      })
+                    : !hasRoutes && !target.url
+                      ? target
+                      : {
+                            ...target,
+                            intent: match.intent.id,
+                            params: match.intent.params ?? {},
+                            url,
+                        };
+            entryId = destination.entryId;
+            const context = options.createContext?.({ url, intent: match.intent, execution }) ?? {
+                url,
+                path: new URL(url, "http://localhost").pathname,
+                intent: match.intent,
+                params: match.intent.params ?? {},
+                container: execution.context.container,
+                isServer: true,
+                getCookie: () => undefined,
+                getHeader: () => undefined,
+            };
+            const navContext = {
+                ...context,
+                container: execution.context.container,
+                signal: options.signal
+                    ? AbortSignal.any([execution.context.signal, options.signal])
+                    : execution.context.signal,
+            };
+            const before = await framework.runBeforeLoad(navContext, [
+                ...(match.beforeGuards ?? []),
+                ...(options.beforeLoad ?? []),
+            ]);
+            check();
+            if (before.kind === "rewrite") {
+                target = before.url;
+                retained = undefined;
+                continue;
+            }
+            if (before.kind !== "next") return before;
+            let page: BasePage;
+            try {
+                page = await framework.dispatch<BasePage>(
+                    match.intent as Intent<BasePage>,
+                    execution,
+                    retained,
+                    destination.entryId,
+                );
+            } catch (error) {
+                if (error instanceof ExecutionError && error.code === "cancelled") throw error;
+                return {
+                    kind: "deny",
+                    status: error instanceof ExecutionError ? error.status : 500,
+                    message: error instanceof ExecutionError ? error.message : "Internal error",
+                };
+            }
+            check();
+            const after = await framework.runAfterLoad({ ...navContext, page }, [
+                ...(match.afterGuards ?? []),
+                ...(options.afterLoad ?? []),
+            ]);
+            check();
+            if (after.kind === "deny" || after.kind === "redirect") return after;
+            return {
+                kind: "page",
+                page,
+                target: destination,
+                match,
+                ...(after.kind === "rewrite" ? { rewriteUrl: after.url } : {}),
+            };
+        }
+        throw new ExecutionError("configuration", "Page rewrite recursion depth exceeded");
+    } finally {
+        if (owned) await execution.dispose();
+    }
+}

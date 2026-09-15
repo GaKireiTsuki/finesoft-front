@@ -15,7 +15,6 @@
 import {
     collectAllLeaves,
     islandContainerAttributes,
-    sessionEntryKey,
     type NavigationSnapshot,
 } from "@finesoft/web";
 import { type BasePage } from "@finesoft/web";
@@ -160,9 +159,7 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
     function sync(snapshot: NavigationSnapshot): void {
         const ssr = booted ? null : collectSsrContainers(); // 仅首次
 
-        const presentKeys = new Set(
-            collectAllLeaves(snapshot.tree).map((l) => sessionEntryKey(l.intent, l.params)),
-        );
+        const presentKeys = new Set(collectAllLeaves(snapshot.tree).map((l) => l.entryId));
 
         // 1) 卸载离 present 集的 island。
         for (const [key, island] of mounted) {
@@ -172,7 +169,7 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
         // 2) 确保每个可见目标已挂载（命中 SSR 容器则收养水合，否则新建）。
         const visibleKeys: string[] = [];
         for (const d of snapshot.destinations) {
-            const key = sessionEntryKey(d.intent, d.params);
+            const key = d.entryId;
             visibleKeys.push(key);
             const existing = mounted.get(key);
             if (existing !== undefined && existing.page !== d.page) {
@@ -192,6 +189,8 @@ export function createIslandOrchestrator(options: IslandOrchestratorOptions): Is
                     intent: d.intent,
                     params: d.params,
                     entryKey: key,
+                    entryId: d.entryId,
+                    resourceKey: d.resourceKey,
                     page: d.page,
                     hydrate: adopted !== undefined,
                 };

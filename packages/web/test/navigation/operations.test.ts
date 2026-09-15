@@ -1,5 +1,6 @@
+import { leaf } from "../helpers/navigation";
 import { describe, expect, test } from "vite-plus/test";
-import { leaf, split, stack, tabs } from "../../src/navigation/nodes";
+import { split, stack, tabs } from "../../src/navigation/nodes";
 import {
     collectAllLeaves,
     collectVisibleDestinations,

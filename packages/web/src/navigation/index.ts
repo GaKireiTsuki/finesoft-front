@@ -7,6 +7,8 @@ export {
     NAVIGATION_NODE_KINDS,
     NavigationError,
     SPLIT_VISIBILITIES,
+    type EntryId,
+    type ResourceKey,
     type LeafNode,
     type NavigationNode,
     type NavigationNodeKind,
@@ -41,7 +43,7 @@ export { islandContainerAttributes } from "./islands";
 export { type ResolvedEntry } from "./islands";
 
 // ===== Keys（稳定身份键）=====
-export { entryKey } from "./keys";
+export { entryKey, resourceKey } from "./keys";
 
 // ===== Operations（纯函数）=====
 export {
@@ -54,6 +56,7 @@ export {
     popToRoot,
     push,
     replaceTop,
+    reuseEntry,
     resolveActivePath,
     selectColumn,
     selectTab,

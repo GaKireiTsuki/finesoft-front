@@ -4,6 +4,7 @@
  * 构造器产出冻结的不可变节点；守卫用 `is*Node` 前缀做可辨识联合的窄化。
  */
 
+import { generateUuid } from "@finesoft/core";
 import type { RouteParams } from "../router/types";
 import {
     NAVIGATION_NODE_KINDS,
@@ -21,8 +22,18 @@ import {
 // =====================================================================
 
 /** 构造叶子节点（一个具体导航目标）。 */
-export function leaf(intent: string, params: RouteParams = {}): LeafNode {
-    return { kind: NAVIGATION_NODE_KINDS.LEAF, intent, params };
+export function leaf(
+    intent: string,
+    params: RouteParams = {},
+    options: { entryId?: string; url?: string } = {},
+): LeafNode {
+    return {
+        kind: NAVIGATION_NODE_KINDS.LEAF,
+        intent,
+        params,
+        entryId: options.entryId ?? generateUuid(),
+        ...(options.url ? { url: options.url } : {}),
+    };
 }
 
 /**

@@ -10,6 +10,7 @@
  */
 
 import { stableStringify } from "@finesoft/core";
+import { collectAllLeaves } from "./operations";
 import type { RouteParams } from "../router/types";
 import {
     NAVIGATION_NODE_KINDS,
@@ -29,6 +30,8 @@ const SPLIT_VISIBILITY_VALUES = new Set<string>(Object.values(SPLIT_VISIBILITIES
 
 /** 序列化叶子 */
 export interface SerializedLeaf {
+    readonly entryId: string;
+    readonly url?: string;
     readonly kind: typeof NAVIGATION_NODE_KINDS.LEAF;
     readonly intent: string;
     readonly params: RouteParams;
@@ -76,7 +79,13 @@ export type SerializedNavigation =
 export function serializeNavigation(tree: NavigationNode): SerializedNavigation {
     switch (tree.kind) {
         case NAVIGATION_NODE_KINDS.LEAF:
-            return { kind: NAVIGATION_NODE_KINDS.LEAF, intent: tree.intent, params: tree.params };
+            return {
+                kind: NAVIGATION_NODE_KINDS.LEAF,
+                intent: tree.intent,
+                params: tree.params,
+                entryId: tree.entryId,
+                ...(tree.url ? { url: tree.url } : {}),
+            };
         case NAVIGATION_NODE_KINDS.STACK:
             return {
                 kind: NAVIGATION_NODE_KINDS.STACK,
@@ -124,7 +133,13 @@ const KNOWN_KINDS = new Set<NavigationNodeKind>([
 
 /** 从 JSON 安全数据还原导航树；结构畸形抛 NavigationError。 */
 export function deserializeNavigation(data: unknown): NavigationNode {
-    return parseNode(data, "$");
+    const tree = parseNode(data, "$");
+    const ids = new Set<string>();
+    for (const leaf of collectAllLeaves(tree)) {
+        if (ids.has(leaf.entryId)) throw new NavigationError(`Duplicate entry ID: ${leaf.entryId}`);
+        ids.add(leaf.entryId);
+    }
+    return tree;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -153,6 +168,10 @@ function parseNode(data: unknown, path: string): NavigationNode {
 }
 
 function parseLeaf(data: Record<string, unknown>, path: string): NavigationNode {
+    if (typeof data.entryId !== "string" || !data.entryId)
+        throw new NavigationError(`Invalid entry ID at ${path}`);
+    if (data.url !== undefined && typeof data.url !== "string")
+        throw new NavigationError(`Invalid URL at ${path}`);
     if (typeof data.intent !== "string") {
         throw new NavigationError(`反序列化失败：${path}.intent 必须是字符串`);
     }
@@ -161,6 +180,8 @@ function parseLeaf(data: Record<string, unknown>, path: string): NavigationNode 
     }
     return {
         kind: NAVIGATION_NODE_KINDS.LEAF,
+        entryId: data.entryId,
+        ...(typeof data.url === "string" ? { url: data.url } : {}),
         intent: data.intent,
         params: { ...data.params },
     };

@@ -24,6 +24,8 @@
 import { Framework, type BasePage } from "@finesoft/web";
 import {
     createNavigationController,
+    createActiveLeafCodec,
+    type WebAppDefinition,
     deserializeNavigation,
     leaf,
     markPublic,
@@ -97,7 +99,7 @@ export interface SSRRenderNavigationOptions {
     /** Framework 配置（含路由注册等） */
     readonly frameworkConfig: FrameworkConfig;
     /** 注册 controllers 和路由的引导函数 */
-    readonly bootstrap: (framework: Framework) => void;
+    readonly bootstrap?: (framework: Framework) => void;
     /** 获取错误页面 */
     readonly getErrorPage: (status: number, message: string) => BasePage;
     /**
@@ -126,6 +128,7 @@ export interface SSRRenderNavigationOptions {
 
 /** 导航 SSR 渲染结果（在 `SSRRenderResult` 基础上附带最终导航快照）。 */
 export interface SSRRenderNavigationResult {
+    cache?: "public";
     html: string;
     head: string;
     css: string;
@@ -171,9 +174,10 @@ export async function ssrRenderNavigation(
 
     // locale 解析（与单页 SSR 一致：先解析 locale 再注入 DI 容器）。
     const resolvedLocale = resolveLocale?.(url, ssrContext?.request);
+    const defaults = { ...frameworkConfig.definition?.frameworkConfig, ...frameworkConfig };
     const effectiveConfig: FrameworkConfig = resolvedLocale
-        ? { ...frameworkConfig, locale: resolvedLocale.lang }
-        : frameworkConfig;
+        ? { ...defaults, locale: resolvedLocale.lang }
+        : defaults;
     const resolvedMessages = await resolveConfiguredMessages({
         locale: effectiveConfig.locale,
         loadMessages,
@@ -196,8 +200,16 @@ export async function ssrRenderNavigation(
     const framework = Framework.create({
         ...mergedConfig,
         _resolvedMessages: resolvedMessages,
+        invocation: {
+            ...mergedConfig.invocation,
+            signal: ssrContext?.request?.signal,
+            identity: ssrContext?.identity,
+            traceId: ssrContext?.traceId,
+            fetch: ssrContext?.fetch,
+            bindings: { ...ssrContext?.bindings, request: ssrContext?.request },
+        },
     } as InternalSSRFrameworkConfig);
-    bootstrap(framework);
+    bootstrap?.(framework);
 
     try {
         // ===== 1. URL → 初始树（单页回退时一并拿到该路由的 renderMode） =====
@@ -318,7 +330,9 @@ async function resolveInitialTree(
     const match = await framework.routeUrl(url);
     if (match === null) return undefined;
     return {
-        tree: leaf(match.intent.id, (match.intent.params ?? {}) as Record<string, unknown>),
+        tree: leaf(match.intent.id, (match.intent.params ?? {}) as Record<string, unknown>, {
+            url,
+        }),
         renderMode: match.renderMode,
     };
 }
@@ -350,18 +364,19 @@ function buildController(args: BuildControllerArgs): NavigationController {
 
     return createNavigationController({
         isServer: true,
-        intentDispatcher: framework.intentDispatcher,
+        framework,
+        execution: framework.createExecution(),
         router: framework.router,
         initial: initialTree,
         beforeLoad: navigation.beforeLoad,
         afterLoad: navigation.afterLoad,
         getErrorPage,
         onRedirect,
-        createContext: ({ intent, params }): NavigationDispatchContext => ({
+        createContext: ({ intent, params, url: matchedUrl }): NavigationDispatchContext => ({
             container: framework.container,
             url: fullPath,
             navigation: createServerContext({
-                url: fullPath,
+                url: matchedUrl ?? fullPath,
                 intent: { id: intent, params },
                 container: framework.container,
                 request,
@@ -374,21 +389,21 @@ function buildController(args: BuildControllerArgs): NavigationController {
 // 主目标 / serverData 组装
 // =====================================================================
 
-/** 取「主目标」解析结果：快照里与激活叶子同 intent+params 的那一条；缺省给兜底页。 */
+/** 取「主目标」解析结果：快照里与激活叶子同 EntryId 的那一条；缺省给兜底页。 */
 function primaryDestination(
     snapshot: NavigationSnapshot,
     getErrorPage: (status: number, message: string) => BasePage,
 ): ResolvedDestination {
     const active = activeLeafIntent(snapshot.tree);
     if (active !== undefined) {
-        const match = snapshot.destinations.find(
-            (d) => d.intent === active.intent && sameParams(d.params, active.params),
-        );
+        const match = snapshot.destinations.find((d) => d.entryId === active.entryId);
         if (match !== undefined) return match;
     }
     // 无激活叶子（空栈/空 split）或未命中：取第一个可见目标，再不行就兜底页。
     if (snapshot.destinations.length > 0) return snapshot.destinations[0];
     return {
+        entryId: "@finesoft/empty",
+        resourceKey: "@finesoft/empty",
         intent: "@finesoft/empty",
         params: {},
         page: getErrorPage(404, "Page not found"),
@@ -397,14 +412,12 @@ function primaryDestination(
 }
 
 /** 激活叶子的 intent+params（沿可见分支下钻到末端叶子；空栈/空 split 时 undefined）。 */
-function activeLeafIntent(
-    tree: NavigationNode,
-): { intent: string; params: Record<string, unknown> } | undefined {
+function activeLeafIntent(tree: NavigationNode): import("@finesoft/web").LeafNode | undefined {
     let node: NavigationNode = tree;
     for (;;) {
         switch (node.kind) {
             case "leaf":
-                return { intent: node.intent, params: node.params };
+                return node;
             case "stack": {
                 if (node.entries.length === 0) return undefined;
                 node = node.entries[node.entries.length - 1];
@@ -429,16 +442,6 @@ function activeLeafIntent(
     }
 }
 
-function sameParams(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-    const ak = Object.keys(a);
-    const bk = Object.keys(b);
-    if (ak.length !== bk.length) return false;
-    for (const k of ak) {
-        if (a[k] !== b[k]) return false;
-    }
-    return true;
-}
-
 /**
  * 把快照组装成 `serverData`：
  * - 每个可见目标 → `{ intent: { id, params }, data: page }`（与单页 SSR 完全一致）。
@@ -449,7 +452,11 @@ function sameParams(a: Record<string, unknown>, b: Record<string, unknown>): boo
 function buildServerData(snapshot: NavigationSnapshot): PrefetchedIntent[] {
     const out: PrefetchedIntent[] = [];
     for (const dest of snapshot.destinations) {
-        out.push({ intent: { id: dest.intent, params: dest.params }, data: dest.page });
+        out.push({
+            entryId: dest.entryId,
+            intent: { id: dest.intent, params: dest.params },
+            data: dest.page,
+        });
     }
     out.push(navigationTreeSentinel(snapshot.tree));
     return out;
@@ -533,6 +540,12 @@ async function renderResult(args: RenderResultArgs): Promise<SSRRenderNavigation
     const result = await renderApp(page, framework, snapshot);
     const locale = resolvedLocale ?? framework.getLocale();
     return {
+        ...(snapshot.destinations.length &&
+        snapshot.destinations.every(
+            (destination) => destination.cache === "public" && destination.status === undefined,
+        )
+            ? { cache: "public" as const }
+            : {}),
         html: result.html,
         head: result.head,
         css: result.css,
@@ -562,10 +575,11 @@ function getSSRFetch(fetchFn?: typeof globalThis.fetch): typeof globalThis.fetch
 
 /** `createSSRNavigationRender` 的一次性配置（绑定后返回 `(url, ctx?) => result`）。 */
 export interface SSRNavigationRenderConfig {
+    readonly definition?: WebAppDefinition;
     /** 注册 controllers 和路由的引导函数 */
-    readonly bootstrap: (framework: Framework) => void;
+    readonly bootstrap?: (framework: Framework) => void;
     /** 获取错误页面 */
-    readonly getErrorPage: (status: number, message: string) => BasePage;
+    readonly getErrorPage?: (status: number, message: string) => BasePage;
     /** 应用层渲染函数（含多区域快照） */
     readonly renderApp: (
         page: BasePage,
@@ -573,7 +587,7 @@ export interface SSRNavigationRenderConfig {
         snapshot: NavigationSnapshot,
     ) => SSRAppResult | Promise<SSRAppResult>;
     /** 导航定义（codec + 目标级守卫 + 可选初始骨架） */
-    readonly navigation: SSRNavigationDefinition;
+    readonly navigation?: SSRNavigationDefinition;
     /** Framework 构造配置（可选） */
     readonly frameworkConfig?: FrameworkConfig;
     /** 解析请求 locale 的回调 */
@@ -591,9 +605,12 @@ export interface SSRNavigationRenderConfig {
  * 把一次性配置（bootstrap / getErrorPage / renderApp / navigation）绑定后，返回
  * `(url, ssrContext?) => Promise<SSRRenderNavigationResult>`，与 `createSSRRender` 同形。
  */
-export function createSSRNavigationRender(
-    config: SSRNavigationRenderConfig,
-): (url: string, ssrContext?: SSRContext) => Promise<SSRRenderNavigationResult> {
+export function createSSRNavigationRender(config: SSRNavigationRenderConfig): ((
+    url: string,
+    ssrContext?: SSRContext,
+) => Promise<SSRRenderNavigationResult>) & {
+    dispose(): Promise<void>;
+} {
     const {
         bootstrap,
         getErrorPage,
@@ -604,16 +621,29 @@ export function createSSRNavigationRender(
         loadMessages,
     } = config;
 
-    return (url: string, ssrContext?: SSRContext) =>
+    const owner = config.definition
+        ? Framework.create({ ...frameworkConfig, definition: config.definition })
+        : undefined;
+    const render = (url: string, ssrContext?: SSRContext) =>
         ssrRenderNavigation({
             url,
-            frameworkConfig: frameworkConfig ?? {},
+            frameworkConfig: {
+                ...frameworkConfig,
+                ...(owner ? { definition: config.definition, runtime: owner.runtime } : {}),
+            },
             bootstrap,
-            getErrorPage,
+            getErrorPage:
+                getErrorPage ??
+                config.definition?.getErrorPage ??
+                ((status, message) => ({ id: String(status), pageType: "error", title: message })),
             renderApp,
-            navigation,
+            navigation: navigation ?? {
+                codec: createActiveLeafCodec(),
+                initial: () => config.definition?.navigation,
+            },
             ssrContext,
             resolveLocale,
             loadMessages,
         });
+    return Object.assign(render, { dispose: () => owner?.dispose() ?? Promise.resolve() });
 }

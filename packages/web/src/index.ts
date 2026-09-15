@@ -162,3 +162,5 @@ export type {
 } from "./middleware/types";
 export { resolveConfiguredMessages } from "./i18n/messages";
 export type { MessagesLoader, MessagesLoaderContext } from "./i18n/messages";
+
+export * from "./application";

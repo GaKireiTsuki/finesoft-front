@@ -1,3 +1,4 @@
+import { treeShape } from "../../web/test/helpers/navigation";
 import { DEP_KEYS, HostGuardError } from "../../core/src/index";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -323,7 +324,7 @@ describe("startBrowserApp", () => {
         expect(ctx?.navigation).toBeDefined();
         // mount 时 tree 已就绪（nav-core 在 mount 前完成，controller.resolve() 在 mount 后）
         // getSnapshot().tree 返回 initial 树；destinations 在 resolve() 后才填充（mount 后）。
-        expect(ctx?.navigation?.getSnapshot().tree).toEqual(stack([leaf("home")]));
+        expect(ctx?.navigation?.getSnapshot().tree).toMatchObject(treeShape(stack([leaf("home")])));
         expect(typeof ctx?.app?.push).toBe("function"); // 统一句柄到位
 
         // bridge 已用 replaceState 写入首屏树（first-page，不污染历史栈）—— resolve() 后触发。
@@ -520,7 +521,7 @@ describe("startBrowserApp — islands（navigation.mountEntry）", () => {
     });
 
     test("提供 mountEntry：首屏可见目标挂为 outlet 内的 island", async () => {
-        const { leaf, stack, BaseController, sessionEntryKey } = {
+        const { leaf, stack, BaseController } = {
             ...(await import("../../core/src/index.ts")),
             ...(await import("../../web/src/index.ts")),
         };
@@ -577,7 +578,7 @@ describe("startBrowserApp — islands（navigation.mountEntry）", () => {
         // The outlet is the <main data-fs-outlet> child of appRoot.
         const outlet = appRoot.querySelector("[data-fs-outlet]");
         expect(outlet).not.toBeNull();
-        expect(mountCalls).toEqual([sessionEntryKey("home", {})]);
+        expect(mountCalls).toEqual([expect.any(String)]);
         // Island container should be in the outlet.
         const island = outlet?.querySelector("[data-fs-entry]");
         expect(island).not.toBeNull();
@@ -661,17 +662,17 @@ describe("startBrowserApp — domRestore（islands + session）", () => {
     });
 
     test("opt-in domRestore：boot 时从会话 scope 回填 island 表单值", async () => {
-        const { leaf, stack, BaseController, sessionEntryKey, SESSION_DEFAULT_VERSION } = {
+        const { leaf, stack, BaseController, SESSION_DEFAULT_VERSION } = {
             ...(await import("../../core/src/index.ts")),
             ...(await import("../../web/src/index.ts")),
         };
 
         // Build seeded core Storage with a SessionSnapshot containing __dom state.
-        const entryKey = sessionEntryKey("home", {});
+        const entryKey = "fixture-home";
         const snapshot = {
             version: SESSION_DEFAULT_VERSION,
             // Structured navigation with kind:"leaf" → defaultShouldRestore passes at root "/".
-            navigation: { kind: "leaf", intent: "home", params: {} },
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
             slices: {},
             scoped: { [entryKey]: { __dom: { fields: { note: "restored" } } } },
             capturedAt: Date.now(),
@@ -734,15 +735,15 @@ describe("startBrowserApp — domRestore（islands + session）", () => {
     });
 
     test("domRestore:false（缺省）：不恢复，既有路径不受影响", async () => {
-        const { leaf, stack, BaseController, sessionEntryKey, SESSION_DEFAULT_VERSION } = {
+        const { leaf, stack, BaseController, SESSION_DEFAULT_VERSION } = {
             ...(await import("../../core/src/index.ts")),
             ...(await import("../../web/src/index.ts")),
         };
 
-        const entryKey = sessionEntryKey("home", {});
+        const entryKey = "fixture-home";
         const snapshot = {
             version: SESSION_DEFAULT_VERSION,
-            navigation: { kind: "leaf", intent: "home", params: {} },
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
             slices: {},
             scoped: { [entryKey]: { __dom: { fields: { note: "should-not-restore" } } } },
             capturedAt: Date.now(),

@@ -31,8 +31,13 @@ export const NAVIGATION_NODE_KINDS = {
 /** 所有导航节点 Kind 的联合类型 */
 export type NavigationNodeKind = (typeof NAVIGATION_NODE_KINDS)[keyof typeof NAVIGATION_NODE_KINDS];
 
+export type EntryId = string;
+export type ResourceKey = string;
+
 /** 叶子：一个具体导航目标 */
 export interface LeafNode {
+    readonly entryId: EntryId;
+    readonly url?: string;
     readonly kind: typeof NAVIGATION_NODE_KINDS.LEAF;
     readonly intent: string;
     readonly params: RouteParams;
@@ -106,6 +111,9 @@ export type NavigationPath = readonly NavigationPathStep[];
 
 /** 单个可见目标的解析结果 */
 export interface ResolvedDestination {
+    readonly cache?: "public";
+    readonly entryId: EntryId;
+    readonly resourceKey: ResourceKey;
     readonly intent: string;
     readonly params: RouteParams;
     readonly page: Page;
@@ -114,6 +122,8 @@ export interface ResolvedDestination {
 
 /** 导航快照：当前树 + 所有可见目标解析结果（顺序与 collectVisibleDestinations 一致） */
 export interface NavigationSnapshot {
+    readonly transitionId?: string;
+    readonly historyMode?: "push" | "replace";
     readonly tree: NavigationNode;
     readonly destinations: readonly ResolvedDestination[];
 }

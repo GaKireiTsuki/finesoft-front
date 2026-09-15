@@ -4,6 +4,7 @@
  * 按注册顺序执行守卫，遇到第一个非 `next` 结果立即短路返回。
  */
 
+import { ExecutionError } from "@finesoft/core";
 import type {
     AfterLoadGuard,
     BeforeLoadGuard,
@@ -18,7 +19,9 @@ export async function runBeforeLoadGuards(
     ctx: NavigationContext,
 ): Promise<MiddlewareResult> {
     for (const guard of guards) {
+        if (ctx.signal?.aborted) throw new ExecutionError("cancelled");
         const result = await guard(ctx);
+        if (ctx.signal?.aborted) throw new ExecutionError("cancelled");
         if (result.kind !== "next") return result;
     }
     return { kind: "next" };
@@ -30,7 +33,9 @@ export async function runAfterLoadGuards(
     ctx: PostLoadContext,
 ): Promise<MiddlewareResult> {
     for (const guard of guards) {
+        if (ctx.signal?.aborted) throw new ExecutionError("cancelled");
         const result = await guard(ctx);
+        if (ctx.signal?.aborted) throw new ExecutionError("cancelled");
         if (result.kind !== "next") return result;
     }
     return { kind: "next" };

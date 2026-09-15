@@ -1,10 +1,10 @@
+import { leaf } from "../../web/test/helpers/navigation";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import { describe, expect, test, vi } from "vite-plus/test";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import {
-    leaf,
     sessionEntryKey,
     stack,
     tabs,
@@ -34,7 +34,13 @@ stubDomGlobals();
 
 /** 构造一个 ResolvedDestination（page 用 intent 编进去，方便断言）。 */
 function dest(intent: string, params: Record<string, unknown> = {}): ResolvedDestination {
-    return { intent, params, page: { id: intent, pageType: intent, title: intent } as BasePage };
+    return {
+        entryId: KEY(intent, params),
+        resourceKey: KEY(intent, params),
+        intent,
+        params,
+        page: { id: intent, pageType: intent, title: intent } as BasePage,
+    };
 }
 
 /** 记录所有 mountEntry / unmount 调用 + 把 entryKey 写进 container 供 DOM 断言。 */
@@ -246,6 +252,8 @@ describe("island orchestrator — page 变化 remount", () => {
 
         // 同 key、新 page 对象（模拟 refresh 后控制器产出的新页）
         const d2: ResolvedDestination = {
+            entryId: d1.entryId,
+            resourceKey: d1.resourceKey,
             intent: "home",
             params: {},
             page: { id: "home", pageType: "home", title: "fresh" } as BasePage,
@@ -282,7 +290,15 @@ describe("createIslandOrchestrator — SSR 收养水合（首次 sync）", () =>
     function destSnapshot(intent: string, params: Record<string, unknown>, page: unknown) {
         return {
             tree: { kind: "leaf", intent, params },
-            destinations: [{ intent, params, page }],
+            destinations: [
+                {
+                    entryId: KEY(intent, params),
+                    resourceKey: KEY(intent, params),
+                    intent,
+                    params,
+                    page,
+                },
+            ],
         } as never;
     }
 

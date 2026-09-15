@@ -18,6 +18,7 @@
 
 import {
     createActiveLeafCodec,
+    leaf,
     isLeafNode,
     isSplitNode,
     isStackNode,
@@ -77,7 +78,7 @@ export interface DefineNavigationOptions {
      * （URL 只反映激活叶子，整树通过 history/hydration 旁路）。
      */
     readonly codec?: NavigationCodec;
-    /** 导航级 beforeLoad 守卫（控制器对主目标执行，叠加在全局/路由守卫之外）。 */
+    /** 导航级 beforeLoad 守卫（控制器对每个可见目标执行，叠加在全局/路由守卫之外）。 */
     readonly beforeLoad?: readonly BeforeLoadGuard[];
     /** 导航级 afterLoad 守卫。 */
     readonly afterLoad?: readonly AfterLoadGuard[];
@@ -132,7 +133,7 @@ function resolveInitialTree(initial: NavigationInitial, url: string): Navigation
     if (isNavigationNode(initial)) return initial;
     const produced = initial(url);
     if (produced !== undefined) return produced;
-    return { kind: "leaf", intent: NAVIGATION_ROOT_FALLBACK_INTENT, params: {} };
+    return leaf(NAVIGATION_ROOT_FALLBACK_INTENT);
 }
 
 /** 把 `initial`（树或工厂）规范为 SSR 期望的骨架工厂（静态树 → 恒返回该树的工厂）。 */

@@ -7,7 +7,18 @@
 
 import { ActionDispatcher, type ActionHandler } from "./actions/dispatcher";
 import type { Action } from "./actions/types";
-import { Container } from "@finesoft/core";
+import {
+    Container,
+    createRuntime,
+    defineApp,
+    defineOperation,
+    ExecutionError,
+    type RuntimeHandle,
+    type ExecutionHandle,
+    type Invocation,
+} from "@finesoft/core";
+import { getWebPlan, WEB_EXECUTION, type WebExecutionState } from "./application/definition";
+import type { WebAppDefinition } from "./application/types";
 import type { MetricsRecorder } from "@finesoft/core";
 import { DEP_KEYS } from "@finesoft/core";
 import { makeDependencies, type MakeDependenciesOptions } from "./dependencies/make-dependencies";
@@ -30,6 +41,11 @@ import type { PlatformInfo } from "@finesoft/core";
 
 /** Framework 初始化配置 */
 export interface FrameworkConfig extends MakeDependenciesOptions {
+    definition?: WebAppDefinition;
+    /** Temporary bridge for imperative startup. */
+    router?: Router;
+    runtime?: RuntimeHandle;
+    invocation?: Invocation;
     setupRoutes?: (router: Router) => void;
     prefetchedIntents?: PrefetchedIntents;
 }
@@ -44,25 +60,65 @@ export class Framework {
     private readonly beforeGuards: BeforeLoadGuard[] = [];
     private readonly afterGuards: AfterLoadGuard[] = [];
     private _logger?: Logger;
+    readonly runtime: RuntimeHandle;
+    private readonly executions = new Set<ExecutionHandle>();
+    private readonly config: FrameworkConfig;
+    private closed = false;
+    private disposal?: Promise<void>;
+    readonly definition?: WebAppDefinition;
+    currentEntry?: import("./navigation/types").LeafNode;
+    private readonly ownsRuntime: boolean;
+    private readonly legacy = new Map<string, IntentController>();
+    private readonly legacyOperation = defineOperation({
+        id: "@web/legacy-page",
+        kind: "query" as const,
+        handler: async (intent: Intent, context: import("@finesoft/core").ExecutionContext) => {
+            const cached =
+                (context.bindings[WEB_EXECUTION] as WebExecutionState).retained.get(intent) ??
+                this.prefetchedIntents.get(
+                    intent,
+                    (context.bindings[WEB_EXECUTION] as WebExecutionState).entryIds.get(intent),
+                );
+            if (cached !== undefined) return cached;
+            const controller = this.legacy.get(intent.id);
+            if (!controller) throw new ExecutionError("not_found");
+            return controller.perform(intent, this.container, context);
+        },
+    });
 
-    private constructor(container: Container, prefetchedIntents: PrefetchedIntents) {
-        this.container = container;
+    private constructor(config: FrameworkConfig) {
+        this.config = config;
+        this.definition = config.definition;
+        const plan = config.definition && getWebPlan(config.definition);
+        this.prefetchedIntents = config.prefetchedIntents ?? PrefetchedIntents.empty();
+        this.ownsRuntime = !config.runtime;
+        this.runtime =
+            config.runtime ??
+            createRuntime({
+                app:
+                    plan?.app ??
+                    defineApp({ id: "legacy-web", operations: [this.legacyOperation] }),
+                capabilities: { fetch: config.fetch ?? globalThis.fetch?.bind(globalThis) },
+                invocationCapabilities: ["fetch"],
+                recorder: config.eventRecorder,
+            });
+        this.container = new Container();
+        makeDependencies(this.container, config);
         this.intentDispatcher = new IntentDispatcher();
+        // Temporary startup facade: all consumers dispatch through the Runtime owner.
+        this.intentDispatcher.dispatch = (intent) => this.dispatch(intent);
         this.actionDispatcher = new ActionDispatcher();
-        this.router = new Router((message) => this.getLogger().debug(message));
-        this.prefetchedIntents = prefetchedIntents;
+        this.router =
+            plan?.router ??
+            config.router ??
+            new Router((message) => this.getLogger().debug(message));
+        this.beforeGuards.push(...(config.definition?.beforeLoad ?? []));
+        this.afterGuards.push(...(config.definition?.afterLoad ?? []));
+        config.setupRoutes?.(this.router);
     }
 
-    /** 创建并初始化 Framework 实例 */
     static create(config: FrameworkConfig = {}): Framework {
-        const container = new Container();
-        makeDependencies(container, config);
-
-        const fw = new Framework(container, config.prefetchedIntents ?? PrefetchedIntents.empty());
-
-        config.setupRoutes?.(fw.router);
-
-        return fw;
+        return new Framework({ ...config.definition?.frameworkConfig, ...config });
     }
 
     private getLogger(): Logger {
@@ -70,20 +126,38 @@ export class Framework {
     }
 
     /** 分发 Intent — 获取页面数据 */
-    async dispatch<T>(intent: Intent<T>): Promise<T> {
-        const logger = this.getLogger();
-
-        const cached = this.prefetchedIntents.get(intent);
-        if (cached !== undefined) {
-            logger.debug(
-                `[Framework] re-using prefetched intent response for: ${intent.id}`,
-                intent.params,
-            );
-            return cached;
+    async dispatch<T>(
+        intent: Intent<T>,
+        execution?: ExecutionHandle,
+        retained?: BasePage,
+        entryId?: string,
+    ): Promise<T> {
+        const operation = this.definition && getWebPlan(this.definition).operations.get(intent.id);
+        if (this.definition && !operation) throw new ExecutionError("not_found");
+        const owned = !execution;
+        execution ??= this.createExecution();
+        try {
+            const params = { ...intent.params };
+            const state = execution.context.bindings[WEB_EXECUTION] as WebExecutionState;
+            if (entryId) {
+                state.entryIds.set(params, entryId);
+                state.entryIds.set(intent, entryId);
+            }
+            if (retained)
+                (execution.context.bindings[WEB_EXECUTION] as WebExecutionState).retained.set(
+                    params,
+                    retained,
+                );
+            if (!operation && retained) {
+                const state = execution.context.bindings[WEB_EXECUTION] as WebExecutionState;
+                state.retained.set(intent, retained);
+            }
+            return (await (operation
+                ? execution.execute(operation, params)
+                : execution.execute(this.legacyOperation, intent))) as T;
+        } finally {
+            if (owned) await execution.dispose();
         }
-
-        logger.debug(`[Framework] dispatch intent: ${intent.id}`, intent.params);
-        return this.intentDispatcher.dispatch(intent, this.container);
     }
 
     /** 执行 Action — 处理用户交互 */
@@ -133,6 +207,9 @@ export class Framework {
 
     /** 注册 Intent Controller */
     registerIntent(controller: IntentController): void {
+        if (this.definition)
+            throw new ExecutionError("configuration", "Controllers belong in defineWebApp");
+        this.legacy.set(controller.intentId, controller);
         this.intentDispatcher.register(controller);
     }
 
@@ -168,7 +245,67 @@ export class Framework {
     }
 
     /** 销毁 Framework 实例 */
+    createExecution(invocation: Invocation = {}): ExecutionHandle {
+        if (this.closed) throw new ExecutionError("configuration", "Framework is closed");
+        const base = this.config.invocation;
+        const signals = [base?.signal, invocation.signal].filter((s): s is AbortSignal => !!s);
+        const execution = this.runtime.createExecution({
+            ...base,
+            ...invocation,
+            signal: signals.length ? AbortSignal.any(signals) : undefined,
+            locale: invocation.locale ?? base?.locale ?? this.config.locale,
+            fetch: invocation.fetch ?? base?.fetch ?? this.config.fetch,
+            bindings: {
+                ...base?.bindings,
+                ...invocation.bindings,
+                [WEB_EXECUTION]: {
+                    prefetched: this.prefetchedIntents,
+                    retained: new WeakMap(),
+                    entryIds: new WeakMap(),
+                },
+            },
+        });
+        makeDependencies(execution.context.container, {
+            ...this.config,
+            fetch: execution.context.fetch,
+            locale: execution.context.locale,
+        });
+        // Environment defaults are shared by this facade only. Business typed providers remain in Runtime.
+        for (const key of [
+            DEP_KEYS.LOGGER_FACTORY,
+            DEP_KEYS.LOGGER,
+            DEP_KEYS.STORAGE,
+            DEP_KEYS.FEATURE_FLAGS,
+            DEP_KEYS.METRICS,
+            DEP_KEYS.EVENT_RECORDER,
+            DEP_KEYS.PLATFORM,
+        ])
+            execution.context.container.register(key, () => this.container.resolve(key));
+        const dispose = execution.dispose.bind(execution);
+        execution.dispose = async () => {
+            try {
+                await dispose();
+            } finally {
+                this.executions.delete(execution);
+            }
+        };
+        this.executions.add(execution);
+        return execution;
+    }
+
     dispose(): Promise<void> {
-        return this.container.dispose();
+        this.closed = true;
+        return (this.disposal ??= (async () => {
+            const results = await Promise.allSettled(
+                [...this.executions].map((execution) => execution.dispose()),
+            );
+            results.push(...(await Promise.allSettled([this.container.dispose()])));
+            if (this.ownsRuntime)
+                results.push(...(await Promise.allSettled([this.runtime.dispose()])));
+            const failures = results
+                .filter((result) => result.status === "rejected")
+                .map((result) => result.reason);
+            if (failures.length) throw new AggregateError(failures, "Framework cleanup failed");
+        })());
     }
 }

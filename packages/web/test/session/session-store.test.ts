@@ -48,7 +48,12 @@ describe("SessionStore", () => {
             storage: fakeStorage(),
             now: () => 5,
             navigation: {
-                ...fakeNav({ kind: "leaf", intent: "detail", params: { id: "1" } }),
+                ...fakeNav({
+                    kind: "leaf",
+                    entryId: "fixture-detail",
+                    intent: "detail",
+                    params: { id: "1" },
+                }),
                 captureUrl: () => "/item/1",
             },
         });

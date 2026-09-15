@@ -113,6 +113,7 @@ describe("ssrRender", () => {
         expect(result.html).toBe("Hello");
         expect(result.serverData).toEqual([
             {
+                entryId: expect.any(String),
                 intent: {
                     id: "home",
                     params: {
@@ -208,6 +209,7 @@ describe("ssrRender", () => {
         expect(result.html).toBe("missing");
         expect(result.serverData).toEqual([
             {
+                entryId: expect.any(String),
                 intent: {
                     id: "home",
                     params: {},
@@ -472,7 +474,7 @@ describe("ssrRender", () => {
                 getErrorPage: makeErrorPage,
                 renderApp: () => ({ html: "", head: "", css: "" }),
             }),
-        ).rejects.toThrow(/Rewrite recursion depth exceeded/);
+        ).rejects.toThrow(/rewrite recursion depth exceeded/i);
     });
 
     test("renders a 404 page when no route matches", async () => {
@@ -490,7 +492,8 @@ describe("ssrRender", () => {
             renderApp,
         });
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
+            status: 404,
             html: "Page not found",
             head: "",
             css: "",
@@ -531,8 +534,9 @@ describe("ssrRender", () => {
             renderApp,
         });
 
-        expect(result).toEqual({
-            html: "Internal error",
+        expect(result).toMatchObject({
+            status: 500,
+            html: "Execution failed",
             head: "",
             css: "",
             serverData: [],
@@ -540,12 +544,8 @@ describe("ssrRender", () => {
             slots: undefined,
             locale: undefined,
         });
-        // 日志现在通过 framework logger 走 console.error，会带 [framework] 前缀
-        expect(errorSpy).toHaveBeenCalledWith(
-            "[framework]",
-            '[SSR] dispatch failed for intent "broken":',
-            expect.any(Error),
-        );
+        // Runtime emits classified operation records; raw controller errors are not logged here.
+        expect(errorSpy).not.toHaveBeenCalled();
     });
 });
 

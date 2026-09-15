@@ -268,3 +268,30 @@ function createAdapterContext(overrides: Record<string, unknown> = {}): Record<s
         ...overrides,
     };
 }
+
+test("discovers routes from an ordinary default Web definition", async () => {
+    const ctx = createAdapterContext({ fs: { existsSync: () => true, rmSync: vi.fn() } });
+    dynamicImport.mockImplementation(async (specifier: string) => {
+        if (specifier === "node:url") return import("node:url");
+        if (specifier.endsWith("_routes_prerender.mjs"))
+            return {
+                default: {
+                    id: "web",
+                    routes: [{ path: "/public", renderMode: "prerender" }],
+                },
+            };
+        if (specifier.endsWith("ssr.js"))
+            return {
+                serializeServerData: JSON.stringify,
+                render: () => ({
+                    html: "public-page",
+                    head: "",
+                    css: "",
+                    serverData: [],
+                    cache: "public",
+                }),
+            };
+        throw new Error(`Unexpected import: ${specifier}`);
+    });
+    expect(await prerenderRoutes(ctx as never)).toHaveLength(1);
+});

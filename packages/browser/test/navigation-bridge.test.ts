@@ -1,3 +1,4 @@
+import { leaf } from "../../web/test/helpers/navigation";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import type { Logger } from "@finesoft/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -59,7 +60,6 @@ import {
     createFullStateCodec,
     createNavigationController,
     deserializeNavigation,
-    leaf,
     serializeNavigation,
     stack,
     tabs,
@@ -130,7 +130,7 @@ describe("createNavigationBridge", () => {
         expect(restored.kind).toBe("stack");
     });
 
-    test("replaces (not pushes) when the encoded URL equals the current location", async () => {
+    test("replaceTop replaces history while allocating a fresh page entry", async () => {
         const { controller } = makeController(stack([leaf("home")]));
         const codec = createActiveLeafCodec();
         const router = makeRouter(["/home → home", "/about → about"]);
@@ -142,8 +142,8 @@ describe("createNavigationBridge", () => {
 
         // window.location 当前是 /home；replaceTop 到 about 后 encode=/about ≠ /home → push。
         await controller.replaceTop("about");
-        expect(history.pushState).toHaveBeenCalledTimes(1);
-        expect(history.pushState.mock.calls[0][1]).toBe("/about");
+        expect(history.replaceState).toHaveBeenCalledTimes(2);
+        expect(history.replaceState.mock.calls[1][1]).toBe("/about");
 
         // 再 replaceTop 回 home：encode=/home == window.location /home → replaceState（不新增条目）。
         history.replaceState.mockClear();
@@ -177,6 +177,7 @@ describe("createNavigationBridge", () => {
         expect(dispatch).toHaveBeenCalledWith(
             expect.objectContaining({ id: "settings" }),
             expect.anything(),
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
         );
     });
 
