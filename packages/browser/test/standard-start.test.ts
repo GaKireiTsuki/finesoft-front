@@ -361,3 +361,118 @@ test("redirect navigation remains pending through final data and renderer readin
         await pending;
     }
 });
+
+test("modal missing, denied and redirected errors deliver matching candidates once without committing root", async () => {
+    const pages: { page: string | undefined; snapshot: string | undefined }[] = [];
+    const app = await start({
+        app: definition({
+            beforeLoad: [
+                (ctx) =>
+                    ctx.path === "/alias"
+                        ? { kind: "deny", status: 403, message: "Denied" }
+                        : { kind: "next" },
+            ],
+        }),
+        renderer: renderer(),
+        target: target(),
+        history: "memory",
+        onModal: (page, context) => {
+            pages.push({
+                page: page.title,
+                snapshot: context.snapshot.destinations.at(-1)?.page.title,
+            });
+        },
+    });
+    const root = app.getSnapshot();
+    await app.framework.perform(makeFlowAction("/missing", "modal"));
+    await app.framework.perform(makeFlowAction("/alias", "modal"));
+    await app.framework.perform(makeFlowAction("/", "modal"));
+    app.framework.afterLoad(() => ({ kind: "deny", status: 401, message: "Login required" }));
+    await app.framework.perform(makeFlowAction("/", "modal"));
+    app.framework.beforeLoad((ctx) =>
+        ctx.path === "/" ? { kind: "redirect", url: "/missing", status: 302 } : { kind: "next" },
+    );
+    await app.framework.perform(makeFlowAction("/", "modal"));
+    expect(pages).toEqual([
+        { page: "404", snapshot: "404" },
+        { page: "403", snapshot: "403" },
+        { page: "Home", snapshot: "Home" },
+        { page: "401", snapshot: "401" },
+        { page: "404", snapshot: "404" },
+    ]);
+    expect(app.getSnapshot()).toBe(root);
+});
+
+test("modal external redirect and disposal do not deliver candidates late", async () => {
+    const modal = vi.fn(),
+        assign = vi.fn();
+    Object.assign(window.location, { assign });
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => (release = resolve));
+    const entered = vi.fn();
+    const app = await start({
+        app: definition(),
+        renderer: renderer(),
+        target: target(),
+        history: "memory",
+        onModal: modal,
+    });
+    app.framework.beforeLoad(async (ctx) => {
+        if (ctx.path === "/alias")
+            return { kind: "redirect", url: "https://external.example/", status: 302 };
+        entered();
+        await pending;
+        return { kind: "deny", status: 403, message: "Denied" };
+    });
+    await app.framework.perform(makeFlowAction("/alias", "modal"));
+    expect(assign).toHaveBeenCalledOnce();
+    expect(modal).not.toHaveBeenCalled();
+    const work = app.framework.perform(makeFlowAction("/", "modal")).catch((error) => error);
+    try {
+        await vi.waitFor(() => expect(entered).toHaveBeenCalled());
+        const disposed = app.dispose();
+        release();
+        await disposed;
+        expect(await work).toMatchObject({ code: "cancelled" });
+        expect(modal).not.toHaveBeenCalled();
+    } finally {
+        release();
+        await work;
+    }
+});
+
+test("modal error callback is awaited once and rejection is owned by the action Promise", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => (release = resolve));
+    const modal = vi.fn(async () => {
+        await pending;
+        throw Error("modal render failed");
+    });
+    const app = await start({
+        app: definition(),
+        renderer: renderer(),
+        target: target(),
+        history: "memory",
+        onModal: modal,
+    });
+    const root = app.getSnapshot();
+    let settled = false;
+    const action = app.framework.perform(makeFlowAction("/missing", "modal")).then(
+        () => undefined,
+        (error) => {
+            settled = true;
+            return error;
+        },
+    );
+    try {
+        await vi.waitFor(() => expect(modal).toHaveBeenCalledOnce());
+        expect(settled).toBe(false);
+        release();
+        expect(await action).toMatchObject({ message: "modal render failed" });
+        expect(modal).toHaveBeenCalledOnce();
+        expect(app.getSnapshot()).toBe(root);
+    } finally {
+        release();
+        await action;
+    }
+});

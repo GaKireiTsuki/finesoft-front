@@ -4,6 +4,8 @@ import {
     makeFlowAction,
     makeExternalUrlAction,
     serializeNavigation,
+    stack,
+    leaf,
     type BasePage,
     type NavigationSnapshot,
 } from "@finesoft/web";
@@ -526,4 +528,126 @@ test("a newer FlowAction supersedes an uncached pop awaiting URL codec resolutio
         pending.release();
         await work;
     }
+});
+
+test("a newer EntryId FlowAction supersedes a pending URL admission and keeps the reused identity", async () => {
+    const app = await start();
+    const home = app.getSnapshot().destinations[0].entryId;
+    await app.navigate("/product");
+    const pending = gate(),
+        entered = vi.fn();
+    const resolve = app.framework.router.resolve.bind(app.framework.router);
+    vi.spyOn(app.framework.router, "resolve").mockImplementation(async (url) => {
+        if (url === "/slow") {
+            entered();
+            await pending.promise;
+        }
+        return resolve(url);
+    });
+    const old = app.navigate("/slow");
+    try {
+        await vi.waitFor(() => expect(entered).toHaveBeenCalled());
+        await app.framework.perform({ ...makeFlowAction("/home"), entryId: home });
+        pending.release();
+        await old;
+        expect(app.getSnapshot().destinations[0].entryId).toBe(home);
+        expect(rendered).toEqual(["home", "product", "home"]);
+    } finally {
+        pending.release();
+        await old;
+    }
+});
+test("a newer EntryId FlowAction cancels active controller work before reusing its entry", async () => {
+    const pending = gate(),
+        entered = vi.fn();
+    const app = await start({
+        controllers: [
+            {
+                id: "slow",
+                handler: async () => {
+                    entered();
+                    await pending.promise;
+                    return page("slow");
+                },
+            },
+        ],
+    });
+    const home = app.getSnapshot().destinations[0].entryId;
+    await app.navigate("/product");
+    const old = app.navigate("/slow").catch((error) => error);
+    try {
+        await vi.waitFor(() => expect(entered).toHaveBeenCalled());
+        const selection = app.framework.perform({ ...makeFlowAction("/home"), entryId: home });
+        pending.release();
+        await selection;
+        expect(await old).toMatchObject({ code: "cancelled" });
+        expect(rendered).toEqual(["home", "product", "home"]);
+        expect(app.getSnapshot().destinations[0].entryId).toBe(home);
+    } finally {
+        pending.release();
+        await old;
+    }
+});
+
+test("direct structural operations remain serialized while FlowAction admission is latest-wins", async () => {
+    const pending = gate(),
+        entered = vi.fn();
+    const app = await start({
+        navigation: stack(leaf("home")),
+        controllers: [
+            {
+                id: "slow",
+                handler: async () => {
+                    entered();
+                    await pending.promise;
+                    return page("slow");
+                },
+            },
+        ],
+    });
+    const home = app.getSnapshot().destinations[0].entryId;
+    const first = app.navigation!.push("slow");
+    let selection:
+        | ReturnType<NonNullable<BrowserAppHandle["navigation"]>["reuseEntry"]>
+        | undefined;
+    try {
+        await vi.waitFor(() => expect(entered).toHaveBeenCalled());
+        selection = app.navigation!.reuseEntry(home);
+        pending.release();
+        expect((await first).destinations[0].page.title).toBe("slow");
+        await selection;
+        expect(rendered).toEqual(["home", "slow", "home"]);
+    } finally {
+        pending.release();
+        await first;
+        await selection;
+    }
+});
+
+test("modal missing and denied candidates leave the root view and browser history unchanged", async () => {
+    const app = await start({
+        beforeLoad: [
+            (ctx) =>
+                ctx.path === "/secret"
+                    ? { kind: "deny", status: 403, message: "Denied" }
+                    : { kind: "next" },
+        ],
+    });
+    const root = app.getSnapshot();
+    await app.framework.perform(makeFlowAction("/missing", "modal"));
+    await app.framework.perform(makeFlowAction("/secret", "modal"));
+    expect(modal).toHaveBeenCalledTimes(2);
+    expect(
+        modal.mock.calls.map(([page, context]) => [
+            page.title,
+            context.snapshot.destinations[0].page.title,
+        ]),
+    ).toEqual([
+        ["404", "404"],
+        ["403", "403"],
+    ]);
+    expect(app.getSnapshot()).toBe(root);
+    expect(rendered).toEqual(["home"]);
+    expect(history().replaceState).toHaveBeenCalledTimes(1);
+    expect(history().pushState).not.toHaveBeenCalled();
 });

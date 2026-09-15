@@ -311,15 +311,19 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
             onRedirect: redirect,
         });
         const nav = controller;
+        function admitNavigation() {
+            if (closed) throw Error("Browser application disposed");
+            const sequence = ++navigationSequence;
+            nav.cancel();
+            return sequence;
+        }
         if (browserHistory)
             bridge = createNavigationBridge({
                 controller: nav,
                 codec,
                 router: fw.router,
                 log,
-                onPopStart: () => {
-                    ++navigationSequence;
-                },
+                onPopStart: admitNavigation,
                 resolveUrl: async (url) => {
                     const sequence = navigationSequence;
                     const resolved = await resolveInitialNavigation(fw, url, {
@@ -363,9 +367,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
             getSnapshot: () => nav.getSnapshot(),
             subscribe: (fn) => nav.subscribe(fn),
             async navigate(url) {
-                if (closed) throw Error("Browser application disposed");
-                const sequence = ++navigationSequence;
-                nav.cancel();
+                const sequence = admitNavigation();
                 const match = await fw.router.resolve(url);
                 if (closed || sequence !== navigationSequence) return;
                 await nav.push(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
@@ -374,14 +376,29 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
             },
             dispose,
         };
-        fw.onAction(ACTION_KINDS.FLOW, (action: FlowAction) => {
-            if (action.presentationContext !== "modal")
-                return action.entryId
-                    ? nav.reuseEntry(action.entryId).then(() => {})
-                    : handle.navigate(action.url);
+        fw.onAction(ACTION_KINDS.FLOW, async (action: FlowAction) => {
+            if (action.presentationContext !== "modal") {
+                if (action.entryId) {
+                    admitNavigation();
+                    await nav.reuseEntry(action.entryId);
+                } else await handle.navigate(action.url);
+                return;
+            }
             const work = (async () => {
                 const match = await fw.router.resolve(action.url);
                 if (closed) return;
+                let delivered = false,
+                    handedOff = false;
+                const deliver = async (snapshot: NavigationSnapshot) => {
+                    const destination = snapshot.destinations.at(-1);
+                    if (closed || delivered || handedOff || !destination) return;
+                    delivered = true;
+                    await config.onModal?.(destination.page, {
+                        framework: fw,
+                        app: handle,
+                        snapshot,
+                    });
+                };
                 const modal = createNavigationController({
                     framework: fw,
                     isServer: false,
@@ -392,19 +409,16 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
                     ),
                     getErrorPage: definition.getErrorPage,
                     createContext,
-                    onRedirect: redirect,
-                    viewReady: async (snapshot) => {
-                        if (!closed)
-                            await config.onModal?.(snapshot.destinations.at(-1)!.page, {
-                                framework: fw,
-                                app: handle,
-                                snapshot,
-                            });
+                    onRedirect: async (destination, candidate) => {
+                        const tree = await redirect(destination, candidate);
+                        handedOff = tree === undefined;
+                        return tree;
                     },
+                    viewReady: deliver,
                 });
                 modalControllers.add(modal);
                 try {
-                    await modal.resolve();
+                    await deliver(await modal.resolve());
                 } finally {
                     await modal.dispose();
                     modalControllers.delete(modal);
