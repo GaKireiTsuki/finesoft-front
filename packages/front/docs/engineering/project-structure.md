@@ -22,7 +22,7 @@ src/ssr.ts             # selected standard SSR renderer
 src/App.<native>       # full layout or minimal navigation/profile chrome
 src/pages/             # native page components (.tsx / .vue / .svelte)
 src/components/        # reusable full-template presentation components
-src/lib/controllers/   # UI-independent page loaders and explicit public data
+src/lib/controllers/   # BaseController page loaders and explicit public data
 src/lib/models/        # typed page/data contracts
 src/styles.css         # identical styling within each tier
 src/instance.ts        # minimal: a new profile store/provider per mount
@@ -30,6 +30,12 @@ src/locales/           # minimal: en-US and zh-Hans JSON messages
 ```
 
 Full additionally keeps its product data, mapper, HTTP client and guards under `src/lib/`, and navigation actions in `src/actions.ts`. Minimal's renderer supplies committed navigation snapshots to chrome; only the profile store needs a native lifecycle subscription. The framework owns history, view readiness, entry lifetime and session restoration.
+
+## Controllers and page declarations
+
+All six templates use `BaseController`: classes in `lib/controllers/` implement business loading, while `app-definition.ts` registers factories with `definePage({ id, create: () => new HomeController() })` and reuses the returned `route()`, `leaf()` and `bindView()` references. `views.ts` binds native components, which receive the result through `page`.
+
+Import the controller from `@finesoft/front`, and Web page types and `markPublic` from `@finesoft/front/web`. Controllers are created for actual execution; entry drafts and global profile state belong to page instances and the application store respectively. The `getErrorPage` factory creates error pages. See [routes, controllers and typed pages](../02-routing-and-controllers.md) for parameters, DI, `fallback` and function handlers.
 
 ## State and locale
 

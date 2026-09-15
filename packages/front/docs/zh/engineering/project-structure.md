@@ -22,7 +22,7 @@ src/ssr.ts             # 所选框架的标准 SSR renderer
 src/App.<native>       # full 布局，或 minimal 的导航栏与全局资料
 src/pages/             # 原生页面组件（.tsx / .vue / .svelte）
 src/components/        # full 的可复用展示组件
-src/lib/controllers/   # 不依赖 UI 的页面加载器及显式公开数据
+src/lib/controllers/   # BaseController 页面加载器及显式公开数据
 src/lib/models/        # 页面与数据类型
 src/styles.css         # 同档位一致的样式
 src/instance.ts        # minimal：每次挂载创建独立的资料 store/provider
@@ -30,6 +30,12 @@ src/locales/           # minimal：en-US 与 zh-Hans 语言文件
 ```
 
 Full 的商品数据、mapper、HTTP 客户端和守卫继续放在 `src/lib/`，导航动作集中在 `src/actions.ts`。Minimal 的导航栏直接使用 renderer 传入的已提交快照，仅资料 store 需要按原生组件生命周期订阅。历史记录、页面就绪、实例生存期和会话恢复由框架负责。
+
+## 控制器与页面声明
+
+六个模板都使用 `BaseController`：`lib/controllers/` 中的类实现业务加载，`app-definition.ts` 用 `definePage({ id, create: () => new HomeController() })` 注册工厂，并复用返回引用的 `route()`、`leaf()` 和 `bindView()`。`views.ts` 绑定原生组件，组件通过 `page` 接收结果。
+
+控制器从 `@finesoft/front` 导入，Web 页面类型和 `markPublic` 从 `@finesoft/front/web` 导入。控制器在实际执行时创建，页面草稿和全局资料分别交给页面实例与应用 store。错误页由 `getErrorPage` 工厂生成。完整的参数、DI、`fallback` 和函数 `handler` 用法见[路由、控制器与类型化页面](../02-routing-and-controllers.md)。
 
 ## 状态与语言
 

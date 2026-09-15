@@ -4,13 +4,40 @@
 
 选择 full 可查看商品、搜索和守卫示例；选择 minimal 可查看 Feed、详情、Notes 及会话恢复。同档位的三框架模板保持一致，详见[应用结构与模板约定](./engineering/project-structure.md)。
 
-## Application declaration / 应用声明
+## 页面控制器
+
+六个模板都通过 `BaseController` 组织页面加载逻辑。它从根入口导入，负责类型化输入、业务执行和可选的错误回退；`definePage` 从 `/web` 导入，负责页面声明及路由、导航和视图引用。
+
+`src/lib/controllers/home.ts`：
 
 ```ts
-import { definePage, defineWebApp, markPublic } from "@finesoft/front/web";
+import { BaseController } from "@finesoft/front";
+import { markPublic, type BasePage } from "@finesoft/front/web";
+
+interface HomePage extends BasePage {
+    pageType: "home";
+}
+
+export class HomeController extends BaseController<Record<string, string>, HomePage> {
+    readonly intentId = "load-home";
+
+    execute(): HomePage {
+        return markPublic({ id: "home", pageType: "home", title: "Home" }, []);
+    }
+}
+```
+
+## Application declaration / 应用声明
+
+`src/app-definition.ts` 注册控制器工厂。真正加载页面时才创建控制器，声明阶段只保存工厂。
+
+```ts
+import { definePage, defineWebApp } from "@finesoft/front/web";
+import { HomeController } from "./lib/controllers/home";
+
 export const home = definePage({
     id: "load-home",
-    handler: () => markPublic({ id: "home", pageType: "home" as const, title: "Home" }, []),
+    create: () => new HomeController(),
 });
 export const app = defineWebApp({
     id: "example",
@@ -19,6 +46,8 @@ export const app = defineWebApp({
     getErrorPage: (status, message) => ({ id: String(status), pageType: "error", title: message }),
 });
 ```
+
+简单页面也可以使用 `definePage({ id, handler })`。两种写法进入同一套运行时；`BaseController` 另外提供 `execute()` → `fallback()` 的类实现约定。详见[路由、控制器与类型化页面](./02-routing-and-controllers.md)。
 
 ## View binding / 视图绑定
 
