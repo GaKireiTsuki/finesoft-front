@@ -1,7 +1,7 @@
 import type { Logger, LoggerFactory } from "../logger/types";
 // ===== 重新导出 Logger 类型 =====
 export type { Logger, LoggerFactory };
-export type { TranslationMessages } from "../../../core/src/i18n/messages";
+export type { TranslationMessages } from "../i18n/messages";
 
 // ===== 依赖接口 =====
 

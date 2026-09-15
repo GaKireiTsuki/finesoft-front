@@ -1,54 +1,14 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { expect, test } from "vite-plus/test";
+import * as root from "../src/index";
+import * as web from "../src/web";
 
-vi.mock("@finesoft/core", () => ({}));
-vi.mock("@finesoft/web", () => ({
-    Framework: "FrameworkExport",
-    makeFlowAction: (url: string) => ({
-        kind: "flow",
-        url,
-        presentationContext: undefined,
-    }),
-}));
-
-vi.mock("@finesoft/browser", () => ({
-    History: "HistoryExport",
-    createPrefetchedIntentsFromDom: "createPrefetchedIntentsFromDom",
-    deserializeServerData: "deserializeServerData",
-    registerActionHandlers: "registerActionHandlers",
-    registerExternalUrlHandler: "registerExternalUrlHandler",
-    registerFlowActionHandler: "registerFlowActionHandler",
-    startBrowserApp: "startBrowserApp",
-    tryScroll: "tryScroll",
-}));
-
-vi.mock("@finesoft/ssr", () => ({
-    SSR_PLACEHOLDERS: "SSR_PLACEHOLDERS",
-    createSSRRender: "createSSRRender",
-    injectCSRShell: "injectCSRShell",
-    injectSSRContent: "injectSSRContent",
-    serializeServerData: "serializeServerData",
-    ssrRender: "ssrRender",
-}));
-
-vi.mock("@finesoft/server", () => ({
-    createServer: "createServer",
-}));
-
-import * as browserEntry from "../src/browser";
-import * as fullEntry from "../src/index";
-
-describe("front package entries", () => {
-    test("re-exports full-stack modules from the main entry", () => {
-        expect(fullEntry.Framework).toBe("FrameworkExport");
-        expect(fullEntry.History).toBe("HistoryExport");
-        expect(fullEntry.SSR_PLACEHOLDERS).toBe("SSR_PLACEHOLDERS");
-        expect(fullEntry.createServer).toBe("createServer");
-    });
-
-    test("re-exports browser-only modules without server exports", () => {
-        expect(browserEntry.Framework).toBe("FrameworkExport");
-        expect(browserEntry.History).toBe("HistoryExport");
-        expect(browserEntry.startBrowserApp).toBe("startBrowserApp");
-        expect("createServer" in browserEntry).toBe(false);
-    });
+test("root owns portable execution; Web declarations are explicit", () => {
+    expect(typeof root.createRuntime).toBe("function");
+    expect("Framework" in root).toBe(false);
+    expect("startBrowserApp" in root).toBe(false);
+    expect("createServer" in root).toBe(false);
+    expect("finesoftFrontViteConfig" in root).toBe(false);
+    expect(typeof web.defineWebApp).toBe("function");
+    expect(typeof web.definePage).toBe("function");
+    expect(web.createRuntime).toBe(root.createRuntime);
 });

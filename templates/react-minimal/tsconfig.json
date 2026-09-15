@@ -19,7 +19,13 @@
             "@finesoft/server": ["../../packages/server/src/index.ts"],
             "@finesoft/web": ["../../packages/web/src/index.ts"],
             "@finesoft/front/web": ["../../packages/front/src/web.ts"],
-            "@finesoft/front/renderers/*": ["../../packages/front/src/renderers/*"]
+            "@finesoft/front/renderers/*": ["../../packages/front/src/renderers/*"],
+            "@finesoft/front/vite": ["../../packages/front/src/vite.ts"],
+            "@finesoft/front/ssr": ["../../packages/front/src/ssr.ts"],
+            "@finesoft/front/http": ["../../packages/front/src/http.ts"],
+            "@finesoft/front/worker": ["../../packages/front/src/worker.ts"],
+            "@finesoft/front/node": ["../../packages/front/src/node.ts"],
+            "@finesoft/server/*": ["../../packages/server/src/*"]
         }
     },
     "include": ["src/**/*", "env.d.ts", "vite.config.ts"]

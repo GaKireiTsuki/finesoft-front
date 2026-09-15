@@ -20,14 +20,14 @@
 6. [HTTP 客户端](./06-http-client.md) —— `HttpClient` 子类化、拦截器、`HttpError`
 7. [DI 容器](./07-di-container.md) —— 注册、scope、`DEP_KEYS`、dispose
 8. [可观测性](./08-observability.md) —— `Logger`、`EventRecorder`、Impression 追踪、`ReportCallback`
-9. [服务器与部署](./09-server-and-deployment.md) —— `createServer`、proxy、adapter、Vite 插件
+9. [服务器与部署](./09-server-and-deployment.md) —— HTTP / Node / Worker、proxy、adapter、Vite 插件
 10. [Feature flags、平台、PWA](./10-features-platform-pwa.md) —— 特性开关、平台检测、PWA 模式
 
 ### 已经在维护项目的工程师 —— 直接看实践
 
 横切关注点和约定。先理解基础后再读。
 
-- [项目结构](./engineering/project-structure.md) —— 推荐布局、`bootstrap.ts` 拆分、单一来源
+- [项目结构](./engineering/project-structure.md) —— 推荐布局、`app-definition.ts` 拆分、单一来源
 - [测试](./engineering/testing.md) —— Controller、中间件、scoped DI、mock 框架
 - [CI 与发布流程](./engineering/ci-release-flow.md) —— changesets、内联发布 workflow、版本对账
 
@@ -57,12 +57,12 @@
 ```
 URL/Action → Router.resolve()
           → beforeLoad chain   (NavigationContext: redirect/rewrite/deny/next)
-          → IntentDispatcher   (controller.execute() → Page；出错走 fallback())
+          → RuntimeHandle   (controller.execute() → Page；出错走 fallback())
           → afterLoad chain    (PostLoadContext)
           → render             (SSR: HTML + 序列化的 PrefetchedIntents；CSR: 空壳)
 ```
 
-同一个 `bootstrap()` 同时在服务器和浏览器执行。SSR 把 prefetch 后的 intent 结果序列化进 HTML，浏览器再反序列化为 `PrefetchedIntents`，让首次客户端导航复用服务端结果而不重新发请求。
+服务器和浏览器使用同一应用声明。SSR 把 prefetch 后的 intent 结果序列化进 HTML，浏览器再反序列化为 `PrefetchedIntents`，让首次客户端导航复用服务端结果而不重新发请求。
 
 ## 约定
 

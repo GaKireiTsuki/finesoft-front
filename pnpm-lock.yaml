@@ -176,9 +176,6 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.4
         version: 19.2.4(@types/react@19.2.18)
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
       hono:
         specifier: ^4.13.1
         version: 4.13.1
@@ -293,6 +290,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.5
         version: 6.0.5(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))
+      hono:
+        specifier: ^4.13.1
+        version: 4.13.1
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -321,6 +321,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.5
         version: 6.0.5(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))
+      hono:
+        specifier: ^4.13.1
+        version: 4.13.1
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -340,6 +343,9 @@ importers:
       '@sveltejs/vite-plugin-svelte':
         specifier: ^7.3.0
         version: 7.3.0(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(svelte@5.56.8(@typescript-eslint/types@8.57.1))
+      hono:
+        specifier: ^4.13.1
+        version: 4.13.1
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -359,6 +365,9 @@ importers:
       '@sveltejs/vite-plugin-svelte':
         specifier: ^7.3.0
         version: 7.3.0(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(svelte@5.56.8(@typescript-eslint/types@8.57.1))
+      hono:
+        specifier: ^4.13.1
+        version: 4.13.1
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -378,6 +387,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
         version: 6.0.8(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(vue@3.5.41(typescript@6.0.3))
+      hono:
+        specifier: ^4.13.1
+        version: 4.13.1
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -397,6 +409,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
         version: 6.0.8(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(vue@3.5.41(typescript@6.0.3))
+      hono:
+        specifier: ^4.13.1
+        version: 4.13.1
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'

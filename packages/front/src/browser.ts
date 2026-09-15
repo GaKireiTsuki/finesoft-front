@@ -1,5 +1,4 @@
-// Browser-only entry — excludes server code (createServer, startServer, etc.)
-// Used via package.json "browser" condition to avoid bundling Node.js dependencies.
+// Browser host plus portable Web declarations; explicitly selected by the consumer.
 
 // ===== Core =====
 export * from "@finesoft/core";
@@ -36,7 +35,7 @@ export type {
     SessionBridgeOptions,
     SessionHandle,
 } from "@finesoft/browser";
-// ResolvedEntry 已移入 @finesoft/core，经上面的 `export * from "@finesoft/core"` 透出（勿在此重复列）。
+// ResolvedEntry is owned by Web and exported below.
 
 export * from "@finesoft/web";
 

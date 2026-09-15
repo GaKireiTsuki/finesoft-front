@@ -51,6 +51,26 @@
                 "types": "./dist/node.d.cts",
                 "default": "./dist/node.cjs"
             }
+        },
+        "./ssr": {
+            "import": {
+                "types": "./dist/ssr.d.mts",
+                "default": "./dist/ssr.mjs"
+            },
+            "require": {
+                "types": "./dist/ssr.d.cts",
+                "default": "./dist/ssr.cjs"
+            }
+        },
+        "./vite": {
+            "import": {
+                "types": "./dist/vite.d.mts",
+                "default": "./dist/vite.mjs"
+            },
+            "require": {
+                "types": "./dist/vite.d.cts",
+                "default": "./dist/vite.cjs"
+            }
         }
     },
     "scripts": {

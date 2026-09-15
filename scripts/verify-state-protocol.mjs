@@ -5,10 +5,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "vite-plus";
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const root = path.join(
-    repository,
-    ".superpowers/sdd/2026-09-15-application-boundaries/task-5-evidence/build-app",
-);
+const root = path.join(repository, "reports/application-boundaries/state-protocol/build-app");
 fs.mkdirSync(path.join(root, "src"), { recursive: true });
 fs.mkdirSync(path.join(root, "node_modules/@finesoft"), { recursive: true });
 for (const name of ["front", "core", "web", "ssr", "server", "browser"]) {
@@ -37,11 +34,11 @@ fs.writeFileSync(
 );
 fs.writeFileSync(
     path.join(root, "index.html"),
-    '<html><head><!--ssr-head--></head><body><main id="app"><!--ssr-body--></main><!--ssr-data--><script type="module" src="/src/client.ts"></script></body></html>',
+    '<html><head><!--ssr-head--></head><body><main id="app"><!--ssr-body--><!--ssr-data--></main><script type="module" src="/src/client.ts"></script></body></html>',
 );
 fs.writeFileSync(
     path.join(root, "vite.config.ts"),
-    `import { finesoftFrontViteConfig } from '@finesoft/front'; export default { build: { modulePreload: false }, plugins: [finesoftFrontViteConfig({ adapter: 'node', ssr: { entry: 'src/ssr.ts' }, bootstrapEntry: 'src/app.ts' })] };`,
+    `import { finesoftFrontViteConfig } from '@finesoft/front/vite'; export default { build: { modulePreload: false }, plugins: [finesoftFrontViteConfig({ adapter: 'node', ssr: { entry: 'src/ssr.ts' }, bootstrapEntry: 'src/app.ts' })] };`,
 );
 fs.writeFileSync(
     path.join(root, "src/client.ts"),
@@ -49,20 +46,18 @@ fs.writeFileSync(
 );
 fs.writeFileSync(
     path.join(root, "src/app.ts"),
-    `import { defineWebApp, markPublic } from '@finesoft/front'; export default defineWebApp({ id:'probe', controllers:[{id:'home',handler:()=>markPublic({id:'home',pageType:'home',title:'Home',user:{name:'Alice',secret:'SECRET'}},{user:{name:true}})}], routes:[{path:'/',intentId:'home',renderMode:'prerender',cache:'public'}], getErrorPage:(status,message)=>({id:String(status),pageType:'error',title:message}) });`,
+    `import { defineWebApp, markPublic } from '@finesoft/front/web'; export default defineWebApp({ id:'probe', controllers:[{id:'home',handler:()=>markPublic({id:'home',pageType:'home',title:'Home',user:{name:'Alice',secret:'SECRET'}},{user:{name:true}})}], routes:[{path:'/',intentId:'home',renderMode:'prerender',cache:'public'}], getErrorPage:(status,message)=>({id:String(status),pageType:'error',title:message}) });`,
 );
 fs.writeFileSync(
     path.join(root, "src/ssr.ts"),
-    `import { createSSRRender } from '@finesoft/front'; import definition from './app'; export { serializeServerData } from '@finesoft/front'; export const render=createSSRRender({definition,renderApp:page=>({html:page.title,head:'',css:''})});`,
+    `import { createSSRRender } from '@finesoft/front/ssr'; import definition from './app'; export { serializeServerData } from '@finesoft/front/ssr'; export const render=createSSRRender({definition,renderApp:page=>({html:page.title,head:'',css:''})});`,
 );
 const ids = [];
 for (let round = 0; round < 2; round++) {
     fs.rmSync(path.join(root, "dist"), { recursive: true, force: true });
     await build({ root, logLevel: "warn" });
     const html = fs.readFileSync(path.join(root, "dist/prerender/index.html"), "utf8");
-    const raw = html.match(
-        /<script id="serialized-server-data" type="application\/json">(.*?)<\/script>/s,
-    )?.[1];
+    const raw = html.match(/<script\b[^>]*data-fs-server-data[^>]*>(.*?)<\/script>/s)?.[1];
     assert.ok(raw, "standard shared response emitted wire envelope");
     const wire = JSON.parse(raw);
     const client = fs

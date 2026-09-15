@@ -5,7 +5,7 @@ import {
     defineOperation,
     ExecutionError,
     provide,
-} from "@finesoft/front/core";
+} from "@finesoft/front";
 import { defineEndpoint, type HttpHandlerOptions } from "@finesoft/front/http";
 import type { FixtureBindings } from "../config";
 

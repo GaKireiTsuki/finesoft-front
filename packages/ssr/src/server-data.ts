@@ -18,10 +18,17 @@ export function materializeServerData(
     data: PrefetchedIntent[],
     options: SerializeServerDataOptions = {},
 ): PrefetchedIntent[] {
-    if ((data as unknown as Record<symbol, unknown>)[MATERIALIZED]) return data;
-    const result = data.map((entry) => {
-        if (options.onUnmarkedPage === "strict" && getPublicFields(entry.data) === null)
+    const materialized = (data as unknown as Record<symbol, unknown>)[MATERIALIZED];
+    if (materialized) {
+        if (options.onUnmarkedPage === "strict" && materialized === "unmarked")
             throw Error("markPublic-required");
+        return data;
+    }
+    let allMarked = true;
+    const result = data.map((entry) => {
+        const marked = getPublicFields(entry.data) !== null;
+        allMarked &&= marked;
+        if (options.onUnmarkedPage === "strict" && !marked) throw Error("markPublic-required");
         try {
             return {
                 ...(entry.entryId ? { entryId: entry.entryId } : {}),
@@ -39,7 +46,7 @@ export function materializeServerData(
             throw Error("public-materialization-failed");
         }
     });
-    Object.defineProperty(result, MATERIALIZED, { value: true });
+    Object.defineProperty(result, MATERIALIZED, { value: allMarked ? "marked" : "unmarked" });
     return result;
 }
 /** The shared response assembler remains the single HTML-safe wire serializer owner. */

@@ -82,6 +82,16 @@ function rewriteTemplatePkg(pkgJsonPath) {
     fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 4) + "\n");
 }
 
+/** Turn the workspace tsconfig into an independent consumer config. */
+function rewriteTemplateTsconfig(file) {
+    const base = JSON.parse(fs.readFileSync(path.join(root, "tsconfig.json"), "utf8"));
+    const config = JSON.parse(fs.readFileSync(file, "utf8"));
+    delete config.extends;
+    config.compilerOptions = { ...base.compilerOptions, ...config.compilerOptions };
+    delete config.compilerOptions.paths;
+    fs.writeFileSync(file, JSON.stringify(config, null, 4) + "\n");
+}
+
 // ── Copy templates ──
 
 // Clean previous templates
@@ -101,6 +111,8 @@ for (const tpl of templates) {
     const to = path.join(destDir, tpl.name);
     console.log(`  Copying ${tpl.name}...`);
     copyDir(from, to);
+
+    rewriteTemplateTsconfig(path.join(to, "tsconfig.json"));
 
     // Rewrite monorepo-only references in the copied template
     const pkgJson = path.join(to, "package.json");

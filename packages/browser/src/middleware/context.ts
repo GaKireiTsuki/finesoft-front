@@ -1,6 +1,6 @@
 import type { Container, Intent } from "@finesoft/core";
 import type { NavigationContext } from "@finesoft/web";
-import { parseCookieString } from "../../../web/src/middleware/cookies";
+import { parseCookieString } from "@finesoft/web";
 export interface BrowserContextOptions {
     url: string;
     intent: Intent;

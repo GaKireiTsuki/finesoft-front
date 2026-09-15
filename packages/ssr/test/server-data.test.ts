@@ -24,3 +24,33 @@ describe("serializeServerData", () => {
         expect(serialized).not.toContain("</script>");
     });
 });
+
+test("strict policy survives materialization without revisiting request-backed getters", async () => {
+    const { materializeServerData } = await import("../src/server-data");
+    const { markPublic } = await import("../../web/src/models/page");
+    const raw = [{ intent: { id: "home" }, data: { id: "home", pageType: "home", title: "Home" } }];
+    const unmarked = materializeServerData(raw);
+    expect(() => serializeServerData(unmarked, { onUnmarkedPage: "strict" })).toThrow(
+        "markPublic-required",
+    );
+    expect(() => serializeServerData(raw, { onUnmarkedPage: "strict" })).toThrow(
+        "markPublic-required",
+    );
+    let live = true;
+    const marked = materializeServerData([
+        {
+            intent: { id: "home" },
+            data: markPublic(
+                {
+                    get title() {
+                        if (!live) throw Error("disposed");
+                        return "Home";
+                    },
+                },
+                ["title"],
+            ),
+        },
+    ]);
+    live = false;
+    expect(serializeServerData(marked, { onUnmarkedPage: "strict" })).toContain("Home");
+});

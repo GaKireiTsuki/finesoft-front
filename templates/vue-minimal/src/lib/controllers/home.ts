@@ -8,6 +8,7 @@ export interface FeedItem {
 
 /** Home（feed）页面：携带可 push 进 detail 的列表项。 */
 export interface FeedPage extends BasePage {
+    readonly pageType: "home";
     readonly items: readonly FeedItem[];
 }
 

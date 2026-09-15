@@ -13,6 +13,7 @@
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^7.3.0",
+        "hono": "^4.13.1",
         "vite": "catalog:",
         "vite-plus": "catalog:"
     }

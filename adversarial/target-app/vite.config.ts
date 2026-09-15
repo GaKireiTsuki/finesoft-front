@@ -1,4 +1,4 @@
-import { finesoftFrontViteConfig } from "@finesoft/front";
+import { finesoftFrontViteConfig } from "@finesoft/front/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, lazyPlugins, loadEnv } from "vite-plus";
 

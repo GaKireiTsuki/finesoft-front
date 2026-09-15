@@ -1,21 +1,6 @@
-/**
- * Dynamic import wrapper that is opaque to Vite's import analysis.
- *
- * When tsdown bundles `@finesoft/server` into `@finesoft/front`,
- * it inlines temporary variables and strips `@vite-ignore` comments
- * from `import()` calls with computed specifiers. This produces
- * "dynamic import cannot be analyzed" warnings in the dev console.
- *
- * `new Function` hides the `import()` call from all static analysis,
- * including Vite's `vite:import-analysis` plugin. The specifier is
- * always an absolute file:// URL constructed by the framework itself,
- * so this is safe for server-side use.
- *
- * ## Features
- *
- * - **Type-safe overloads** for known Node.js / third-party modules
- * - **Module cache** — stable built-in specifiers are resolved once
- * - **Debug logging** — set `FINESOFT_DEBUG=1` to trace dynamic imports
+/** Native dynamic import for known host modules and built SSR module URLs.
+ * Stable non-file modules are cached here. File modules use the native loader;
+ * callers use Vite's loader for development updates. This helper uses no eval or new Function.
  */
 
 // ── Known module type map ──────────────────────────────────────

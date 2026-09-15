@@ -6,6 +6,6 @@ export default defineConfig({
         dts: true,
         sourcemap: true,
         clean: true,
-        external: ["@finesoft/core"],
+        deps: { neverBundle: ["@finesoft/core"] },
     },
 });

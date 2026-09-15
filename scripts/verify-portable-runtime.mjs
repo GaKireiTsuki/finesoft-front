@@ -133,7 +133,7 @@ function checkGraph(file) {
         `UI global in ${file.pathname}`,
     );
 }
-for (const entry of ["core", "http", "worker"])
+for (const entry of ["index", "http", "worker"])
     checkGraph(new URL(`../packages/front/dist/${entry}.mjs`, import.meta.url));
 const workerSource = readFileSync(
     new URL("../adversarial/runtime-app/dist/worker/worker.mjs", import.meta.url),

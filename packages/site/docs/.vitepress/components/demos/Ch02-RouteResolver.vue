@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Router, type RouteMatch } from "@finesoft/front/web";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { sampleRoutes, sampleUrls } from "../fixtures/sample-routes";
 import JsonInspector from "../primitives/JsonInspector.vue";
 
@@ -15,10 +15,19 @@ const router = (() => {
 const url = ref("/products/42?ref=email");
 const customMode = ref(false);
 
-const match = computed<RouteMatch | null>(() => {
-    if (!url.value) return null;
-    return router.resolve(url.value);
-});
+const match = ref<RouteMatch | null>(null);
+watch(
+    url,
+    async (value, _previous, onCleanup) => {
+        let current = true;
+        onCleanup(() => {
+            current = false;
+        });
+        const resolved = value ? await router.resolve(value) : null;
+        if (current) match.value = resolved;
+    },
+    { immediate: true },
+);
 
 const matchPretty = computed(() => {
     if (!match.value) return null;

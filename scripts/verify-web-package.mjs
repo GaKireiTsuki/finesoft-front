@@ -27,8 +27,8 @@ try {
     ]) {
         const js =
             format === "ESM"
-                ? 'import { Container } from "@finesoft/core"; import { Framework, Router } from "@finesoft/web";'
-                : 'const { Container } = require("@finesoft/core"); const { Framework, Router } = require("@finesoft/web");';
+                ? 'import { Container } from "@finesoft/core"; import { Framework, Router, defineWebApp } from "@finesoft/web";'
+                : 'const { Container } = require("@finesoft/core"); const { Framework, Router, defineWebApp } = require("@finesoft/web");';
         try {
             execFileSync(
                 process.execPath,
@@ -36,7 +36,7 @@ try {
                     "--input-type=" + (format === "ESM" ? "module" : "commonjs"),
                     "-e",
                     js +
-                        '\nconst framework = Framework.create(); if (!(framework.container instanceof Container) || !(framework.router instanceof Router)) throw new Error("package constructor identity mismatch");',
+                        '\nconst framework = Framework.create({ definition: defineWebApp({ id: "artifact", routes: [], getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }) }) }); if (!(framework.container instanceof Container) || !(framework.router instanceof Router)) throw new Error("package constructor identity mismatch"); void framework.dispose();',
                 ],
                 { cwd: consumer, stdio: "pipe" },
             );
@@ -52,8 +52,8 @@ try {
             sourcePath,
             `
 import { Container, type Intent, createRuntime, defineApp, defineOperation, createToken, provide } from "@finesoft/core";
-import { Framework, Router } from "@finesoft/web";
-const framework: Framework = Framework.create();
+import { Framework, Router, defineWebApp } from "@finesoft/web";
+const framework: Framework = Framework.create({ definition: defineWebApp({ id: "artifact", routes: [], getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }) }) });
 const container: Container = framework.container;
 const router: Router = framework.router;
 const intent: Intent<string> = { id: "artifact-check" };

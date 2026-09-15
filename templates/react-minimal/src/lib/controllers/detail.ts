@@ -2,6 +2,7 @@ import { markPublic, BaseController, type BasePage } from "@finesoft/front/brows
 
 /** Detail 页面：由 push("detail", { id }) 进入；id 进 params。 */
 export interface DetailPage extends BasePage {
+    readonly pageType: "detail";
     readonly itemId: string;
 }
 

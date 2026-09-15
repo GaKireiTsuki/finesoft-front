@@ -1,211 +1,105 @@
-import * as nodePath from "node:path";
+import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-
-const { dynamicImport } = vi.hoisted(() => ({
-    dynamicImport: vi.fn(),
-}));
-
-vi.mock("../../src/dynamic-import", () => ({
-    dynamicImport,
-}));
-
+import { afterEach, expect, test, vi } from "vite-plus/test";
+const { dynamicImport } = vi.hoisted(() => ({ dynamicImport: vi.fn() }));
+vi.mock("../../src/dynamic-import", () => ({ dynamicImport }));
 import { staticAdapter } from "../../src/adapters/static";
-
 afterEach(() => {
     vi.restoreAllMocks();
     dynamicImport.mockReset();
 });
-
-describe("staticAdapter", () => {
-    test("builds static output with SSR, CSR overrides, and dynamic routes", async () => {
-        const { files, fs } = createFsMock();
-        const vite = { build: vi.fn(async () => {}) };
-        const copyStaticAssets = vi.fn();
-        const render = vi.fn(async (url: string) => ({
+function fixture(overrides: Record<string, unknown> = {}) {
+    const files = new Map<string, string>();
+    const render = Object.assign(
+        vi.fn(async (url: string, _context?: unknown) => ({
             html: `<main>${url}</main>`,
-            head: '<meta charset="utf-8">',
-            css: ".app{color:red}",
-            serverData: [{ url }],
-        }));
-        const ctx = createStaticContext({
-            fs,
-            vite,
-            copyStaticAssets,
-            templateHtml:
-                "<html><head><!--ssr-head--></head><body><!--ssr-body--><!--ssr-data--></body></html>",
-            renderModes: {
-                "/client": "csr",
-                "/catalog/*": "prerender",
-            },
-        });
-        const routesModuleUrl = pathToFileURL(
-            nodePath.resolve("/project", "dist/server/_routes.mjs"),
-        ).href;
-        const ssrModuleUrl = pathToFileURL(nodePath.resolve("/project", "dist/server/ssr.js")).href;
-
-        dynamicImport.mockImplementation(async (specifier: string) => {
-            if (specifier === "node:url") {
-                return import("node:url");
-            }
-            if (specifier === ssrModuleUrl) {
-                return {
-                    render,
-                    serializeServerData: vi.fn((data: unknown) => JSON.stringify(data)),
-                };
-            }
-            if (specifier === routesModuleUrl) {
-                return {
-                    routes: [
-                        { path: "/", renderMode: "prerender" },
-                        { path: "/client", renderMode: "ssr" },
-                        { path: "/user/:id", renderMode: "prerender" },
-                    ],
-                };
-            }
-            throw new Error(`Unexpected import: ${specifier}`);
-        });
-
-        await staticAdapter({
-            routesExport: "src/routes.ts",
-            dynamicRoutes: ["/catalog/game"],
-        }).build(ctx as never);
-
-        const outputDir = nodePath.resolve("/project", "dist/static");
-
-        expect(fs.rmSync).toHaveBeenCalledWith(outputDir, {
-            recursive: true,
-            force: true,
-        });
-        expect(fs.mkdirSync).toHaveBeenCalledWith(outputDir, {
-            recursive: true,
-        });
-        expect(copyStaticAssets).toHaveBeenCalledWith(outputDir, {
-            excludeHtml: true,
-        });
-        expect(vite.build).toHaveBeenCalledWith({
-            root: "/project",
-            build: {
-                ssr: "src/routes.ts",
-                outDir: nodePath.resolve("/project", "dist/server"),
-                emptyOutDir: false,
-                rollupOptions: {
-                    output: { entryFileNames: "_routes.mjs" },
-                },
-            },
-            resolve: {},
-        });
-        expect(fs.rmSync).toHaveBeenCalledWith(
-            nodePath.resolve("/project", "dist/server/_routes.mjs"),
-            {
-                force: true,
-            },
-        );
-        expect(render).toHaveBeenCalledTimes(2);
-        expect(files.get(nodePath.join(outputDir, "index.html"))).toContain("<main>/</main>");
-        expect(files.get(nodePath.join(outputDir, "/client", "index.html"))).toContain(
-            "<body></body>",
-        );
-        expect(files.get(nodePath.join(outputDir, "/client", "index.html"))).not.toContain(
-            "<main>/client</main>",
-        );
-        expect(files.get(nodePath.join(outputDir, "/catalog/game", "index.html"))).toContain(
-            "<main>/catalog/game</main>",
-        );
-    });
-
-    test("falls back to prerendering the root route when route extraction fails", async () => {
-        const { files, fs } = createFsMock();
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-        const vite = {
-            build: vi.fn(async () => {
-                throw new Error("routes failed");
-            }),
-        };
-        const copyStaticAssets = vi.fn();
-        const render = vi.fn(async () => ({
-            html: "<main>/</main>",
             head: "",
             css: "",
             serverData: [],
-        }));
-        const ctx = createStaticContext({
-            fs,
-            vite,
-            copyStaticAssets,
-            templateHtml:
-                "<html><head><!--ssr-head--></head><body><!--ssr-body--><!--ssr-data--></body></html>",
-        });
-        const ssrModuleUrl = pathToFileURL(nodePath.resolve("/project", "dist/server/ssr.js")).href;
-
-        dynamicImport.mockImplementation(async (specifier: string) => {
-            if (specifier === "node:url") {
-                return import("node:url");
-            }
-            if (specifier === ssrModuleUrl) {
-                return {
-                    render,
-                    serializeServerData: vi.fn((data: unknown) => JSON.stringify(data)),
-                };
-            }
-            throw new Error(`Unexpected import: ${specifier}`);
-        });
-
-        await staticAdapter().build(ctx as never);
-
-        const outputDir = nodePath.resolve("/project", "dist/static");
-
-        expect(warn).toHaveBeenCalledWith(
-            '  [static] Could not load routes from "src/lib/bootstrap.ts". Using "/" only.',
-            expect.any(Error),
-        );
-        expect(copyStaticAssets).toHaveBeenCalledWith(outputDir, {
-            excludeHtml: true,
-        });
-        expect(render).toHaveBeenCalledWith("/");
-        expect(files.get(nodePath.join(outputDir, "index.html"))).toContain("<main>/</main>");
-    });
-});
-
-function createStaticContext(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-    return {
+            locale: "ar",
+            slots: { extra: "<aside>slot</aside>" },
+            ...overrides,
+        })),
+        {
+            routes: [{ path: "/" }, { path: "/client" }, { path: "/product/:id" }],
+            dispose: vi.fn(async () => {}),
+        },
+    );
+    const context = {
         root: "/project",
-        templateHtml: "<html></html>",
-        renderModes: {},
+        path,
+        templateHtml:
+            '<html><head><!--ssr-head--></head><body><div id="app"><!--ssr-body--><!--ssr-data--></div><!--ssr-extra--></body></html>',
+        renderModes: { "/client": "csr", "/product/*": "prerender" },
+        defaultLocale: "en",
         resolvedResolve: {},
         vite: { build: vi.fn(async () => {}) },
         copyStaticAssets: vi.fn(),
         fs: {
-            mkdirSync: vi.fn(),
             rmSync: vi.fn(),
-            writeFileSync: vi.fn(),
-        },
-        path: {
-            resolve: (...parts: string[]) => nodePath.resolve(...parts),
-            join: (...parts: string[]) => nodePath.join(...parts),
-        },
-        ...overrides,
-    };
-}
-
-function createFsMock(initialFiles: Record<string, string> = {}): {
-    files: Map<string, string>;
-    fs: {
-        mkdirSync: ReturnType<typeof vi.fn>;
-        rmSync: ReturnType<typeof vi.fn>;
-        writeFileSync: ReturnType<typeof vi.fn>;
-    };
-} {
-    const files = new Map<string, string>(Object.entries(initialFiles));
-
-    return {
-        files,
-        fs: {
             mkdirSync: vi.fn(),
-            rmSync: vi.fn(),
-            writeFileSync: vi.fn((filePath: string, content: string) => {
-                files.set(filePath, String(content));
-            }),
+            writeFileSync: vi.fn((file: string, value: string) => files.set(file, value)),
         },
     };
+    dynamicImport.mockImplementation(async (specifier: string) => {
+        if (specifier === "node:url") return { pathToFileURL };
+        if (specifier.endsWith("/ssr.js")) return { render, serializeServerData: JSON.stringify };
+        if (specifier.endsWith("/_routes.mjs")) return { app: { routes: [{ path: "/explicit" }] } };
+        throw Error("Unexpected module " + specifier);
+    });
+    return { files, render, context };
 }
+test("built routes, shared slots/locale/wire HTML, CSR and dynamic override; renderer disposed", async () => {
+    const { files, render, context } = fixture();
+    await staticAdapter({ dynamicRoutes: ["/product/42"] }).build(context as never);
+    expect(context.vite.build).not.toHaveBeenCalled();
+    expect(render).toHaveBeenCalledTimes(2);
+    expect(files.get("/project/dist/static/index.html")).toContain('lang="ar" dir="rtl"');
+    expect(files.get("/project/dist/static/index.html")).toContain("data-fs-server-data");
+    expect(files.get("/project/dist/static/index.html")).toContain("<aside>slot</aside>");
+    expect(files.get("/project/dist/static/client/index.html")).not.toContain(
+        "data-fs-server-data",
+    );
+    expect(files.get("/project/dist/static/client/index.html")).toContain('lang="en"');
+    expect(files.get("/project/dist/static/product/42/index.html")).toContain("/product/42");
+    expect(render.mock.calls[0]?.[1]).toMatchObject({ request: expect.any(Request) });
+    expect(render.dispose).toHaveBeenCalledOnce();
+});
+test("explicit Web definition route module remains an optional extension", async () => {
+    const { files, context, render } = fixture();
+    await staticAdapter({ routesExport: "src/pages.ts" }).build(context as never);
+    expect(context.vite.build).toHaveBeenCalledOnce();
+    expect(files.has("/project/dist/static/explicit/index.html")).toBe(true);
+    expect(context.fs.rmSync).toHaveBeenCalledWith("/project/dist/server/_routes.mjs", {
+        force: true,
+    });
+    expect(render.dispose).toHaveBeenCalledOnce();
+});
+test.each([
+    { status: 403 },
+    { redirect: { url: "/login", status: 302 } },
+    { headers: { "Set-Cookie": "session=private" } },
+    { headers: { "X-Policy": "required" } },
+])(
+    "rejects unrepresentable HTTP behavior %j and disposes without successful output",
+    async (result) => {
+        const { files, context, render } = fixture(result);
+        await expect(staticAdapter().build(context as never)).rejects.toThrow(/Static route/);
+        expect(files.size).toBe(0);
+        expect(render.dispose).toHaveBeenCalledOnce();
+    },
+);
+test("discovery failures surface and still await owned renderer cleanup", async () => {
+    const { context, render } = fixture();
+    context.vite.build.mockRejectedValue(Error("discovery failed"));
+    await expect(
+        staticAdapter({ routesExport: "missing.ts" }).build(context as never),
+    ).rejects.toThrow("discovery failed");
+    expect(render.dispose).toHaveBeenCalledOnce();
+});
+test("render failures become failed builds and still await cleanup", async () => {
+    const { context, render } = fixture();
+    render.mockRejectedValue(Error("private failure"));
+    await expect(staticAdapter().build(context as never)).rejects.toThrow("HTTP 500");
+    expect(render.dispose).toHaveBeenCalledOnce();
+});

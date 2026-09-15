@@ -1,1 +1,1 @@
-export * from "../../server/src/worker";
+export * from "@finesoft/server/worker";

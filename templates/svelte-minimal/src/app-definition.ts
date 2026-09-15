@@ -1,10 +1,11 @@
-import { defineWebApp } from "@finesoft/front/web";
+import { definePage, defineWebApp } from "@finesoft/front/web";
 import { HomeController } from "./lib/controllers/home";
 import { loadMessages } from "virtual:finesoft-front/i18n-loader";
+export const homePage = definePage({ id: "home", create: () => new HomeController() });
 export const app = defineWebApp({
     id: "svelte-minimal",
-    controllers: [{ id: "home", create: () => new HomeController() }],
-    routes: [{ path: "/", intentId: "home" }],
+    controllers: [homePage],
+    routes: [homePage.route("/")],
     getErrorPage: (status, message) => ({
         id: "error",
         pageType: "error",

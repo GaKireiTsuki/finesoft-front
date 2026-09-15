@@ -1,5 +1,5 @@
 import { createFixture, inspect } from "./business";
-import { ExecutionError } from "@finesoft/front/core";
+import { ExecutionError } from "@finesoft/front";
 interface InspectMessage {
     protocolVersion: 1;
     id: string;

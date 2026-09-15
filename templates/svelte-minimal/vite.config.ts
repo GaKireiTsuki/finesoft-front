@@ -1,4 +1,4 @@
-import { finesoftFrontViteConfig } from "@finesoft/front";
+import { finesoftFrontViteConfig } from "@finesoft/front/vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig, lazyPlugins } from "vite-plus";
 

@@ -1,16 +1,9 @@
-import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, readFile, readdir, writeFile, rm } from "node:fs/promises";
+import { constants } from "node:fs";
 import { relative, resolve } from "node:path";
 
 const packageJsonPath = resolve(process.cwd(), "package.json");
 const backupPath = resolve(process.cwd(), "package.json.publish-backup");
-
-const INTERNAL_PACKAGES = [
-    "@finesoft/core",
-    "@finesoft/web",
-    "@finesoft/browser",
-    "@finesoft/ssr",
-    "@finesoft/server",
-];
 
 async function collectPublishableDistFiles(dirPath) {
     const entries = await readdir(dirPath, { withFileTypes: true });
@@ -32,23 +25,26 @@ async function collectPublishableDistFiles(dirPath) {
     return files.sort((a, b) => a.localeCompare(b));
 }
 
-await copyFile(packageJsonPath, backupPath);
+// Refuse a second prepare rather than overwriting the only restoration copy.
+await copyFile(packageJsonPath, backupPath, constants.COPYFILE_EXCL);
+try {
+    const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
 
-const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
+    // Consumer manifests contain only runtime contracts, never workspace/tooling dependencies.
+    delete packageJson.devDependencies;
 
-if (packageJson.devDependencies) {
-    for (const packageName of INTERNAL_PACKAGES) {
-        delete packageJson.devDependencies[packageName];
-    }
+    const publishableDistFiles = await collectPublishableDistFiles(resolve(process.cwd(), "dist"));
+    const extraFiles = Array.isArray(packageJson.files)
+        ? packageJson.files.filter((file) => !String(file).startsWith("dist"))
+        : [];
+
+    packageJson.files = [...publishableDistFiles, ...extraFiles];
+
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, "\t")}\n`, "utf8");
+
+    console.log("Prepared packages/front/package.json for publish.");
+} catch (error) {
+    await writeFile(packageJsonPath, await readFile(backupPath));
+    await rm(backupPath);
+    throw error;
 }
-
-const publishableDistFiles = await collectPublishableDistFiles(resolve(process.cwd(), "dist"));
-const extraFiles = Array.isArray(packageJson.files)
-    ? packageJson.files.filter((file) => !String(file).startsWith("dist"))
-    : [];
-
-packageJson.files = [...publishableDistFiles, ...extraFiles];
-
-await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, "\t")}\n`, "utf8");
-
-console.log("Prepared packages/front/package.json for publish.");

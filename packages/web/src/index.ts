@@ -176,3 +176,6 @@ export {
 } from "./protocol";
 
 export { resolveInitialNavigation } from "./application/initial-navigation";
+
+export { definePage, type PageReference } from "./application/page";
+export { parseCookieString } from "./middleware/cookies";

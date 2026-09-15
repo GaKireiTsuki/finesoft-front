@@ -48,7 +48,7 @@ export const NODE_BUILTINS = [
 export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOptions): string {
     return `
 import { Hono } from "hono";
-import { createSSRHost } from "@finesoft/front/http";
+import { createSSRHost } from "@finesoft/front/ssr";
 ${opts.platformImport}
 ${opts.dnsPolicy === "hostname" ? "" : 'import { nodeDnsLookup as _dnsLookup } from "@finesoft/front/node";'}
 import { render, serializeServerData } from "./${ctx.ssrEntry}";

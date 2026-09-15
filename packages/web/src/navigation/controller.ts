@@ -173,7 +173,7 @@ export type NavigationOperation =
  *   cookie/header 的最小上下文兜底（含 url/path/params/intent/container/isServer，
  *   其中 isServer 取 `NavigationControllerOptions.isServer`，缺省按运行环境推断）。
  *
- * `signal` 暂无消费方（现有 runner 也没有 AbortSignal 管线），仅透传保留。
+ * `signal` propagates to guarded page loading and the existing execution scope.
  */
 export interface NavigationContextInput {
     readonly intent: string;
@@ -327,8 +327,11 @@ export function createNavigationController(
     ): Promise<NavigationSnapshot> {
         const ownGeneration = generation;
         const check = () => {
-            if (closed || signal?.aborted || ownGeneration !== generation)
+            if (signal?.aborted) {
+                options.execution?.cancel(signal.reason);
                 throw new ExecutionError("cancelled");
+            }
+            if (closed || ownGeneration !== generation) throw new ExecutionError("cancelled");
         };
         for (let redirects = 0; ; redirects++) {
             check();

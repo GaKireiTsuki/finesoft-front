@@ -7,7 +7,7 @@
  *   'Bar=error,Baz=warn'  — Bar 只输出 error，Baz 输出 warn+
  */
 
-import type { Level } from "../../../core/src/logger/types";
+import type { LogFilter } from "@finesoft/core";
 
 type LevelNum = 4 | 3 | 2 | 1 | 0;
 
@@ -68,7 +68,7 @@ function parseRules(): Rules {
     return rules;
 }
 
-export function shouldLog(name: string, level: Level): boolean {
+export function shouldLog(name: string, level: Parameters<LogFilter>[1]): boolean {
     const rules = parseRules();
 
     if (rules.defaultLevel === undefined && !rules.named) {

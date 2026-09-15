@@ -7,10 +7,7 @@ import { build } from "vite-plus";
 import { nodeAdapter } from "../packages/server/dist/index.mjs";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const evidence = path.join(
-    repository,
-    ".superpowers/sdd/2026-09-15-application-boundaries/task-4-evidence",
-);
+const evidence = path.join(repository, "reports/application-boundaries/web-navigation");
 const root = path.join(evidence, "artifact-app");
 fs.rmSync(path.join(root, "dist"), { recursive: true, force: true });
 fs.mkdirSync(path.join(root, "src"), { recursive: true });
@@ -33,7 +30,7 @@ fs.writeFileSync(
 fs.writeFileSync(
     path.join(root, "src/app.ts"),
     `
-import { defineWebApp, markPublic } from "@finesoft/front";
+import { defineWebApp, markPublic } from "@finesoft/front/web";
 export default defineWebApp({
     id: "production-probe",
     controllers: [{ id: "page", handler: () => markPublic({ id: "public", pageType: "probe", title: "Public artifact" }, true) }],
@@ -48,9 +45,9 @@ export default defineWebApp({
 fs.writeFileSync(
     path.join(root, "src/ssr.ts"),
     `
-import { createSSRRender } from "@finesoft/front";
+import { createSSRRender } from "@finesoft/front/ssr";
 import definition from "./app";
-export { serializeServerData } from "@finesoft/front";
+export { serializeServerData } from "@finesoft/front/ssr";
 export const render = createSSRRender({ definition, renderApp: page => ({ html: "<main>" + page.title + "</main>", head: "", css: "" }) });
 `,
 );

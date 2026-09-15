@@ -6,7 +6,8 @@ export default defineConfig({
             "src/index.ts",
             "src/browser.ts",
             "src/web.ts",
-            "src/core.ts",
+            "src/ssr.ts",
+            "src/vite.ts",
             "src/http.ts",
             "src/worker.ts",
             "src/node.ts",
@@ -18,8 +19,14 @@ export default defineConfig({
         dts: true,
         sourcemap: true,
         clean: true,
-        // Bundle source owners, including temporary migration entries, without leaking private workspaces.
+        // Bundle private owners into isolated public entry graphs.
         alias: {
+            ...Object.fromEntries(
+                ["http", "node", "worker", "ssr", "vite"].map((name) => [
+                    `@finesoft/server/${name}`,
+                    new URL(`../server/src/${name}.ts`, import.meta.url).pathname,
+                ]),
+            ),
             "@finesoft/ssr/inject": new URL("../ssr/src/inject.ts", import.meta.url).pathname,
             ...Object.fromEntries(
                 internal.map((name) => [

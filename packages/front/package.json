@@ -1,7 +1,7 @@
 {
     "name": "@finesoft/front",
     "version": "0.5.1",
-    "description": "Full-stack framework: router, DI, actions, SSR, and server — all in one package",
+    "description": "Portable application runtime with explicit Web, browser, SSR, HTTP and platform entries",
     "license": "MIT",
     "files": [
         "dist",
@@ -37,10 +37,6 @@
             "types": "./dist/worker.d.mts",
             "import": "./dist/worker.mjs"
         },
-        "./core": {
-            "types": "./dist/core.d.mts",
-            "import": "./dist/core.mjs"
-        },
         "./renderers/react/browser": {
             "types": "./dist/renderers/react/browser.d.mts",
             "import": "./dist/renderers/react/browser.mjs"
@@ -64,6 +60,14 @@
         "./renderers/svelte/server": {
             "types": "./dist/renderers/svelte/server.d.mts",
             "import": "./dist/renderers/svelte/server.mjs"
+        },
+        "./ssr": {
+            "types": "./dist/ssr.d.mts",
+            "import": "./dist/ssr.mjs"
+        },
+        "./vite": {
+            "types": "./dist/vite.d.mts",
+            "import": "./dist/vite.mjs"
         }
     },
     "scripts": {
@@ -83,7 +87,6 @@
         "@types/node": "catalog:",
         "@types/react": "^19.2.18",
         "@types/react-dom": "^19.2.4",
-        "dotenv": "^17.4.2",
         "hono": "^4.13.1",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
@@ -95,13 +98,32 @@
     "peerDependencies": {
         "@hono/node-server": "^1.0.0 || ^2.0.0",
         "hono": "^4.0.0",
-        "vite": ">=5.0.0"
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "svelte": "^5.0.0",
+        "vite": ">=5.0.0",
+        "vue": "^3.5.0"
     },
     "peerDependenciesMeta": {
         "@hono/node-server": {
             "optional": true
         },
         "vite": {
+            "optional": true
+        },
+        "hono": {
+            "optional": true
+        },
+        "react": {
+            "optional": true
+        },
+        "react-dom": {
+            "optional": true
+        },
+        "vue": {
+            "optional": true
+        },
+        "svelte": {
             "optional": true
         }
     }

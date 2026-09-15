@@ -2,36 +2,28 @@
 
 ## Architecture
 
-This is `@finesoft/front`, a full-stack TypeScript framework monorepo managed as pnpm workspaces through Vite+ (`vp`). Five runtime packages form a layered dependency graph:
+This is `@finesoft/front`, a TypeScript framework built with Vite+ workspaces. Portable execution is independent of Web navigation, UI and deployment hosts.
 
-```
-core ← browser       (client runtime)
-core ← ssr ← server  (server runtime, Hono-based)
-front                 (published aggregation bundle of all above)
-```
+`core ← web ← browser / ssr`; `core ← server/http ← Node / Worker`. SSR response assembly uses the Web renderer through an explicit SSR entry. Vite owns build and deployment module generation. `front` bundles the private packages into isolated public entries.
 
-| Package     | Purpose                                                                                             |
-| ----------- | --------------------------------------------------------------------------------------------------- |
-| **core**    | Router, DI container, action/intent dispatchers, middleware pipeline, data mappers, logging         |
-| **browser** | Browser bootstrap (`startBrowserApp`), action handlers, history management, SSR data hydration      |
-| **ssr**     | Server-side rendering, HTML injection, `PrefetchedIntents` serialization                            |
-| **server**  | Hono integration, multi-platform adapters (Node, Vercel, Netlify, Cloudflare), Vite plugin          |
-| **front**   | Published package — bundles all internal packages with two entry points (full-stack + browser-only) |
+| Public entry | Responsibility |
+| --- | --- |
+| `@finesoft/front` | Portable operations, definitions, runtime, providers and utilities |
+| `/web` | Typed pages, routes, navigation, public projection and state |
+| `/browser` | Browser instance lifecycle, history, hydration and restore |
+| `/ssr` | Page rendering and standard Request/Response assembly |
+| `/http` | Portable data endpoints and response lifetime |
+| `/node`, `/worker` | Platform hosts and platform capabilities |
+| `/vite` | Vite plugin and thin deployment generators |
+| `/renderers/{react,vue,svelte}/{browser,server}` | Selected native UI adapter; optional peers |
 
-Supporting workspaces:
-
-| Workspace                  | Purpose                                                          |
-| -------------------------- | ---------------------------------------------------------------- |
-| **create-app**             | Published `create-finesoft-app` scaffolding CLI                   |
-| **site**                   | Private VitePress documentation site                              |
-| **templates/**             | Private React, Vue, and Svelte full/minimal application fixtures |
-| **adversarial/target-app** | Private security and integration build fixture                    |
-
-Consumer and template application code should import framework APIs from `@finesoft/front` (or its `@finesoft/front/browser` entry point), not the private runtime packages.
+`create-app` publishes the scaffolder; site, six templates and adversarial apps are private consumers. Consumer code imports only public front entries.
 
 ### Key Abstractions
 
-- **Framework** — central orchestrator; owns Container, Router, ActionDispatcher, IntentDispatcher; provides `getLocale()`, `getPlatform()`, `didEnterPage()`
+- **RuntimeHandle** owns portable execution, policy/schema validation, invocation scopes and owned providers.
+- **definePage / defineWebApp** declare reusable page factories, routes and navigation. Reference helpers reuse existing declarations; they never instantiate controllers for discovery.
+- **Framework** is the Web facade; it delegates execution to RuntimeHandle and page loading to the shared guarded loader.
 - **BaseController\<TParams, TResult\>** — abstract intent handler with try/catch → `fallback()` pattern
 - **Middleware pipeline** — two-phase: `beforeLoad` (navigation guards) → `afterLoad` (post-data guards); first non-`next` result short-circuits
 - **ActionDispatcher** — handles `FlowAction` (SPA nav), `ExternalUrlAction`, `CompoundAction` (recursive)
@@ -59,21 +51,21 @@ Consumer and template application code should import framework APIs from `@fines
 
 ### Request Lifecycle
 
-1. `Router.resolve(url)` → `RouteMatch` (intent, action, renderMode, guards)
-2. `beforeLoad` guards run (NavigationContext)
-3. `IntentDispatcher.dispatch(intent)` → controller → `Page`
-4. `afterLoad` guards run (PostLoadContext with Page)
-5. SSR injects prefetched data into HTML; CSR updates the UI and pushes/replaces history
-6. A browser `popstate` navigation waits for dispatch and guards before restoring that entry's scroll position
+1. Normalize application declarations once; create an independent runtime per app/host.
+2. Open an invocation and apply schema validation/policies before executing an operation.
+3. Web URL, SSR and structured tree navigation share guarded page loading.
+4. Browser admission prevents stale results from committing; structured tree edits serialize.
+5. SSR materializes public data before request cleanup; HTTP streams retain resources through consumption/cancellation/failure.
+6. Hydrate before optional session restore; renderer handles preserve same-entry drafts and dispose native views on replacement.
 
 ### Browser History and Scroll Restoration
 
 - `History.onPopState()` accepts a synchronous or asynchronous listener. Listener settlement is the restoration boundary: never start `tryScroll()` while the old page or a loading state is still active.
-- The flow-action popstate listener must not resolve until the target `Page` and its `afterLoad` guards have completed and `updateApp()` has received the guarded page promise.
+- The standard browser host popstate listener must not resolve until the target `Page` and its `afterLoad` guards have completed and the renderer ready boundary has settled.
 - Save the departing entry's scroll position using the previous `currentStateId` before switching to the target entry.
 - Keep both the popstate sequence and target state-id checks. They prevent a slow earlier navigation from restoring scroll over a newer back/forward navigation.
 - `pushState()`, `replaceState()`, `pushUrl()`, and `replaceUrl()` cancel pending restoration and initialize the new entry at scroll position `0`.
-- Preserve the regression coverage in `packages/browser/test/utils/history.test.ts` and `packages/browser/test/action-handlers/flow-action.test.ts` when changing navigation timing.
+- Preserve the regression coverage in `packages/browser/test/utils/history.test.ts` and `packages/browser/test/standard-start.test.ts` when changing navigation timing.
 
 ### Rendering Modes
 
@@ -123,10 +115,10 @@ Release locally with `vp run changeset` followed by `vp run release`. The automa
 
 ### Exports
 
-- `core`, `browser`, and `ssr` request dual ESM/CJS output with declarations; `server` omits declarations
-- `front` is ESM-only and publishes full-stack `.` plus browser-only `./browser` entry points
-- Barrel `index.ts` files define each package's public API
-- `@finesoft/front` bundles all internal runtime packages via `noExternal`
+- Private runtime packages build ESM/CJS with declarations; public front is ESM only.
+- Root is portable; environment/UI dependencies belong only to explicit subentries.
+- `vite.config.ts` pack blocks are the active build settings. `deps.alwaysBundle` bundles private owners into front; declarations must not leak private workspace imports.
+- Actual local tarballs use `vp pm pack`; `vp pack` builds a library.
 
 ## Conventions
 
@@ -138,15 +130,15 @@ Release locally with `vp run changeset` followed by `vp run release`. The automa
 - **Use `vp` for all tooling** — never invoke pnpm/npm/vitest/oxlint directly
 - Vite+ reads `fmt`, `lint`, `staged`, and test settings from `vite.config.ts`; standalone `.oxlintrc.json` and `.oxfmtrc.json` mirror relevant settings for IDE/LSP use, so keep them synchronized
 - The catalog's `vite` alias is intentionally pinned to the stable `npm:@voidzero-dev/vite-plus-core@0.2.8`; do not replace it with a `dev`/nightly build. Keep `vitest` and `@vitest/coverage-v8` exact and version-aligned
-- The section between `<!--VITE PLUS START-->` and `<!--VITE PLUS END-->` is generated by `vp config`; make durable project-specific edits above it
-- Each package has its own `tsdown.config.ts` — respect external/noExternal boundaries
+- The generated Vite Plus section at the bottom is maintained by `vp config`; make durable project-specific edits above it
+- Runtime packages configure `pack` in `vite.config.ts`; preserve `deps.neverBundle` / `deps.alwaysBundle` boundaries
 - `front` uses symmetric `prepack`/`postpack` scripts (`prepare-front-publish.mjs` and `restore-front-publish.mjs`) to rewrite and restore `package.json`; preserve both sides together
 - Error handling: use `HttpError` class; controllers recover via `fallback()` method
 
 ## CI Scope
 
-- `Quality` runs `vp check` and `vp test --coverage`; coverage includes `packages/{core,browser,ssr,server,front}/src/**` and excludes tests, generated output, templates, scripts, docs, `create-app`, and `site`.
-- `CodeQL` runs for pushes, pull requests, manual dispatch, and its weekly schedule over the five runtime package source trees.
+- `Quality` runs `vp check` and `vp test --coverage`; coverage includes `packages/{core,web,browser,ssr,server,front}/src/**` and excludes tests, generated output, templates, scripts, docs, `create-app`, and `site`.
+- `CodeQL` runs for pushes, pull requests, manual dispatch, and its weekly schedule over the six runtime package source trees.
 
 <!--VITE PLUS START-->
 

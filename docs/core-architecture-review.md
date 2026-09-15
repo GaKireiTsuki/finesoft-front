@@ -1,3 +1,5 @@
+> Historical baseline evaluation, captured before the application-boundaries redesign. Current behavior and measured comparisons are in [architecture.md](./architecture.md).
+
 # core 架构评估视图
 
 基线：`22f2d23`，2026-09-15。范围为 `packages/core/src`，并追踪 `browser` / `ssr` 的实际装配入口。本图描述现有实现；改进建议单独列在第 6 节。
