@@ -28,11 +28,23 @@
         "./node": {
             "types": "./dist/node.d.mts",
             "import": "./dist/node.mjs"
+        },
+        "./http": {
+            "types": "./dist/http.d.mts",
+            "import": "./dist/http.mjs"
+        },
+        "./worker": {
+            "types": "./dist/worker.d.mts",
+            "import": "./dist/worker.mjs"
+        },
+        "./core": {
+            "types": "./dist/core.d.mts",
+            "import": "./dist/core.mjs"
         }
     },
     "scripts": {
-        "build": "vp pack src/index.ts src/browser.ts src/web.ts src/node.ts --minify",
-        "dev": "vp pack src/index.ts src/browser.ts src/web.ts src/node.ts --minify --watch",
+        "build": "vp pack",
+        "dev": "vp pack --watch",
         "prepack": "node ../../scripts/prepare-front-publish.mjs",
         "postpack": "node ../../scripts/restore-front-publish.mjs"
     },

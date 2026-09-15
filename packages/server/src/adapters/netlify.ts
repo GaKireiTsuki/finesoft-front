@@ -40,8 +40,10 @@ async function platformCacheSet(url, html) {
   }
   _isrMap.set(url, html);
 }`,
-                platformPrerenderResponseHook: `c.header("Cache-Control", "public, max-age=0, must-revalidate");
-      c.header("Netlify-CDN-Cache-Control", "public, max-age=" + ISR_SWR_TTL + ", stale-while-revalidate=" + ISR_SWR_TTL + ", durable");`,
+                publicCacheHeaders: {
+                    "Netlify-CDN-Cache-Control":
+                        "public, max-age=3600, stale-while-revalidate=86400",
+                },
             });
 
             const tempEntry = path.resolve(root, ".netlify-entry.tmp.mjs");

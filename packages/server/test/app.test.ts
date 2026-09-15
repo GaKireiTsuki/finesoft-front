@@ -144,6 +144,7 @@ export async function render(url, ssrContext) {
     head: '<meta name="x-test" content="1">',
     css: '.app{color:red}',
     serverData: [{ url }],
+    cache: 'public',
     locale: { lang: 'en-US', dir: 'ltr' }
   };
 }
@@ -179,9 +180,9 @@ export function serializeServerData(data) {
         expect(firstHtml).toContain("<main>/cached?view=1:internal-ok</main>");
         expect(firstHtml).toContain('<script id="serialized-server-data" type="application/json">');
         expect(secondHtml).toBe(firstHtml);
-        expect(appGlobals.__APP_RENDER_CALLS__).toBe(1);
+        expect(appGlobals.__APP_RENDER_CALLS__).toBe(2);
         expect(appGlobals.__APP_INTERNAL_FETCH_TEXT__).toBe("internal-ok");
-        expect(parentFetch).toHaveBeenCalledTimes(1);
+        expect(parentFetch).toHaveBeenCalledTimes(2);
     });
 
     test("evicts the oldest prerendered HTML when the ISR cache overflows", async () => {

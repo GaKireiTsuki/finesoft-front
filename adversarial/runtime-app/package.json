@@ -1,0 +1,13 @@
+{
+    "name": "@finesoft/runtime-app",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vp pack"
+    },
+    "devDependencies": {
+        "@finesoft/front": "workspace:*",
+        "@hono/node-server": "catalog:",
+        "vite-plus": "catalog:"
+    }
+}

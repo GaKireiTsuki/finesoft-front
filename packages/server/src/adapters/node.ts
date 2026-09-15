@@ -15,7 +15,7 @@ export function nodeAdapter(): Adapter {
             const { fs, path, root } = ctx;
 
             const entrySource = generateSSREntry(ctx, {
-                platformImport: `import { serve } from "@hono/node-server";
+                platformImport: `import { startNodeHandler } from "@finesoft/front/node";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";`,
@@ -42,9 +42,9 @@ app.use("*", async (c, next) => {
 `,
                 platformExport: `
 const port = +(process.env.PORT || 3000);
-serve({ fetch: app.fetch, port }, (info) => {
-  console.log(\`Server running at http://localhost:\${info.port}\`);
-});
+const server = await startNodeHandler({ handler: request => app.fetch(request), port });
+console.log(\`Server running at http://localhost:\${port}\`);
+export { server };
 `,
             });
 

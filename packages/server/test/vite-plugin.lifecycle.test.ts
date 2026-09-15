@@ -69,7 +69,7 @@ vi.mock("@finesoft/core", async () => {
     };
 });
 
-vi.mock("@finesoft/ssr", () => ({
+vi.mock("@finesoft/ssr/inject", () => ({
     injectCSRShell,
     injectSSRContent,
 }));
@@ -463,6 +463,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
                 css: ".app{color:red}",
                 serverData: [{ url }],
                 renderMode: "prerender",
+                cache: "public",
                 locale: { lang: "fr-FR", dir: "ltr" },
             };
         });
@@ -531,7 +532,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
 
         const app = HonoMock.latest();
         const handler = app.handlers.get("GET *") as
-            | ((context: PreviewContext) => Promise<unknown>)
+            | ((context: PreviewContext) => Promise<Response>)
             | undefined;
         if (!handler) {
             throw new Error("Preview GET handler was not registered");
@@ -548,30 +549,26 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         const routeCsrResponse = await handler(makePreviewContext("/route-csr"));
         const explodeResponse = await handler(makePreviewContext("/explode"));
 
-        expect(recursionResponse).toEqual({
-            kind: "text",
-            text: "SSR recursion loop detected",
-            status: 508,
-        });
-        expect(forcedCsrResponse).toEqual({ kind: "html", html: "CSR:en-US" });
-        expect(prerenderFirst).toEqual({
-            kind: "html",
-            html: 'SSR:<main>/cached</main>:[{"url":"/cached"}]:fr-FR',
-        });
-        expect(prerenderSecond).toEqual(prerenderFirst);
-        expect(routeCsrResponse).toEqual({ kind: "html", html: "CSR:de-DE" });
-        expect(explodeResponse).toEqual({
-            kind: "text",
-            text: "Internal Server Error",
-            status: 500,
-        });
-        expect(render).toHaveBeenCalledTimes(3);
+        expect(recursionResponse.status).toBe(508);
+        expect(await recursionResponse.text()).toBe("SSR recursion loop detected");
+        expect(await forcedCsrResponse.text()).toBe("CSR:en-US");
+        const expectedHtml = 'SSR:<main>/cached</main>:[{"url":"/cached"}]:fr-FR';
+        expect(await prerenderFirst.text()).toBe(expectedHtml);
+        expect(await prerenderSecond.text()).toBe(expectedHtml);
+        expect(await routeCsrResponse.text()).toBe("CSR:de-DE");
+        expect(explodeResponse.status).toBe(500);
+        expect(await explodeResponse.text()).toBe("Internal Server Error");
+        expect(render).toHaveBeenCalledTimes(4);
         expect(render).toHaveBeenNthCalledWith(
             1,
             "/cached",
             expect.objectContaining({ fetch: internalFetch }),
         );
-        expect(createInternalFetch).toHaveBeenCalledWith(expect.any(Function), 1);
+        expect(createInternalFetch).toHaveBeenCalledWith(
+            expect.any(Function),
+            1,
+            expect.objectContaining({ request: expect.any(Request) }),
+        );
         expect(serializeServerData).toHaveBeenCalledWith([{ url: "/cached" }]);
         expect(error).toHaveBeenCalledWith("[SSR Preview Error]", expect.any(Error));
 
@@ -594,6 +591,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             css: "",
             serverData: [],
             renderMode: "prerender",
+            cache: "public",
             locale: undefined,
         }));
         const ssrModuleUrl = pathToFileURL(nodePath.resolve("/project", "dist/server/ssr.js")).href;
@@ -638,7 +636,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
 
         const app = HonoMock.latest();
         const handler = app.handlers.get("GET *") as
-            | ((context: PreviewContext) => Promise<unknown>)
+            | ((context: PreviewContext) => Promise<Response>)
             | undefined;
         if (!handler) {
             throw new Error("Preview GET handler was not registered");
@@ -646,7 +644,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
 
         const response = await handler(makePreviewContext("/docs/getting-started"));
 
-        expect(response).toEqual({ kind: "html", html: "CSR:ja-JP" });
+        expect(await response.text()).toBe("CSR:ja-JP");
         expect(render).not.toHaveBeenCalled();
     });
 
@@ -664,6 +662,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             css: "",
             serverData: [],
             renderMode: "prerender",
+            cache: "public",
             locale: undefined,
         }));
         const serializeServerData = vi.fn(() => "[]");
@@ -708,7 +707,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         expect(setup).toHaveBeenCalledWith(app);
 
         const handler = app.handlers.get("GET *") as
-            | ((context: PreviewContext) => Promise<unknown>)
+            | ((context: PreviewContext) => Promise<Response>)
             | undefined;
         if (!handler) {
             throw new Error("Preview GET handler was not registered");
@@ -721,6 +720,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         await handler(makePreviewContext("/page-0"));
 
         expect(render).toHaveBeenCalledTimes(1002);
+        expect(serializeServerData).toHaveBeenCalledTimes(1002);
     });
 
     test("uses named setup exports when preview setup modules load successfully", async () => {
@@ -769,6 +769,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
                         css: "",
                         serverData: [],
                         renderMode: "prerender",
+                        cache: "public",
                         locale: undefined,
                     }),
                     serializeServerData: () => "[]",
@@ -951,6 +952,7 @@ interface VitePluginShape {
 
 interface PreviewContext {
     req: {
+        raw: Request;
         path: string;
         url: string;
         header(name: string): string | undefined;
@@ -981,6 +983,7 @@ function makePreviewContext(
     const headers = options.headers ?? {};
     return {
         req: {
+            raw: new Request(options.url ?? `https://app.example${path}`, { headers }),
             path,
             url: options.url ?? `https://app.example${path}`,
             header(name: string) {

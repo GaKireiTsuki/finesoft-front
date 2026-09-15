@@ -37,7 +37,7 @@ describe("shared adapter helpers", () => {
             platformExport: "export default app;",
             platformCache: `async function platformCacheGet(url) { return null; }\nasync function platformCacheSet(url, html) { return html; }`,
             platformMiddleware: `app.use("*", async (_c, next) => next());`,
-            platformPrerenderResponseHook: `c.header("x-test", "1");`,
+            publicCacheHeaders: { "x-test": "1" },
         });
 
         expect(code).toContain('import _setupDefault from "./setup.mjs";');
@@ -46,7 +46,7 @@ describe("shared adapter helpers", () => {
         expect(code).toContain('const DEFAULT_LOCALE = "en-US";');
         expect(code).toContain('app.all("/api/*"');
         expect(code).toContain("platformCacheGet(url)");
-        expect(code).toContain('c.header("x-test", "1");');
+        expect(code).toContain('publicCacheHeaders: {"x-test":"1"}');
         expect(code).toContain("export default app;");
     });
 
@@ -157,6 +157,7 @@ describe("shared adapter helpers", () => {
 
                         return {
                             html: `<main>${url}</main>`,
+                            cache: "public",
                             head: '<meta charset="utf-8">',
                             css: ".app{color:red}",
                             serverData: [{ url }],

@@ -20,6 +20,8 @@ export interface StartServerOptions {
     isProduction: boolean;
     /** Vite dev server（仅开发模式传入） */
     vite?: ViteDevServer;
+    /** Transfer disposal ownership of a supplied Vite server. Internally created Vite is owned. */
+    ownsVite?: boolean;
     /** 运行时信息（可选，不传时自动检测） */
     runtime?: RuntimeInfo;
     /** 已注册的路由列表（用于启动日志） */
@@ -28,7 +30,11 @@ export interface StartServerOptions {
     ssrEntryPath?: string;
 }
 
-export async function startServer(options: StartServerOptions): Promise<{ vite?: ViteDevServer }> {
+export interface StartedServer {
+    vite?: ViteDevServer;
+    dispose(): Promise<void>;
+}
+export async function startServer(options: StartServerOptions): Promise<StartedServer> {
     const { app, root, port = 3000, isProduction, vite, routes, ssrEntryPath } = options;
 
     const { isDeno, isBun, isVercel } = options.runtime ?? detectRuntime();
@@ -51,9 +57,18 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
         console.log(lines.join("\n"));
     }
 
-    if (isVercel) {
-        return { vite };
-    }
+    let stop: (() => Promise<void>) | undefined;
+    let ownedVite = options.ownsVite ? vite : undefined;
+    let closing: Promise<void> | undefined;
+    const dispose = () =>
+        (closing ??= (async () => {
+            try {
+                await stop?.();
+            } finally {
+                await ownedVite?.close();
+            }
+        })());
+    if (isVercel) return { vite, dispose };
 
     if (!isProduction) {
         let devVite = vite;
@@ -75,11 +90,17 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
         server.listen(port, () => {
             printStartupBanner();
         });
-        return { vite: devVite };
+        ownedVite = !vite || options.ownsVite ? devVite : undefined;
+        stop = () =>
+            new Promise<void>((resolve, reject) =>
+                server.close((error?: Error) => (error ? reject(error) : resolve())),
+            );
+        return { vite: devVite, dispose };
     }
 
     if (isDeno) {
-        (globalThis as any).Deno.serve({ port }, app.fetch);
+        const server = (globalThis as any).Deno.serve({ port }, app.fetch);
+        stop = () => server.shutdown();
     } else if (isBun) {
         // Bun uses export default
     } else {
@@ -100,10 +121,14 @@ export async function startServer(options: StartServerOptions): Promise<{ vite?:
         prodApp.route("/", app);
 
         const { serve } = await dynamicImport("@hono/node-server");
-        serve({ fetch: prodApp.fetch, port }, () => {
+        const server = serve({ fetch: prodApp.fetch, port }, () => {
             printStartupBanner();
         });
+        stop = () =>
+            new Promise<void>((resolve, reject) =>
+                server.close((error?: Error) => (error ? reject(error) : resolve())),
+            );
     }
 
-    return { vite };
+    return { vite, dispose };
 }

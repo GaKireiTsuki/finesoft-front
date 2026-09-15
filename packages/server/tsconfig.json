@@ -6,7 +6,8 @@
         "paths": {
             "@finesoft/core": ["../core/src/index.ts"],
             "@finesoft/ssr": ["../ssr/src/index.ts"],
-            "@finesoft/web": ["../web/src/index.ts"]
+            "@finesoft/web": ["../web/src/index.ts"],
+            "@finesoft/ssr/inject": ["../ssr/src/inject.ts"]
         }
     },
     "include": ["src", "test"]

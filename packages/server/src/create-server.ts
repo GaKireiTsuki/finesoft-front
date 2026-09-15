@@ -30,6 +30,7 @@ export interface ServerInstance {
     app: Hono;
     vite?: ViteDevServer;
     runtime: RuntimeInfo;
+    dispose(): Promise<void>;
 }
 
 /**
@@ -100,15 +101,16 @@ export async function createServer(config: ServerConfig = {}): Promise<ServerIns
     app.route("/", ssrApp);
 
     // 6. 启动
-    await startServer({
+    const started = await startServer({
         app,
         root,
         port,
         isProduction: runtime.isProduction,
         vite,
         runtime,
+        ownsVite: true,
         ssrEntryPath: ssr?.ssrEntryPath,
     });
 
-    return { app, vite, runtime };
+    return { app, vite: started.vite ?? vite, runtime, dispose: () => started.dispose() };
 }

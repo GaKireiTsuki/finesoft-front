@@ -14,6 +14,7 @@
     "devDependencies": {
         "@changesets/cli": "catalog:",
         "@vitest/coverage-v8": "catalog:",
+        "miniflare": "catalog:",
         "typescript": "catalog:",
         "vite": "catalog:",
         "vite-plus": "catalog:",

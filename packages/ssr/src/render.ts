@@ -50,6 +50,8 @@ export interface SSRContext {
     fetch?: typeof globalThis.fetch;
     /** 原始 Request 对象（用于中间件读取 cookie/header） */
     request?: Request;
+    /** Host bindings for this invocation; data runtimes must receive these in Invocation. */
+    bindings?: Readonly<Record<string, unknown>>;
 }
 
 export interface SSRAppResult {
@@ -61,6 +63,10 @@ export interface SSRAppResult {
 }
 
 export interface SSRRenderResult {
+    /** Response metadata is assembled by the portable HTTP handler. */
+    headers?: HeadersInit;
+    /** Explicitly public output; guards still run before shared HTML cache reads. */
+    cache?: "public";
     html: string;
     head: string;
     css: string;

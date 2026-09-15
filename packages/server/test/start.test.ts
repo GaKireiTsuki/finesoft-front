@@ -36,7 +36,7 @@ describe("startServer", () => {
             runtime: makeRuntime({ isVercel: true }),
         });
 
-        expect(result).toEqual({ vite });
+        expect(result).toEqual({ vite, dispose: expect.any(Function) });
         expect(dynamicImport).not.toHaveBeenCalled();
     });
 
@@ -44,7 +44,8 @@ describe("startServer", () => {
         const app = new Hono();
         const listener = vi.fn();
         const middlewares = vi.fn((_req: unknown, _res: unknown, next: () => void) => next());
-        const vite = { middlewares };
+        const closeVite = vi.fn(async () => {});
+        const vite = { middlewares, close: closeVite };
         const createViteServer = vi.fn(async () => vite);
         const getRequestListener = vi.fn(() => listener);
         const listen = vi.fn((port: number, callback: () => void) => {
@@ -53,7 +54,7 @@ describe("startServer", () => {
         });
         const createServer = vi.fn((handler: (req: unknown, res: unknown) => void) => {
             handler("req", "res");
-            return { listen };
+            return { listen, close: (done: () => void) => done() };
         });
         const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
@@ -80,7 +81,7 @@ describe("startServer", () => {
             ssrEntryPath: "/src/ssr.ts",
         });
 
-        expect(result).toEqual({ vite });
+        expect(result).toEqual({ vite, dispose: expect.any(Function) });
         expect(detectRuntime).toHaveBeenCalledTimes(1);
         expect(createViteServer).toHaveBeenCalledWith({
             root: "/project",
@@ -95,6 +96,9 @@ describe("startServer", () => {
         );
         expect(log).toHaveBeenCalledWith(expect.stringContaining("Routes:"));
         expect(log).toHaveBeenCalledWith(expect.stringContaining("SSR Entry: /src/ssr.ts"));
+        await result.dispose();
+        await result.dispose();
+        expect(closeVite).toHaveBeenCalledTimes(1);
     });
 
     test("serves production Node builds with static middleware", async () => {
@@ -197,7 +201,7 @@ describe("startServer", () => {
             runtime: makeRuntime({ isBun: true }),
         });
 
-        expect(result).toEqual({ vite });
+        expect(result).toEqual({ vite, dispose: expect.any(Function) });
         expect(dynamicImport).not.toHaveBeenCalled();
     });
 });

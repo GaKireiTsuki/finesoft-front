@@ -1,1 +1,1 @@
-export { nodeDnsLookup } from "../../server/src/node/dns";
+export * from "../../server/src/node";

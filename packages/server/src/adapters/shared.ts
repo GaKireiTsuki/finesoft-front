@@ -1,4 +1,4 @@
-import { getLocaleAttributes } from "@finesoft/core";
+import { createSSRHandler, type SSRModule } from "../ssr-handler";
 import { nodeDnsLookup } from "../node/dns";
 /**
  * 适配器共享工具函数
@@ -44,161 +44,35 @@ export const NODE_BUILTINS = [
     "stream",
 ];
 
-/**
- * 生成 SSR serverless/edge 入口源码
- *
- * 内联 injectSSR 以避免
- * @finesoft/front → @finesoft/server → vite-plugin → import("vite") 依赖链。
- */
+/** Generated hosts compose routing/capabilities; HTML response semantics live in one portable owner. */
 export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOptions): string {
-    const setupImport = ctx.setupPath ? `import _setupDefault from "./${ctx.setupPath}";` : ``;
-    const setupCall = ctx.setupPath
-        ? `if (typeof _setupDefault === "function") await _setupDefault(app);`
-        : ``;
-
-    const renderModes = JSON.stringify(ctx.renderModes ?? {});
-
-    // 平台缓存实现：平台自定义 或 内置内存 Map
-    const cacheImpl = opts.platformCache
-        ? opts.platformCache
-        : `
-const ISR_CACHE_MAX = 1000;
-const _isrMap = new Map();
-async function platformCacheGet(url) {
-  return _isrMap.get(url) ?? null;
-}
-async function platformCacheSet(url, html) {
-  if (_isrMap.size >= ISR_CACHE_MAX) {
-    const first = _isrMap.keys().next().value;
-    _isrMap.delete(first);
-  }
-  _isrMap.set(url, html);
-}`;
-
     return `
 import { Hono } from "hono";
+import { createSSRHandler } from "@finesoft/front/http";
 ${opts.platformImport}
 ${opts.dnsPolicy === "hostname" ? "" : 'import { nodeDnsLookup as _dnsLookup } from "@finesoft/front/node";'}
 import { render, serializeServerData } from "./${ctx.ssrEntry}";
-${setupImport}
-
+${ctx.setupPath ? `import _setupDefault from "./${ctx.setupPath}";` : ""}
 const TEMPLATE = ${JSON.stringify(ctx.templateHtml)};
-const RENDER_MODES = ${renderModes};
+const RENDER_MODES = ${JSON.stringify(ctx.renderModes ?? {})};
 const DEFAULT_LOCALE = ${JSON.stringify(ctx.defaultLocale ?? null)};
-${cacheImpl}
-
-function injectSSR(t, head, css, html, data, locale) {
-  const injected = t
-    .replace(/<!--ssr-([a-z][a-z0-9-]*)-->/g, (_, name) => {
-      const replacements = {
-        head: head + "\n<style>" + css + "</style>",
-        body: html,
-        data: '<script id="serialized-server-data" type="application/json">' + data + "</script>",
-      };
-      return replacements[name] ?? "";
-    });
-  return applyLocaleToHtml(injected, locale);
-}
-
-function applyLocaleToHtml(html, locale) {
-  if (!locale) return html;
-  return html.replace(/<html([^>]*)>/i, (_, attrs) => {
-    const a = attrs
-      .replace(/\\s+lang=("[^"]*"|'[^']*'|[^\\s>]+)/gi, "")
-      .replace(/\\s+dir=("[^"]*"|'[^']*'|[^\\s>]+)/gi, "");
-    return "<html" + a + ' lang="' + locale.lang + '" dir="' + locale.dir + '">';
-  });
-}
-
-function getLocaleAttrs(lang) {
-  if (!lang) return undefined;
-  const RTL = new Set(["ar","arc","dv","fa","ha","he","khw","ks","ku","ps","ur","yi"]);
-  const base = lang.split(/[-_]/)[0].toLowerCase();
-  return { lang: lang, dir: RTL.has(base) ? "rtl" : "ltr" };
-}
-
-function injectCSRShell(t, locale) {
-  const stripped = t.replace(/<!--ssr-([a-z][a-z0-9-]*)-->/g, () => "");
-  return applyLocaleToHtml(stripped, locale);
-}
-
-function matchRenderMode(url) {
-  const path = url.split("?")[0];
-  if (RENDER_MODES[path]) return RENDER_MODES[path];
-  for (const [pattern, mode] of Object.entries(RENDER_MODES)) {
-    if (pattern.includes("*")) {
-      const escaped = pattern.replace(/[.+?^\${}()|[\\]\\\\]/g, "\\\\$&");
-      const re = new RegExp("^" + escaped.replace(/\\*/g, ".*") + "$");
-      if (re.test(path)) return mode;
-    }
-  }
-  return null;
-}
-
+${opts.platformCache ?? ""}
 const app = new Hono();
 ${generateProxyCode(ctx.proxies ?? [])}
-${setupCall}
+${ctx.setupPath ? 'if (typeof _setupDefault === "function") await _setupDefault(app);' : ""}
 ${opts.platformMiddleware ?? ""}
-
-// 内部 fetch 回环：SSR 控制器的 fetch 请求直接走 Hono 内存路由
-// 深度通过请求头传递，并发安全且能跨渲染正确追踪递归
-const _SSR_DEPTH_HEADER = "x-ssr-depth";
-const _MAX_SSR_DEPTH = 5;
-
-function _createInternalFetch(depth) {
-  return function(input, init) {
-    if (typeof input === "string" && input.startsWith("/")) {
-      const req = new Request("http://localhost" + input, init);
-      req.headers.set(_SSR_DEPTH_HEADER, String(depth));
-      return app.fetch(req);
-    }
-    return globalThis.fetch(input, init);
-  };
-}
-
-app.get("*", async (c) => {
-  // 递归深度保护：从请求头读取 SSR 深度
-  const _ssrDepth = parseInt(c.req.header(_SSR_DEPTH_HEADER) || "0", 10);
-  if (_ssrDepth >= _MAX_SSR_DEPTH) {
-    return c.text("SSR recursion loop detected", 508);
-  }
-
-  const url = c.req.path + (c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "");
-  try {
-    // Vite 配置级别覆盖: CSR 直接返回空壳
-    const overrideMode = matchRenderMode(url);
-    if (overrideMode === "csr") {
-      return c.html(injectCSRShell(TEMPLATE, getLocaleAttrs(DEFAULT_LOCALE)));
-    }
-
-    // ISR 缓存命中
-    const cached = await platformCacheGet(url);
-    if (cached) return c.html(cached);
-
-    const { html: appHtml, head, css, serverData, renderMode, locale } = await render(url, { fetch: _createInternalFetch(_ssrDepth + 1), safeFetch: ${opts.dnsPolicy === "hostname" ? "{ validateDns: false }" : "{ lookup: _dnsLookup }"} });
-    const localeAttrs = getLocaleAttrs(locale || DEFAULT_LOCALE);
-
-    // 路由级 CSR
-    if (renderMode === "csr") {
-      return c.html(injectCSRShell(TEMPLATE, localeAttrs));
-    }
-
-    const serializedData = serializeServerData(serverData);
-    const finalHtml = injectSSR(TEMPLATE, head, css, appHtml, serializedData, localeAttrs);
-
-    // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级）
-    if (renderMode === "prerender" || overrideMode === "prerender") {
-      await platformCacheSet(url, finalHtml);
-      ${opts.platformPrerenderResponseHook ?? ""}
-    }
-
-    return c.html(finalHtml);
-  } catch (e) {
-    console.error("[SSR Error]", e);
-    return c.text("Internal Server Error", 500);
-  }
+const ssrHandler = createSSRHandler({
+    template: TEMPLATE,
+    render,
+    serializeServerData,
+    renderModes: RENDER_MODES,
+    defaultLocale: DEFAULT_LOCALE,
+    safeFetch: ${opts.dnsPolicy === "hostname" ? "{ validateDns: false }" : "{ lookup: _dnsLookup }"},
+    fetch: (request, bindings) => app.fetch(request, bindings),
+    ${opts.platformCache ? "cache: {get: platformCacheGet, set: platformCacheSet}," : ""}
+    ${opts.publicCacheHeaders ? `publicCacheHeaders: ${JSON.stringify(opts.publicCacheHeaders)},` : ""}
 });
-
+app.get("*", c => ssrHandler(c.req.raw, c.env));
 ${opts.platformExport}
 `;
 }
@@ -329,43 +203,28 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
 
     for (const url of prerenderPaths) {
         try {
-            const {
-                html: appHtml,
-                head,
-                css,
-                serverData,
-                locale,
-            } = await ssrModule.render(url, { safeFetch: { lookup: nodeDnsLookup } });
-
-            const serializedData = ssrModule.serializeServerData(serverData);
-
-            let finalHtml = ctx.templateHtml.replace(
-                /<!--ssr-([a-z][a-z0-9-]*)-->/g,
-                (_match, name: string) => {
-                    const builtIn: Record<string, string> = {
-                        head: head + "\n<style>" + css + "</style>",
-                        body: appHtml,
-                        data:
-                            '<script id="serialized-server-data" type="application/json">' +
-                            serializedData +
-                            "</script>",
-                    };
-                    return builtIn[name] ?? "";
+            let eligible = false;
+            const handler = createSSRHandler({
+                template: ctx.templateHtml,
+                render: async (path, context) => {
+                    const result = await (ssrModule as SSRModule).render(path, context);
+                    eligible =
+                        result.cache === "public" &&
+                        !result.redirect &&
+                        !result.rewriteUrl &&
+                        (result.status ?? 200) === 200 &&
+                        [...new Headers(result.headers)].length === 0;
+                    return result;
                 },
-            );
-
-            // 注入 locale 到 <html> 标签
-            if (locale) {
-                const attrs = getLocaleAttributes(locale);
-                finalHtml = finalHtml.replace(/<html([^>]*)>/i, (_m: string, a: string) => {
-                    const cleaned = a
-                        .replace(/\s+lang=("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-                        .replace(/\s+dir=("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-                    return `<html${cleaned} lang="${attrs.lang}" dir="${attrs.dir}">`;
-                });
-            }
-
-            results.push({ url, html: finalHtml });
+                serializeServerData: ssrModule.serializeServerData,
+                defaultLocale: ctx.defaultLocale,
+                renderModes: ctx.renderModes,
+                safeFetch: { lookup: nodeDnsLookup },
+                onError: (error) => console.warn(`  [prerender] Failed to render ${url}:`, error),
+            });
+            const response = await handler(new Request(new URL(url, "http://prerender.local")));
+            if (eligible && response.status === 200)
+                results.push({ url, html: await response.text() });
         } catch (e) {
             console.warn(`  [prerender] Failed to render ${url}:`, e);
         }

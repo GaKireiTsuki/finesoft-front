@@ -15,6 +15,7 @@ declare module "vite" {
         transformIndexHtml(url: string, html: string): string | Promise<string>;
         ssrLoadModule(path: string): Promise<unknown>;
         ssrFixStacktrace(error: Error): void;
+        close(): Promise<void>;
         middlewares(req: any, res: any, next: () => void): void;
     }
 

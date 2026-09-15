@@ -48,9 +48,11 @@ describe("deployment adapters", () => {
         expect(generateSSREntry).toHaveBeenCalledWith(
             ctx,
             expect.objectContaining({
-                platformImport: expect.stringContaining("@hono/node-server"),
+                platformImport: expect.stringContaining("@finesoft/front/node"),
                 platformMiddleware: expect.stringContaining("prerenderDir"),
-                platformExport: expect.stringContaining("serve({ fetch: app.fetch, port }"),
+                platformExport: expect.stringContaining(
+                    "startNodeHandler({ handler: request => app.fetch(request), port }",
+                ),
             }),
         );
         expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, "node-entry-source");
@@ -145,7 +147,10 @@ describe("deployment adapters", () => {
             ctx,
             expect.objectContaining({
                 platformImport: expect.stringContaining("hono/netlify"),
-                platformPrerenderResponseHook: expect.stringContaining("Netlify-CDN-Cache-Control"),
+                publicCacheHeaders: {
+                    "Netlify-CDN-Cache-Control":
+                        "public, max-age=3600, stale-while-revalidate=86400",
+                },
             }),
         );
         expect(fs.rmSync).toHaveBeenCalledWith(nodePath.resolve("/project", ".netlify"), {

@@ -66,12 +66,8 @@ export interface GenerateSSREntryOptions {
      * 不提供时使用内置的内存 Map 缓存。
      */
     platformCache?: string;
-    /**
-     * 平台特定的响应后处理代码（可选）。
-     * 在 prerender 路由返回前执行，可用于设置 CDN 缓存头等。
-     * 代码中可使用变量 `c`（Hono Context）。
-     */
-    platformPrerenderResponseHook?: string;
+    /** CDN headers applied by the shared handler only to explicitly public cache-eligible HTML. */
+    publicCacheHeaders?: Record<string, string>;
     /**
      * 平台特定的中间件代码（可选）。
      * 插入在 catch-all GET 路由之前，可用于添加静态文件服务等。

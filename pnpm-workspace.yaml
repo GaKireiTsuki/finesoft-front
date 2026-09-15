@@ -2,11 +2,14 @@ packages:
     - "packages/*"
     - "templates/*"
     - "adversarial/target-app"
+    - "adversarial/runtime-app"
 
 catalog:
     "@changesets/cli": ^2.31.1
+    "@hono/node-server": ^2.1.0
     "@types/node": ^22.20.1
     "@vitest/coverage-v8": 4.1.10
+    miniflare: 5.20260911.0-alpha
     typescript: ^6.0.3
     vite: npm:@voidzero-dev/vite-plus-core@0.2.8
     vite-plus: 0.2.8
@@ -15,6 +18,7 @@ catalog:
 catalogMode: prefer
 allowBuilds:
     esbuild: true
+    workerd: true
 overrides:
     vite: "catalog:"
     vitest: "catalog:"

@@ -1,4 +1,3 @@
-import type { SecureFetchOptions } from "@finesoft/core";
 import { nodeDnsLookup } from "./node/dns";
 /**
  * createSSRApp — 创建 Hono SSR 应用
@@ -7,54 +6,12 @@ import { nodeDnsLookup } from "./node/dns";
  * 应用层可在此之上追加自定义路由（API 代理等）。
  */
 
-import { LruMap, getLocaleAttributes } from "@finesoft/core";
-import { injectCSRShell, injectSSRContent } from "@finesoft/ssr";
 import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
 import { dynamicImport } from "./dynamic-import";
-import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal-fetch";
 
-/**
- * 匹配 Vite 配置级别的 renderMode 覆盖。
- * 精确路径优先，然后 glob 模式。
- */
-function matchRenderModeOverride(url: string, renderModes?: Record<string, string>): string | null {
-    if (!renderModes) return null;
-    const path = url.split("?")[0];
-    if (renderModes[path]) return renderModes[path];
-    for (const [pattern, mode] of Object.entries(renderModes)) {
-        if (pattern.includes("*")) {
-            const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-            const re = new RegExp("^" + escaped.replace(/\*/g, ".*") + "$");
-            if (re.test(path)) return mode;
-        }
-    }
-    return null;
-}
-
-export interface SSRModule {
-    render: (
-        url: string,
-        ssrContext?: {
-            fetch?: typeof globalThis.fetch;
-            safeFetch?: SecureFetchOptions;
-            request?: Request;
-        },
-    ) => Promise<{
-        html: string;
-        head: string;
-        css: string;
-        serverData: unknown;
-        renderMode?: string;
-        redirect?: { url: string; status: number };
-        slots?: Record<string, string>;
-        locale?: { lang: string; dir: string };
-        status?: number;
-        /** afterLoad rewrite 产生的内部 URL，仅供 server 用作 canonical link */
-        rewriteUrl?: string;
-    }>;
-    serializeServerData: (data: unknown) => string;
-}
+export type { SSRModule } from "./ssr-handler";
+import { createSSRHandler, type SSRModule } from "./ssr-handler";
 
 export interface SSRAppOptions {
     /** 项目根路径 */
@@ -72,7 +29,10 @@ export interface SSRAppOptions {
      * SSR 渲染时，控制器的 fetch 请求（如 /api/apple/*）会通过此函数
      * 直接在进程内路由到代理 handler，避免网络自请求死锁。
      */
-    parentFetch?: (request: Request) => Response | Promise<Response>;
+    parentFetch?: (
+        request: Request,
+        bindings?: Readonly<Record<string, unknown>>,
+    ) => Response | Promise<Response>;
     /**
      * 按路由覆盖渲染模式（精确路径或 glob 模式）。
      * 优先级高于路由级 renderMode。
@@ -85,7 +45,7 @@ export interface SSRAppOptions {
     defaultLocale?: string;
 }
 
-export function createSSRApp(options: SSRAppOptions): Hono {
+export function createSSRApp(options: SSRAppOptions): Hono<{ Bindings: Record<string, unknown> }> {
     const {
         root,
         vite,
@@ -97,11 +57,7 @@ export function createSSRApp(options: SSRAppOptions): Hono {
         defaultLocale,
     } = options;
 
-    const app = new Hono();
-
-    /** ISR 内存缓存（prerender 路由首次请求后缓存，LRU 驱逐） */
-    const ISR_CACHE_MAX = 1000;
-    const isrCache = new LruMap<string, string>(ISR_CACHE_MAX);
+    const app = new Hono<{ Bindings: Record<string, unknown> }>();
 
     /** 生产环境模板缓存（模板不变，避免每请求重复读盘） */
     let templateCache: string | undefined;
@@ -147,120 +103,25 @@ export function createSSRApp(options: SSRAppOptions): Hono {
         return dynamicImport(absPath) as Promise<SSRModule>;
     }
 
-    app.get("*", async (c) => {
-        // 递归深度保护：从请求头读取 SSR 深度
-        const ssrDepth = parseInt(c.req.header(SSR_DEPTH_HEADER) ?? "0", 10);
-        if (ssrDepth >= MAX_SSR_DEPTH) {
-            return c.text("SSR recursion loop detected", 508);
-        }
-
-        const url = c.req.path + (c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "");
-
-        try {
-            const template = await readTemplate(url);
-            const ssrMod = await loadSSRModule();
-
-            if (
-                typeof ssrMod.render !== "function" ||
-                typeof ssrMod.serializeServerData !== "function"
-            ) {
-                throw new Error(
-                    "[SSR] Module missing required exports: render, serializeServerData",
-                );
-            }
-
-            const { render, serializeServerData } = ssrMod;
-
-            // Vite 配置级别覆盖：CSR 直接返回空壳
-            const overrideMode = matchRenderModeOverride(url, renderModes);
-            if (overrideMode === "csr") {
-                return c.html(
-                    injectCSRShell(
-                        template,
-                        defaultLocale ? getLocaleAttributes(defaultLocale) : undefined,
-                    ),
-                );
-            }
-
-            // ISR 缓存命中
-            const cached = isrCache.get(url);
-            if (cached) return c.html(cached);
-
-            // 每请求创建 internalFetch，深度通过请求头传递
-            const requestFetch = parentFetch
-                ? createInternalFetch(parentFetch, ssrDepth + 1)
-                : undefined;
-
-            const ssrContext: {
-                fetch?: typeof globalThis.fetch;
-                safeFetch?: SecureFetchOptions;
-                request?: Request;
-            } = { request: c.req.raw, safeFetch: { lookup: nodeDnsLookup } };
-            if (requestFetch) ssrContext.fetch = requestFetch;
-
-            const {
-                html: appHtml,
-                head,
-                css,
-                serverData,
-                renderMode,
-                redirect: middlewareRedirect,
-                slots,
-                locale,
-                status,
-                rewriteUrl,
-            } = await render(url, ssrContext);
-
-            // 中间件要求重定向
-            if (middlewareRedirect) {
-                return c.redirect(middlewareRedirect.url, middlewareRedirect.status as 301 | 302);
-            }
-
-            // CSR 模式：返回空壳 HTML
-            if (renderMode === "csr") {
-                return c.html(injectCSRShell(template, locale));
-            }
-
-            const serializedData = serializeServerData(serverData);
-
-            const finalHtml = injectSSRContent({
-                template,
-                head,
-                css,
-                html: appHtml,
-                serializedData,
-                slots,
-                locale,
-            });
-
-            // Prerender ISR 缓存（包括 Vite 配置覆盖和路由级，但 deny / rewrite 状态不缓存）
-            if (
-                (renderMode === "prerender" || overrideMode === "prerender") &&
-                !status &&
-                !rewriteUrl
-            ) {
-                isrCache.set(url, finalHtml);
-            }
-
-            // afterLoad rewrite: 暴露 Content-Location 头供客户端/CDN 识别内部重写
-            if (rewriteUrl) {
-                c.header("Content-Location", rewriteUrl);
-            }
-
-            // 中间件 deny → 返回错误状态码
-            if (status && status >= 400) {
-                return c.html(finalHtml, status as 400 | 401 | 403 | 404 | 500);
-            }
-
-            return c.html(finalHtml);
-        } catch (e) {
-            if (!isProduction && vite) {
-                vite.ssrFixStacktrace(e as Error);
-            }
-            console.error("[SSR Error]", e);
-            return c.text("Internal Server Error", 500);
-        }
+    const handler = createSSRHandler({
+        template: (request) =>
+            readTemplate(new URL(request.url).pathname + new URL(request.url).search),
+        render: async (url, context) => {
+            const module = await loadSSRModule();
+            const result = await module.render(url, context);
+            return { ...result, serverData: module.serializeServerData(result.serverData) };
+        },
+        // Serialization remains module-specific; the rendered result travels with its serializer.
+        serializeServerData: (data) => String(data),
+        renderModes,
+        defaultLocale,
+        fetch: parentFetch,
+        safeFetch: { lookup: nodeDnsLookup },
+        onError: (error) => {
+            if (!isProduction && vite) vite.ssrFixStacktrace(error as Error);
+            console.error("[SSR Error]", error);
+        },
     });
-
+    app.get("*", (c) => handler(c.req.raw, c.env));
     return app;
 }
