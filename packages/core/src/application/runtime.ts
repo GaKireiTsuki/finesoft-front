@@ -250,6 +250,9 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
             }
             const execution: ExecutionHandle = {
                 context,
+                cancel(reason) {
+                    abort.abort(reason);
+                },
                 execute(operation, input) {
                     const promise = execute(operation, input);
                     running.add(promise);

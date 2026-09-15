@@ -1,4 +1,5 @@
 import { ExecutionError, type ExecutionHandle, type Intent } from "@finesoft/core";
+import { bindExecutionCancellation } from "./execution";
 import type { Framework } from "../framework";
 import type { BeforeLoadGuard, AfterLoadGuard, NavigationContext } from "../middleware/types";
 import type { BasePage } from "../models/page";
@@ -38,6 +39,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
     const { framework } = options;
     const owned = !options.execution;
     const execution = options.execution ?? framework.createExecution({ signal: options.signal });
+    const unbind = bindExecutionCancellation(execution, options.signal);
     const check = () => {
         if (execution.context.signal.aborted || options.signal?.aborted)
             throw new ExecutionError("cancelled");
@@ -144,6 +146,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
         }
         throw new ExecutionError("configuration", "Page rewrite recursion depth exceeded");
     } finally {
+        unbind();
         if (owned) await execution.dispose();
     }
 }

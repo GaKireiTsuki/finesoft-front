@@ -32,6 +32,7 @@ import {
 import { Framework } from "../framework";
 import { loadPage } from "../application/load-page";
 import type { AfterLoadGuard, BeforeLoadGuard, NavigationContext } from "../middleware/types";
+import { bindExecutionCancellation } from "../application/execution";
 import type { PrefetchedIntents } from "../prefetched-intents/prefetched-intents";
 import { resourceKey } from "./keys";
 import type { Router } from "../router/router";
@@ -340,7 +341,12 @@ export function createNavigationController(
     function enqueue(produce: () => Promise<NavigationSnapshot>): Promise<NavigationSnapshot> {
         if (closed)
             return Promise.reject(new ExecutionError("configuration", "Navigation is closed"));
-        const run = inflight.then(produce, produce);
+        const submittedGeneration = generation;
+        const runCurrent = () => {
+            if (closed || submittedGeneration !== generation) throw new ExecutionError("cancelled");
+            return produce();
+        };
+        const run = inflight.then(runCurrent, runCurrent);
         inflight = run.catch(() => {});
         return run;
     }
@@ -375,6 +381,7 @@ export function createNavigationController(
         current = new AbortController();
         const combined = signal ? AbortSignal.any([signal, current.signal]) : current.signal;
         const execution = options.execution ?? framework.createExecution({ signal: combined });
+        const unbind = bindExecutionCancellation(execution, combined);
         const check = () => {
             if (combined.aborted || ownGeneration !== generation)
                 throw new ExecutionError("cancelled");
@@ -474,6 +481,7 @@ export function createNavigationController(
             check();
             return snapshot;
         } finally {
+            unbind();
             if (!options.execution) await execution.dispose();
         }
     }
@@ -520,9 +528,7 @@ export function createNavigationController(
         op: NavigationOperation,
         invocation?: { signal?: AbortSignal },
     ): Promise<NavigationSnapshot> {
-        const submittedGeneration = generation;
         return enqueue(() => {
-            if (submittedGeneration !== generation) throw new ExecutionError("cancelled");
             return resolveTree(
                 computeNextTree(op),
                 invocation?.signal,

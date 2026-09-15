@@ -1281,3 +1281,61 @@ describe("invalidate / refresh", () => {
         expect(calls).toEqual(["root", "detail", "root"]);
     });
 });
+
+test.each(["resolve", "refresh"] as const)(
+    "queued %s is invalidated by cancel and disposal at submission generation",
+    async (method) => {
+        const { Framework, defineWebApp } = await import("../../src/index");
+        for (const stop of ["cancel", "dispose"] as const) {
+            let start!: () => void, release!: () => void;
+            const started = new Promise<void>((resolve) => {
+                start = resolve;
+            });
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            let calls = 0,
+                commits = 0;
+            const framework = Framework.create({
+                definition: defineWebApp({
+                    id: "queue",
+                    routes: [],
+                    controllers: [
+                        {
+                            id: "home",
+                            handler: async () => {
+                                calls++;
+                                start();
+                                await gate;
+                                return pageFor("home", {});
+                            },
+                        },
+                    ],
+                    getErrorPage: (_status, message) => pageFor(message, {}),
+                }),
+            });
+            const nav = createNavigationController({ framework, initial: leaf("home") });
+            nav.subscribe(() => {
+                commits++;
+            });
+            const first = nav.resolve();
+            await started;
+            const second = nav[method]();
+            const outcomes = Promise.allSettled([first, second]);
+            const stopping = nav[stop]();
+            release();
+            expect(
+                (await outcomes).map((result) =>
+                    result.status === "rejected"
+                        ? (result.reason as { code: string }).code
+                        : "fulfilled",
+                ),
+            ).toEqual(["cancelled", "cancelled"]);
+            await stopping;
+            expect(calls).toBe(1);
+            expect(commits).toBe(0);
+            await nav.dispose();
+            await framework.dispose();
+        }
+    },
+);

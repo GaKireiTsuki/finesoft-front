@@ -947,3 +947,54 @@ function createDeferred<T>(): {
 
     return { promise, resolve };
 }
+
+test.each(["beforeLoad", "afterLoad"] as const)(
+    "cached popstate %s redirect loads destination data instead of the retained protected page",
+    async (phase) => {
+        const { defineWebApp } = await import("@finesoft/web");
+        let loginCalls = 0;
+        const secret = makePage("SECRET");
+        const login = makePage("LOGIN");
+        const framework = Framework.create({
+            definition: defineWebApp({
+                id: `cached-redirect-${phase}`,
+                controllers: [
+                    { id: "protected", handler: () => secret },
+                    {
+                        id: "login",
+                        handler: () => {
+                            loginCalls++;
+                            return login;
+                        },
+                    },
+                ],
+                routes: [
+                    {
+                        path: "/protected",
+                        intentId: "protected",
+                        [phase]: [
+                            () => ({ kind: "redirect" as const, url: "/login", status: 302 }),
+                        ],
+                    },
+                    { path: "/login", intentId: "login" },
+                ],
+                getErrorPage: (_status, message) => makePage(message),
+            }),
+        });
+        const updateApp = vi.fn();
+        registerFlowActionHandler({
+            framework,
+            log: makeLogger(),
+            callbacks: makeCallbacks(),
+            updateApp,
+        });
+        await HistoryMock.latest<{ page: BasePage; entryId: string }>().popListener?.(
+            "/protected",
+            { page: secret, entryId: "protected-entry" },
+        );
+        expect(loginCalls).toBe(1);
+        await expect(updateApp.mock.calls[0][0].page).resolves.toEqual(login);
+        expect(framework.currentEntry?.intent).toBe("login");
+        await framework.dispose();
+    },
+);

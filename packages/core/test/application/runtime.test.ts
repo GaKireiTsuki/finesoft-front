@@ -328,3 +328,23 @@ test("invocation fetch isolates concurrent request capabilities and nested clean
     expect(cleaned.sort()).toEqual(["a", "b"]);
     await runtime.dispose();
 });
+
+test("execution cancel aborts its original signal but leaves cleanup to its owner", async () => {
+    const op = defineOperation({ id: "value", kind: "query", handler: () => 1 });
+    const runtime = createRuntime({ app: defineApp({ id: "cancel-owner", operations: [op] }) });
+    const execution = runtime.createExecution();
+    const signal = execution.context.signal;
+    let disposed = false;
+    execution.context.onDispose(() => {
+        disposed = true;
+    });
+    execution.cancel("private reason");
+    expect(execution.context.signal).toBe(signal);
+    expect(signal.aborted).toBe(true);
+    expect(disposed).toBe(false);
+    await expect(execution.execute(op, undefined)).rejects.toMatchObject({ code: "cancelled" });
+    expect(await runtime.execute(op, undefined)).toBe(1);
+    await execution.dispose();
+    expect(disposed).toBe(true);
+    await runtime.dispose();
+});

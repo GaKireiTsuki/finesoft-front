@@ -89,12 +89,13 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
         const loaded = (async () => {
             const parsed = new URL(url, window.location.origin);
             let target = parsed.pathname + parsed.search;
+            let retained = options.cached?.page;
             for (let depth = 0; depth < 5; depth++) {
                 const result = await loadPage({
                     framework,
                     target,
                     execution,
-                    retained: options.cached?.page,
+                    retained,
                     entryId: options.entryId ?? options.cached?.entryId,
                     createContext: ({ url: destinationUrl, intent, execution: scope }) =>
                         createBrowserContext({
@@ -107,6 +108,7 @@ export function registerFlowActionHandler(deps: FlowActionDependencies): void {
                 if (result.kind === "redirect") {
                     redirected = true;
                     target = result.url;
+                    retained = undefined;
                     continue;
                 }
                 if (result.kind === "deny")

@@ -345,3 +345,139 @@ test("before-load rewrite preserves the destination EntryId across tree, data an
     });
     await fw.dispose();
 });
+
+test.each(["loader", "tree"] as const)(
+    "%s cancellation reaches supplied execution controller, nested fetch and query cache without disposing it",
+    async (producer) => {
+        const { defineOperation } = await import("@finesoft/core");
+        const { createNavigationController } = await import("../../src/navigation");
+        let start!: () => void, release!: () => void;
+        const started = new Promise<void>((resolve) => {
+            start = resolve;
+        });
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let calls = 0,
+            cleaned = 0;
+        let controllerSignal: AbortSignal | undefined, fetchSignal: AbortSignal | undefined;
+        const query = defineOperation({
+            id: "nested",
+            kind: "query",
+            cache: { ttlMs: 10000 },
+            handler: async (_input: undefined, ctx) => {
+                calls++;
+                ctx.onDispose(() => {
+                    cleaned++;
+                });
+                return await (await ctx.fetch("https://example.com/data")).text();
+            },
+        });
+        const framework = Framework.create({
+            definition: defineWebApp({
+                id: "supplied-cancel",
+                app: defineApp({ id: "data", operations: [query] }),
+                controllers: [
+                    {
+                        id: "home",
+                        handler: async (_params, ctx) => {
+                            controllerSignal = ctx.signal;
+                            return {
+                                id: "home",
+                                pageType: "home",
+                                title: await ctx.execute(query, undefined),
+                            };
+                        },
+                    },
+                ],
+                routes: [],
+                getErrorPage: errorPage,
+            }),
+            fetch: async (_input, init) => {
+                fetchSignal = init!.signal!;
+                start();
+                await gate;
+                return new Response("late");
+            },
+        });
+        const execution = framework.createExecution();
+        const nav = createNavigationController({ framework, execution, initial: leaf("home") });
+        const abort = new AbortController();
+        const pending =
+            producer === "loader"
+                ? loadPage({ framework, target: leaf("home"), execution, signal: abort.signal })
+                : nav.resolve();
+        const outcome = pending.then(
+            () => "fulfilled",
+            (error: unknown) => (error as ExecutionError).code,
+        );
+        await started;
+        if (producer === "loader") abort.abort("private cancellation reason");
+        else nav.cancel();
+        const signalWasAborted = execution.context.signal.aborted;
+        release();
+        expect(await outcome).toBe("cancelled");
+        expect(signalWasAborted).toBe(true);
+        expect(controllerSignal).toBe(execution.context.signal);
+        expect(fetchSignal?.aborted).toBe(true);
+        expect(nav.getSnapshot().destinations).toEqual([]);
+        expect(cleaned).toBe(0);
+        await expect(execution.execute(query, undefined)).rejects.toMatchObject({
+            code: "cancelled",
+        });
+        expect(
+            await framework.runtime.execute(query, undefined, {
+                fetch: async () => new Response("fresh"),
+            }),
+        ).toBe("fresh");
+        expect(calls).toBe(2);
+        expect(cleaned).toBe(1); // only the automatically owned retry execution is disposed
+        await execution.dispose();
+        expect(cleaned).toBe(2);
+        await nav.dispose();
+        await framework.dispose();
+    },
+);
+
+test.each(["loader", "tree"] as const)(
+    "%s detaches completed signal bindings and forwards already-aborted signals",
+    async (producer) => {
+        const { createNavigationController } = await import("../../src/navigation");
+        let calls = 0;
+        const framework = Framework.create({
+            definition: defineWebApp({
+                id: "signal-boundary",
+                routes: [],
+                controllers: [
+                    {
+                        id: "home",
+                        handler: () => {
+                            calls++;
+                            return { id: "home", pageType: "home", title: "Home" };
+                        },
+                    },
+                ],
+                getErrorPage: errorPage,
+            }),
+        });
+        const execution = framework.createExecution();
+        const target = leaf("home");
+        const nav = createNavigationController({ framework, execution, initial: target });
+        const run = (signal: AbortSignal) =>
+            producer === "loader"
+                ? loadPage({ framework, execution, target, signal })
+                : nav.apply({ kind: "hydrate", tree: target }, { signal });
+        const completed = new AbortController();
+        await run(completed.signal);
+        completed.abort();
+        expect(execution.context.signal.aborted).toBe(false);
+        const cancelled = new AbortController();
+        cancelled.abort();
+        await expect(run(cancelled.signal)).rejects.toMatchObject({ code: "cancelled" });
+        expect(execution.context.signal.aborted).toBe(true);
+        expect(calls).toBe(1);
+        await nav.dispose();
+        await execution.dispose();
+        await framework.dispose();
+    },
+);

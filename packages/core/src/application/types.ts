@@ -80,6 +80,8 @@ export interface RuntimeOptions {
 }
 export interface ExecutionHandle {
     readonly context: ExecutionContext;
+    /** Abort this execution without disposing its scope; the owner still calls dispose(). */
+    cancel(reason?: unknown): void;
     execute<I, O>(operation: Operation<I, O>, input: I): Promise<O>;
     dispose(): Promise<void>;
 }

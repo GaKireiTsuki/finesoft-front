@@ -200,7 +200,11 @@ afterEach(() => {
 import type { FlowActionCallbacks } from "../src/action-handlers/register";
 
 async function buildApp(
-    opts: { initialPath?: string; callbacks?: Partial<FlowActionCallbacks> } = {},
+    opts: {
+        initialPath?: string;
+        callbacks?: Partial<FlowActionCallbacks>;
+        bootstrap?: (framework: import("@finesoft/web").Framework) => void;
+    } = {},
 ) {
     const path = opts.initialPath ?? "/a";
     vi.stubGlobal("window", {
@@ -227,6 +231,7 @@ async function buildApp(
 
     await startBrowserApp({
         bootstrap: (fw) => {
+            if (opts.bootstrap) return opts.bootstrap(fw);
             fw.router.add("/a", "a");
             fw.router.add("/b", "b");
             fw.registerIntent(makeController("a"));
@@ -347,4 +352,46 @@ describe("flat islands（顶层 mountEntry，无 navigation）", () => {
         // (b) island stack unchanged — /b was NOT pushed
         expect(mountCalls).toEqual([KEY("a")]);
     });
+});
+
+test("aliased first-load URL keeps its matched route and runs only that route's guards", async () => {
+    const calls: string[] = [];
+    const { outlet, mountCalls, framework } = await buildApp({
+        initialPath: "/private",
+        bootstrap: (fw) => {
+            fw.router.add("/public", "home", {
+                beforeGuards: [
+                    () => {
+                        calls.push("wrong-route");
+                        return { kind: "deny", status: 403, message: "wrong route" };
+                    },
+                ],
+            });
+            fw.router.add("/private", "home", {
+                beforeGuards: [
+                    () => {
+                        calls.push("private-before");
+                        return { kind: "next" };
+                    },
+                ],
+                afterGuards: [
+                    () => {
+                        calls.push("private-after");
+                        return { kind: "next" };
+                    },
+                ],
+            });
+            fw.registerIntent({
+                intentId: "home",
+                perform: () => {
+                    calls.push("controller");
+                    return { id: "home", pageType: "home", title: "PRIVATE" };
+                },
+            });
+        },
+    });
+    expect(calls).toEqual(["private-before", "controller", "private-after"]);
+    expect(mountCalls).toHaveLength(1);
+    expect(outlet.querySelector("[data-fs-entry]")?.textContent).toBe("PRIVATE");
+    await framework.dispose();
 });

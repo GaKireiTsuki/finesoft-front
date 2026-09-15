@@ -74,6 +74,7 @@ export async function activateFlatIslands(args: FlatIslandsArgs): Promise<Activa
                   leaf(
                       initialMatch.intent.id,
                       (initialMatch.intent.params ?? {}) as Record<string, string>,
+                      { url: initialUrl },
                   ),
               ])
             : stack([leaf("__not_found__", {})]);
