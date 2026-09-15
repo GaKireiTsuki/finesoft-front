@@ -1,13 +1,12 @@
 /**
  * NavigationController — 导航控制器
  *
- * 把纯导航树（operations）接到框架的「请求生命周期」上：对标 SSR `ssrRenderInternal`
- * 与浏览器 `navigateTo`，按 **每个可见目标** 复刻同一套 resolve → beforeLoad →
- * dispatch → afterLoad → commit 序列；但导航层对内容无关，`Page` 字段语义由应用决定。
+ * Web owns transaction admission, shared per-page loading and final commit.
+ * Browser history/views and both SSR strategies consume the same candidate boundary.
  *
  * 控制器本身不持有 UI、不碰 history/URL（那是 browser-bridge / ssr 的活），只负责：
  * 用 operations 算出下一棵树（纯、结构共享）→ 解析所有可见目标（复用未变页 + 预取缓存）
- * → 跑主目标的 before/after 守卫 → 提交快照 → 通知订阅者。
+ * → 按可见目标加载 → 整棵候选树提交策略 → 提交快照 → 通知订阅者。
  *
  * 与现有扁平 runner 的语义对齐点（务必一致）：
  * - **beforeLoad rewrite**：当作「换 URL 重路由」——对主目标用新 URL 重新 resolve 出 leaf
@@ -22,8 +21,15 @@
  * 单个 LeafNode 树 = 今天的扁平单页：一个可见目标、一次 resolve/dispatch、一对 before/after。
  */
 
-import { ExecutionError, generateUuid, type ExecutionHandle, type Container } from "@finesoft/core";
+import {
+    ExecutionError,
+    generateUuid,
+    type ExecutionHandle,
+    type ExecutionContext,
+    type Container,
+} from "@finesoft/core";
 import { Framework } from "../framework";
+import { WEB_EXECUTION, type WebExecutionState } from "../application/definition";
 import { loadPage } from "../application/load-page";
 import type { AfterLoadGuard, BeforeLoadGuard, NavigationContext } from "../middleware/types";
 import { bindExecutionCancellation } from "../application/execution";
@@ -196,8 +202,34 @@ export interface NavigationDispatchContext {
 // NavigationControllerOptions / NavigationController
 // =====================================================================
 
-/** NavigationController 构造选项。 */
+/** Admission runs once per transaction; page redirects do not repeat it. */
+export type BeforeNavigateResult =
+    | import("../middleware/types").NextResult
+    | import("../middleware/types").DenyResult
+    | import("../middleware/types").RedirectResult;
+/** The final candidate can only be accepted or denied, never redirected after inspection. */
+export type BeforeCommitResult = Exclude<BeforeNavigateResult, { kind: "redirect" }>;
+export interface NavigationTransactionContext {
+    readonly from: NavigationSnapshot;
+    readonly tree: NavigationNode;
+    readonly transitionId: string;
+    readonly execution: ExecutionContext;
+    readonly signal: AbortSignal;
+    readonly isServer: boolean;
+}
+export interface NavigationCommitContext extends NavigationTransactionContext {
+    readonly candidate: NavigationSnapshot;
+}
+export type BeforeNavigatePolicy = (
+    context: NavigationTransactionContext,
+) => BeforeNavigateResult | Promise<BeforeNavigateResult>;
+export type BeforeCommitPolicy = (
+    context: NavigationCommitContext,
+) => BeforeCommitResult | Promise<BeforeCommitResult>;
+
 export interface NavigationControllerOptions {
+    readonly beforeNavigate?: readonly BeforeNavigatePolicy[];
+    readonly beforeCommit?: readonly BeforeCommitPolicy[];
     readonly framework: Framework;
     readonly execution?: ExecutionHandle;
     readonly viewReady?: (snapshot: NavigationSnapshot) => void | Promise<void>;
@@ -298,6 +330,14 @@ export function createNavigationController(
     options: NavigationControllerOptions,
 ): NavigationController {
     const framework = options.framework;
+    const beforeNavigate = [
+        ...(framework.definition?.beforeNavigate ?? []),
+        ...(options.beforeNavigate ?? []),
+    ];
+    const beforeCommit = [
+        ...(framework.definition?.beforeCommit ?? []),
+        ...(options.beforeCommit ?? []),
+    ];
     const getErrorPage =
         options.getErrorPage ?? framework.definition?.getErrorPage ?? defaultErrorPage;
     let tree = options.initial;
@@ -324,6 +364,7 @@ export function createNavigationController(
         nextTree: NavigationNode,
         signal?: AbortSignal,
         historyMode?: "push" | "replace",
+        refreshEntryId?: string,
     ): Promise<NavigationSnapshot> {
         const ownGeneration = generation;
         const check = () => {
@@ -333,9 +374,17 @@ export function createNavigationController(
             }
             if (closed || ownGeneration !== generation) throw new ExecutionError("cancelled");
         };
+        const transaction = { from: snapshot, transitionId: generateUuid() };
         for (let redirects = 0; ; redirects++) {
             check();
-            const result = await resolveCandidate(nextTree, signal, historyMode);
+            const result = await resolveCandidate(
+                nextTree,
+                transaction,
+                redirects === 0,
+                signal,
+                historyMode,
+                refreshEntryId,
+            );
             check();
             if (!result.redirect) return result.snapshot;
             if (redirects === 5)
@@ -353,8 +402,11 @@ export function createNavigationController(
     }
     async function resolveCandidate(
         nextTree: NavigationNode,
+        transaction: { from: NavigationSnapshot; transitionId: string },
+        admission: boolean,
         signal?: AbortSignal,
         historyMode?: "push" | "replace",
+        refreshEntryId?: string,
     ): Promise<{ snapshot: NavigationSnapshot; redirect?: { url: string; status: number } }> {
         const ownGeneration = generation;
         const ids = new Set<string>();
@@ -367,17 +419,60 @@ export function createNavigationController(
         const execution = options.execution ?? framework.createExecution({ signal: combined });
         const unbind = bindExecutionCancellation(execution, combined);
         const check = () => {
-            if (combined.aborted || ownGeneration !== generation)
+            if (
+                combined.aborted ||
+                execution.context.signal.aborted ||
+                ownGeneration !== generation
+            )
                 throw new ExecutionError("cancelled");
         };
+        const executionState = execution.context.bindings[WEB_EXECUTION] as WebExecutionState;
+        const prefetched = executionState.prefetched;
+        const stage = prefetched.stage();
+        executionState.prefetched = stage.cache;
+        const context: NavigationTransactionContext = {
+            ...transaction,
+            tree: nextTree,
+            execution: execution.context,
+            signal: execution.context.signal,
+            isServer: options.isServer ?? true,
+        };
+        const reject = (result: BeforeNavigateResult, candidate: NavigationSnapshot) => ({
+            snapshot: {
+                ...candidate,
+                ...(result.kind === "deny" ? { rejection: result } : {}),
+                ...(result.kind === "redirect"
+                    ? { redirect: { url: result.url, status: result.status } }
+                    : {}),
+            },
+            ...(result.kind === "redirect"
+                ? { redirect: { url: result.url, status: result.status } }
+                : {}),
+        });
         const destinations: ResolvedDestination[] = [];
         const resolvedLeaves = new Map<string, LeafNode>();
         let redirect: { url: string; status: number } | undefined;
         try {
+            if (admission)
+                for (const policy of beforeNavigate) {
+                    check();
+                    const result = await policy(context);
+                    check();
+                    if (!result || !["next", "deny", "redirect"].includes(result.kind))
+                        throw new ExecutionError("configuration", "Invalid beforeNavigate result");
+                    if (result.kind !== "next")
+                        return reject(result, {
+                            tree: nextTree,
+                            destinations: [],
+                            transitionId: transaction.transitionId,
+                            historyMode,
+                        });
+                }
             for (const dest of collectVisibleDestinations(nextTree)) {
                 check();
                 const key = resourceKey(dest.intent, dest.params, execution.context);
-                const retained = pageCache.get(dest.entryId);
+                const retained =
+                    dest.entryId === refreshEntryId ? undefined : pageCache.get(dest.entryId);
                 const result = await loadPage({
                     framework,
                     target: dest,
@@ -420,6 +515,9 @@ export function createNavigationController(
                     ...(result.kind === "page" && result.match?.cache
                         ? { cache: result.match.cache }
                         : {}),
+                    ...(result.kind === "page"
+                        ? { renderMode: result.match?.renderMode, rewriteUrl: result.rewriteUrl }
+                        : {}),
                     entryId: dest.entryId,
                     resourceKey:
                         result.kind === "page"
@@ -448,7 +546,7 @@ export function createNavigationController(
                     (node) => resolvedLeaves.get(node.entryId) ?? node,
                 ),
                 destinations,
-                transitionId: generateUuid(),
+                transitionId: transaction.transitionId,
                 historyMode,
             };
             if (redirect) {
@@ -459,6 +557,19 @@ export function createNavigationController(
             }
             if (destinations.some((dest) => dest.status !== undefined))
                 return { snapshot: candidate };
+            for (const policy of beforeCommit) {
+                check();
+                const result = await policy({ ...context, tree: candidate.tree, candidate });
+                check();
+                if (!result || !["next", "deny"].includes(result.kind))
+                    throw new ExecutionError(
+                        "configuration",
+                        "Invalid beforeCommit result: only next or deny is supported",
+                    );
+                if (result.kind === "deny") return reject(result, candidate);
+            }
+            check();
+            stage.commit();
             for (const dest of destinations) pageCache.set(dest.entryId, dest);
             for (const id of pageCache.keys()) if (!ids.has(id)) pageCache.delete(id);
             tree = candidate.tree;
@@ -468,6 +579,7 @@ export function createNavigationController(
             check();
             return { snapshot };
         } finally {
+            executionState.prefetched = prefetched;
             unbind();
             if (!options.execution) await execution.dispose();
         }
@@ -593,10 +705,7 @@ export function createNavigationController(
         refresh() {
             return enqueue(async () => {
                 const active = findActiveLeaf(tree);
-                if (active) {
-                    pageCache.delete(active.entryId);
-                }
-                return resolveTree(tree);
+                return resolveTree(tree, undefined, undefined, active?.entryId);
             });
         },
         subscribe(listener) {

@@ -57,7 +57,6 @@ export default defineConfig({
         finesoftFrontViteConfig({
             adapter: "node",
             ssr: { entry: "src/ssr.tsx" },
-            bootstrapEntry: "src/app-definition.ts",
         }),
     ],
 });

@@ -12,7 +12,7 @@ import type { FrameworkConfig, MessagesLoader } from "@finesoft/web";
 import { ssrRender, type SSRAppResult, type SSRContext, type SSRRenderResult } from "./render";
 
 export interface SSRRenderConfig {
-    /** 注册 controllers 和路由的引导函数 */
+    /** Reusable page, route and policy declarations. */
     definition: WebAppDefinition;
 
     /** 获取错误页面 */

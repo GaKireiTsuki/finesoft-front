@@ -38,7 +38,7 @@ fs.writeFileSync(
 );
 fs.writeFileSync(
     path.join(root, "vite.config.ts"),
-    `import { finesoftFrontViteConfig } from '@finesoft/front/vite'; export default { build: { modulePreload: false }, plugins: [finesoftFrontViteConfig({ adapter: 'node', ssr: { entry: 'src/ssr.ts' }, bootstrapEntry: 'src/app.ts' })] };`,
+    `import { finesoftFrontViteConfig } from '@finesoft/front/vite'; export default { build: { modulePreload: false }, plugins: [finesoftFrontViteConfig({ adapter: 'node', ssr: { entry: 'src/ssr.ts' } })] };`,
 );
 fs.writeFileSync(
     path.join(root, "src/client.ts"),

@@ -63,6 +63,21 @@ export class PrefetchedIntents {
         return undefined;
     }
 
+    /** @internal Navigation-owned staged reads; direct get remains one-shot. */
+    stage(): { cache: PrefetchedIntents; commit(): void } {
+        const original = new Map(this.intents);
+        const cache = new PrefetchedIntents(new Map(original), this.entryIds);
+        return {
+            cache,
+            commit: () => {
+                for (const [key, value] of original) {
+                    if (!cache.intents.has(key) && this.intents.get(key) === value)
+                        this.intents.delete(key);
+                }
+            },
+        };
+    }
+
     /** Read identity metadata without consuming data or bypassing operation policies. */
     entryIdFor(intent: Intent): string | undefined {
         const ids = (this.entryIds.get(stableStringify(intent)) ?? []).filter((entryId) =>

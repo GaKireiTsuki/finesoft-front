@@ -64,12 +64,6 @@ export function makeLocaleInfo(language: string, region?: string): LocaleInfo {
 }
 
 /**
- * 将 locale 属性应用到 `<html>` 元素
- *
- * 服务端渲染时可用于字符串拼接，浏览器端直接操作 DOM。
- */
-
-/**
  * 从 URL 前缀中提取 locale
  *
  * @param url - 请求 URL（如 "/zh/about"）

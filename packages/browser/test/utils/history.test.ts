@@ -107,7 +107,7 @@ describe("History", () => {
         expect(tryScroll).not.toHaveBeenCalled();
         ready();
         await flushMicrotasks();
-        expect(historyState).toEqual({ id: "id-home", state: { page: "canonical" } });
+        expect(historyState).toMatchObject({ id: "id-home", state: { page: "canonical" } });
         expect(locationState.pathname).toBe("/canonical");
         expect(tryScroll).toHaveBeenCalledWith(log, expect.any(Function), 96);
     });
@@ -139,7 +139,11 @@ describe("History", () => {
         triggerPopState({ id: "id-1" }, "https://example.com/home");
         await flushMicrotasks();
 
-        expect(historyApi.replaceState).toHaveBeenCalledWith({ id: "id-1" }, "", "/home");
+        expect(historyApi.replaceState).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "id-1" }),
+            "",
+            "/home",
+        );
         expect(cancelTryScroll).toHaveBeenCalled();
         expect(listener).toHaveBeenCalledWith("https://example.com/home", {
             page: "home",
@@ -277,9 +281,13 @@ describe("History", () => {
 
         history.replaceUrl("/plain?updated=1");
 
-        expect(historyApi.pushState).toHaveBeenCalledWith({ id: "id-1" }, "", "/plain");
+        expect(historyApi.pushState).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "id-1" }),
+            "",
+            "/plain",
+        );
         expect(historyApi.replaceState).toHaveBeenCalledWith(
-            { id: "id-2" },
+            expect.objectContaining({ id: "id-2" }),
             "",
             "/plain?updated=1",
         );
@@ -321,7 +329,7 @@ describe("History", () => {
         });
         history.pushState({ page: "detail" }, "/item/2");
         // state 随 window.history.state 一并写入（而非仅 {id}）→ 整页刷新后仍保留。
-        expect(historyState).toEqual({ id: "nav-1", state: { page: "detail" } });
+        expect(historyState).toMatchObject({ id: "nav-1", state: { page: "detail" } });
     });
 
     test("persistInHistoryState recovers state from event.state on popstate after a reload (empty LRU)", () => {
@@ -348,7 +356,7 @@ describe("History", () => {
         generateUuid.mockReturnValue("flat-1");
         const history = createHistory(log);
         history.pushState({ page: "big" }, "/x");
-        expect(historyState).toEqual({ id: "flat-1" });
+        expect(historyState).toMatchObject({ id: "flat-1" });
     });
 });
 
@@ -397,3 +405,130 @@ async function flushMicrotasks(): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
 }
+
+test("owned back veto compensates to the committed entry without reloading it or changing scroll identity", async () => {
+    generateUuid.mockReturnValueOnce("owned-home").mockReturnValueOnce("owned-detail");
+    const history = createHistory(makeLogger());
+    const go = vi.fn();
+    Object.assign(window.history, { go });
+    history.replaceState({ page: "home" }, "/home");
+    scrollableElement.scrollTop = 11;
+    history.beforeTransition();
+    history.pushState({ page: "detail" }, "/detail");
+    scrollableElement.scrollTop = 73;
+    const listener = vi.fn(async () => {
+        throw Error("veto");
+    });
+    history.onPopState(listener);
+    triggerPopState({ id: "owned-home" }, "https://example.com/home");
+    await flushMicrotasks();
+    expect(go).toHaveBeenCalledWith(1);
+    expect(tryScroll).not.toHaveBeenCalled();
+    triggerPopState({ id: "owned-detail" }, "https://example.com/detail");
+    await flushMicrotasks();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(tryScroll).toHaveBeenCalledWith(expect.anything(), expect.any(Function), 73);
+    expect(historyState?.id).toBe("owned-detail");
+});
+test("a newer committed navigation makes an async pop veto ineligible for compensation", async () => {
+    generateUuid
+        .mockReturnValueOnce("old-home")
+        .mockReturnValueOnce("old-detail")
+        .mockReturnValueOnce("new-page");
+    const history = createHistory(makeLogger());
+    const go = vi.fn();
+    Object.assign(window.history, { go });
+    history.replaceState({ page: "home" }, "/home");
+    history.pushState({ page: "detail" }, "/detail");
+    let reject!: (error: Error) => void;
+    history.onPopState(
+        () =>
+            new Promise<void>((_resolve, rejectPromise) => {
+                reject = rejectPromise;
+            }),
+    );
+    triggerPopState({ id: "old-home" }, "https://example.com/home");
+    history.pushState({ page: "new" }, "/new");
+    reject(Error("late veto"));
+    await flushMicrotasks();
+    expect(go).not.toHaveBeenCalled();
+    expect(historyState?.id).toBe("new-page");
+    expect(tryScroll).not.toHaveBeenCalled();
+});
+
+test("reload recognizes persisted owner positions and compensates without losing embedded application state", async () => {
+    generateUuid.mockReturnValueOnce("reload-home").mockReturnValueOnce("reload-detail");
+    const first = new History<HistoryState>(makeLogger(), {
+        getScrollablePageElement: () => scrollableElement as HTMLElement,
+        persistInHistoryState: true,
+    });
+    first.replaceState({ page: "home" }, "/home");
+    const home = window.history.state;
+    first.pushState({ page: "detail" }, "/detail");
+    const detail = window.history.state;
+    const go = vi.fn();
+    Object.assign(window.history, { go });
+    const reloaded = new History<HistoryState>(makeLogger(), {
+        getScrollablePageElement: () => scrollableElement as HTMLElement,
+        persistInHistoryState: true,
+    });
+    const listener = vi.fn(async () => {
+        throw Error("draft");
+    });
+    reloaded.onPopState(listener);
+    triggerPopState(home, "https://example.com/home");
+    await flushMicrotasks();
+    expect(listener).toHaveBeenCalledWith("https://example.com/home", { page: "home" });
+    expect(go).toHaveBeenCalledWith(1);
+    triggerPopState(detail, "https://example.com/detail");
+    await flushMicrotasks();
+    expect(historyState).toMatchObject({ id: "reload-detail", state: { page: "detail" } });
+    expect(listener).toHaveBeenCalledOnce();
+});
+
+test("queued compensation cannot re-admit an obsolete page after a newer replace commits", async () => {
+    generateUuid
+        .mockReturnValueOnce("queue-home")
+        .mockReturnValueOnce("queue-detail")
+        .mockReturnValueOnce("queue-new");
+    const history = createHistory(makeLogger());
+    const go = vi.fn();
+    Object.assign(window.history, { go });
+    history.replaceState({ page: "home" }, "/home");
+    history.pushState({ page: "detail" }, "/detail");
+    const listener = vi.fn(async () => {
+        throw Error("veto");
+    });
+    history.onPopState(listener);
+    triggerPopState({ id: "queue-home" }, "https://example.com/home");
+    await flushMicrotasks();
+    expect(go).toHaveBeenLastCalledWith(1);
+    history.replaceState({ page: "new" }, "/new");
+    triggerPopState({ id: "queue-detail" }, "https://example.com/detail");
+    await flushMicrotasks();
+    expect(go).toHaveBeenLastCalledWith(-1);
+    triggerPopState({ id: "queue-new" }, "https://example.com/new");
+    await flushMicrotasks();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(historyState?.id).toBe("queue-new");
+});
+
+test("an unowned traversal starts a new owner chain on the next write, never guessing an old distance", async () => {
+    generateUuid.mockReturnValueOnce("boundary-home").mockReturnValueOnce("boundary-new");
+    const history = createHistory(makeLogger());
+    const go = vi.fn();
+    Object.assign(window.history, { go });
+    history.replaceState({ page: "home" }, "/home");
+    const ownedHome = window.history.state;
+    let reject = false;
+    history.onPopState(async () => {
+        if (reject) throw Error("veto");
+    });
+    triggerPopState({ id: "external" }, "https://example.com/external");
+    await flushMicrotasks();
+    history.pushState({ page: "new" }, "/new");
+    reject = true;
+    triggerPopState(ownedHome, "https://example.com/home");
+    await flushMicrotasks();
+    expect(go).not.toHaveBeenCalled();
+});

@@ -32,7 +32,6 @@ import {
     deserializeNavigation,
     leaf,
     stack,
-    resourceKey,
     markPublic,
     resolveConfiguredMessages,
     serializeNavigation,
@@ -103,7 +102,6 @@ export interface SSRRenderNavigationOptions {
     readonly url: string;
     /** Framework 配置（含路由注册等） */
     readonly frameworkConfig: FrameworkConfig;
-    /** 注册 controllers 和路由的引导函数 */
     /** 获取错误页面 */
     readonly getErrorPage: (status: number, message: string) => BasePage;
     /**
@@ -213,41 +211,15 @@ export async function ssrRenderNavigation(
         },
     } as InternalSSRFrameworkConfig);
 
+    let controller: NavigationController | undefined;
     try {
         // ===== 1. URL → 初始树（单页回退时一并拿到该路由的 renderMode） =====
         const resolved = await resolveInitialTree(framework, navigation, fullPath);
 
-        // 无任何匹配（codec 无覆盖 + 应用无 initial + Router 无匹配）→ 404 单页，
-        // 与单页 SSR 的 404 路径对齐。
-        if (resolved === undefined) {
-            const page = getErrorPage(404, "Page not found");
-            const target = leaf("@finesoft/not-found", {}, { url: fullPath });
-            const snapshot: NavigationSnapshot = {
-                tree: stack(target),
-                destinations: [
-                    {
-                        entryId: target.entryId,
-                        resourceKey: resourceKey(target.intent, target.params),
-                        intent: target.intent,
-                        params: target.params,
-                        page,
-                        status: 404,
-                    },
-                ],
-            };
-            return await renderResult({
-                framework,
-                resolvedLocale,
-                renderApp,
-                page,
-                snapshot,
-                serverData: materializeServerData(buildServerData(snapshot)),
-                renderMode: undefined,
-                status: 404,
-            });
-        }
-
-        const { tree: initialTree, renderMode: fallbackRenderMode } = resolved;
+        const { tree: initialTree, renderMode: fallbackRenderMode } = resolved ?? {
+            tree: stack(leaf("@finesoft/not-found", {}, { url: fullPath })),
+            renderMode: undefined,
+        };
 
         // CSR：单页回退命中 csr 路由 → 与单页 SSR 一致返回空壳（不预取、不渲染）。
         if (fallbackRenderMode === "csr") {
@@ -264,7 +236,7 @@ export async function ssrRenderNavigation(
         // ===== 2. 构建 NavigationController + resolve 所有可见目标 =====
         let redirect: { url: string; status: number } | undefined;
 
-        const controller = buildController({
+        controller = buildController({
             framework,
             navigation,
             initialTree,
@@ -300,11 +272,12 @@ export async function ssrRenderNavigation(
             renderApp,
             page: primary.page,
             snapshot,
-            serverData: materializeServerData(buildServerData(snapshot)),
+            serverData: snapshot.rejection ? [] : materializeServerData(buildServerData(snapshot)),
             renderMode: fallbackRenderMode,
             status: primary.status,
         });
     } finally {
+        await controller?.dispose();
         await framework.dispose();
     }
 }
@@ -393,6 +366,15 @@ function primaryDestination(
     snapshot: NavigationSnapshot,
     getErrorPage: (status: number, message: string) => BasePage,
 ): ResolvedDestination {
+    if (snapshot.rejection)
+        return {
+            entryId: "@finesoft/rejected",
+            resourceKey: "@finesoft/rejected",
+            intent: "@finesoft/rejected",
+            params: {},
+            page: getErrorPage(snapshot.rejection.status, snapshot.rejection.message),
+            status: snapshot.rejection.status,
+        };
     const active = activeLeafIntent(snapshot.tree);
     if (active !== undefined) {
         const match = snapshot.destinations.find((d) => d.entryId === active.entryId);
@@ -544,7 +526,8 @@ async function renderResult(args: RenderResultArgs): Promise<SSRRenderNavigation
     const result = await renderApp(page, framework, snapshot);
     const locale = resolvedLocale ?? framework.getLocale();
     return {
-        ...(snapshot.destinations.length &&
+        ...(!snapshot.rejection &&
+        snapshot.destinations.length &&
         snapshot.destinations.every(
             (destination) => destination.cache === "public" && destination.status === undefined,
         )
@@ -580,7 +563,6 @@ function getSSRFetch(fetchFn?: typeof globalThis.fetch): typeof globalThis.fetch
 /** `createSSRNavigationRender` 的一次性配置（绑定后返回 `(url, ctx?) => result`）。 */
 export interface SSRNavigationRenderConfig {
     readonly definition: WebAppDefinition;
-    /** 注册 controllers 和路由的引导函数 */
     /** 获取错误页面 */
     readonly getErrorPage?: (status: number, message: string) => BasePage;
     /** 应用层渲染函数（含多区域快照） */

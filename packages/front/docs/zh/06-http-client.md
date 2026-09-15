@@ -1,6 +1,6 @@
 # HTTP 客户端
 
-`HttpClient` is an optional typed fetch wrapper. Its `fetch` dependency is explicit. Server DNS validation requires a host-provided lookup; browser applications must explicitly choose their browser DNS policy.
+`HttpClient` 是可选的类型化 fetch 封装，需要显式传入 `fetch`。服务端 DNS 校验需要主机提供查询能力；浏览器应用也必须显式选择 DNS 策略。
 
 ```ts
 import { HttpClient, type HttpClientConfig } from "@finesoft/front";
@@ -24,16 +24,16 @@ export class UserApi extends HttpClient {
 }
 ```
 
-## Host binding
+## 主机绑定
 
 ```ts
-// Node host code; keep this import out of browser and Worker modules.
+// Node 主机代码；浏览器和 Worker 模块不要引入此入口。
 import { nodeDnsLookup } from "@finesoft/front/node";
 const api = new UserApi({ baseUrl: "https://api.example.com", fetch, lookup: nodeDnsLookup });
 ```
 
-Browser code may construct the same class with an absolute API URL, its chosen fetch implementation and `validateDns: false`. That explicitly gives DNS resolution to the browser. Do not silently disable a required server capability. Internal/loopback targets are blocked by default; host configuration must deliberately opt in where required.
+浏览器可用绝对 API URL、所选 fetch 实现和 `validateDns: false` 构造同一个类，这表示明确交由浏览器解析 DNS。服务端缺少必需能力时，不应静默关闭校验。默认禁止内部或回环地址；确有需要时，由主机配置显式允许。
 
-For scoped business services, declare a typed provider and acquire it with `context.get(token)`; see [Dependencies](./07-di-container.md). Bind the invocation's fetch and signal so request cancellation propagates. A cancelled command may already have performed a write; cancellation is not rollback. The operation runtime does not implicitly retry or cache commands.
+需要作用域业务服务时，声明类型化 provider，并通过 `context.get(token)` 获取，见[依赖注入](./07-di-container.md)。绑定本次调用的 fetch 和 signal，让请求能够接收取消信号。命令取消前可能已完成写入，取消不会回滚；操作运行时不会自动重试或缓存命令。
 
-Request and response interceptors run in registration order. `HttpError` represents non-success HTTP results. The generic result type describes expected data; validate untrusted response payloads at the business boundary when necessary. The lower-level protected methods are `get`, `post`, `put`, `del` and `request`; `get`/`del` accept query parameters before request options.
+请求和响应拦截器按注册顺序执行。`HttpError` 表示非成功 HTTP 结果。泛型返回类型描述预期数据；必要时应在业务边界校验不可信的响应内容。底层受保护方法为 `get`、`post`、`put`、`del` 和 `request`；`get` / `del` 的查询参数位于请求选项之前。

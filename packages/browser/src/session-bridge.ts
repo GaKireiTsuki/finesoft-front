@@ -1,7 +1,7 @@
 /**
  * SessionBridge — 把 SessionStore 接到浏览器生命周期（自动捕获 + boot 恢复 + scoped prune）
  *
- * SessionStore（core）本身对浏览器无关：它只懂 capture / persist / load / restore，不订阅导航、
+ * SessionStore（Web）本身对浏览器无关：它只懂 capture / persist / load / restore，不订阅导航、
  * 不碰 `window`。本文件负责把它「落地」到浏览器运行时：
  *
  * - **自动捕获**：导航变更（`subscribeNavigation`）时**先** `store.scope.prune(adapter.presentKeys())`
@@ -13,7 +13,7 @@
  *   （nav + slices 一个布尔门）。默认策略 `defaultShouldRestore` 遵循「显式深链优先」。
  * - **dispose**：反订阅、解绑、提交挂起保存，等已登记存储工作完成。
  *
- * 纯附加：不配 session 的应用永远不会构造 bridge，原有启动路径字节级不变。
+ * 不配 session 的应用不构造 bridge；产物体积以实际构建测量为准。
  */
 
 import { isUrlLocation } from "@finesoft/web";
@@ -33,7 +33,7 @@ export const SESSION_DEFAULT_DEBOUNCE_MS = 500;
 export interface SessionBridgeOptions {
     /** Standard starters pause automatic saves until hydration and persisted restore finish. */
     readonly deferPersistenceUntilRestore?: boolean;
-    /** 会话编排器（core）。 */
+    /** 会话编排器（Web）。 */
     readonly store: SessionStore;
     /** 导航适配器；导航变更时用其 `presentKeys()` 驱动 scoped prune。 */
     readonly adapter: SessionNavigationAdapter;

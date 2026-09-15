@@ -12,12 +12,12 @@
  *
  * @example
  * ```ts
- * import { secureFetch, DEP_KEYS } from "@finesoft/front";
+ * import { DEP_KEYS } from "@finesoft/front";
  *
  * class ShareController extends BaseController<{ next?: string }, Page> {
  *     async execute(params, container) {
- *         const baseFetch = container.resolve<typeof globalThis.fetch>(DEP_KEYS.FETCH);
- *         const fetch = secureFetch(baseFetch);
+ *         // The host configures SAFE_FETCH with a DNS lookup or an explicit supported policy.
+ *         const fetch = container.resolve<typeof globalThis.fetch>(DEP_KEYS.SAFE_FETCH);
  *         const response = await fetch(params.next ?? "https://example.com");
  *         ...
  *     }

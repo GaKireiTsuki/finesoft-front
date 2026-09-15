@@ -18,7 +18,7 @@
 
 import { deserializeNavigation, serializeNavigation } from "../navigation/index";
 import { collectLeafKeys } from "./scoped-state";
-import { isUrlLocation } from "./types";
+import { SessionError, isUrlLocation } from "./types";
 import type { NavigationController } from "../navigation/index";
 import type { SessionNavigationAdapter, SessionSnapshot } from "./types";
 
@@ -42,7 +42,10 @@ export function createNavigationSessionAdapter(
         },
         apply(navigation: SessionSnapshot["navigation"]): void | Promise<void> {
             if (navigation === undefined || isUrlLocation(navigation)) return undefined;
-            return controller.hydrate(deserializeNavigation(navigation)).then(() => undefined);
+            return controller.hydrate(deserializeNavigation(navigation)).then((candidate) => {
+                if (controller.getSnapshot() !== candidate)
+                    throw new SessionError("navigation-uncommitted");
+            });
         },
         captureUrl(): string | undefined {
             return currentUrl?.();

@@ -8,6 +8,20 @@ import { cancelTryScroll, tryScroll } from "./try-scroll";
 
 const HISTORY_SIZE_LIMIT = 10;
 
+interface OwnedPosition {
+    readonly owner: string;
+    readonly position: number;
+}
+function ownedPosition(state: unknown): OwnedPosition | undefined {
+    const value = (state as { __finesoftHistory?: OwnedPosition } | null)?.__finesoftHistory;
+    return value &&
+        typeof value.owner === "string" &&
+        value.owner.length > 0 &&
+        Number.isSafeInteger(value.position)
+        ? value
+        : undefined;
+}
+
 interface HistoryEntry<State> {
     state: State;
     scrollY: number;
@@ -33,28 +47,56 @@ export class History<State> {
     private readonly persistInHistoryState: boolean;
     private currentStateId: string | undefined;
     private popstateSequence = 0;
+    // Additive native metadata keeps this owner chain recognizable after reload.
+    private readonly positions = new Map<string, number>();
+    private position = 0;
+    private owner: string | undefined;
+    private positionKnown = true;
+    private committedStateId: string | undefined;
+    private compensation: { targetId: string } | undefined;
     private cleanups: (() => void)[] = [];
     dispose(): void {
         this.popstateSequence++;
         cancelTryScroll();
+        this.compensation = undefined;
+        this.positions.clear();
         for (const cleanup of this.cleanups.splice(0)) cleanup();
     }
 
     constructor(log: Logger, options: HistoryOptions, sizeLimit = HISTORY_SIZE_LIMIT) {
         this.entries = new LruMap(sizeLimit);
+        const native = window.history.state;
+        const position = ownedPosition(native);
+        this.owner = position?.owner;
+        if (position && typeof native?.id === "string") {
+            this.position = position.position;
+            this.currentStateId = this.committedStateId = native.id;
+            this.positions.set(native.id, position.position);
+        }
         this.log = log;
         this.getScrollablePageElement = options.getScrollablePageElement;
         this.persistInHistoryState = options.persistInHistoryState ?? false;
     }
 
     /** 写入 window.history.state 的载荷：persist 时连 state 一起带（跨刷新保留）。 */
-    private historyState(id: string, state: State): { id: string; state?: State } {
-        return this.persistInHistoryState ? { id, state } : { id };
+    private historyState(
+        id: string,
+        state?: State,
+    ): { id: string; state?: State; __finesoftHistory: OwnedPosition } {
+        return {
+            id,
+            ...(this.persistInHistoryState && state !== undefined ? { state } : {}),
+            __finesoftHistory: {
+                owner: (this.owner ??= id),
+                position: this.positions.get(id) ?? this.position,
+            },
+        };
     }
 
     replaceState(state: State, url: string): void {
         cancelTryScroll();
         const id = generateUuid();
+        this.recordWrite(id, false);
         window.history.replaceState(this.historyState(id, state), "", url);
         this.currentStateId = id;
         this.entries.set(id, { state, scrollY: 0 });
@@ -65,6 +107,7 @@ export class History<State> {
     pushState(state: State, url: string): void {
         cancelTryScroll();
         const id = generateUuid();
+        this.recordWrite(id, true);
         window.history.pushState(this.historyState(id, state), "", url);
         this.currentStateId = id;
         this.entries.set(id, { state, scrollY: 0 });
@@ -72,12 +115,52 @@ export class History<State> {
         this.log.info("pushState", state, url, id);
     }
 
+    private recordWrite(id: string, push: boolean): void {
+        this.popstateSequence++;
+        if (!this.positionKnown) {
+            this.positions.clear();
+            this.owner = undefined;
+            this.position = 0;
+            this.positionKnown = true;
+        }
+        if (push) {
+            for (const [key, position] of this.positions)
+                if (position > this.position) this.positions.delete(key);
+            this.position++;
+        }
+        this.positions.set(id, this.position);
+        this.committedStateId = id;
+    }
+
+    private compensate(targetId: string | undefined, sequence: number): void {
+        if (sequence !== this.popstateSequence || this.currentStateId !== targetId) return;
+        const committed = this.committedStateId;
+        const targetPosition = targetId && this.positions.get(targetId);
+        const committedPosition = committed && this.positions.get(committed);
+        if (
+            !committed ||
+            typeof targetPosition !== "number" ||
+            typeof committedPosition !== "number"
+        ) {
+            this.log.warn(
+                "Cannot compensate rejected navigation to an entry outside this History owner",
+            );
+            return;
+        }
+        const distance = committedPosition - targetPosition;
+        if (!distance) return;
+        this.compensation = { targetId: committed };
+        window.history.go(distance);
+    }
+
     beforeTransition(): void {
         cancelTryScroll();
         const { state } = window.history;
         if (!state) return;
 
-        this.saveScrollPosition(state.id);
+        this.saveScrollPosition(
+            this.currentStateId === this.committedStateId ? state.id : this.committedStateId,
+        );
     }
 
     private saveScrollPosition(stateId: string | undefined): void {
@@ -97,11 +180,33 @@ export class History<State> {
     onPopState(listener: (url: string, state?: State) => void | Promise<void>): void {
         const handler = (event: PopStateEvent) => {
             cancelTryScroll();
-            this.saveScrollPosition(this.currentStateId);
-
             const targetStateId = event.state?.id;
             const sequence = ++this.popstateSequence;
+            if (this.currentStateId === this.committedStateId)
+                this.saveScrollPosition(this.currentStateId);
             this.currentStateId = targetStateId;
+            const nativePosition = ownedPosition(event.state);
+            if (
+                nativePosition &&
+                nativePosition.owner === this.owner &&
+                typeof targetStateId === "string"
+            )
+                this.positions.set(targetStateId, nativePosition.position);
+            const targetPosition = this.positions.get(targetStateId);
+            this.positionKnown = targetPosition !== undefined;
+            if (targetPosition !== undefined) this.position = targetPosition;
+            if (this.compensation && this.compensation.targetId === targetStateId) {
+                this.compensation = undefined;
+                if (targetStateId !== this.committedStateId) {
+                    // A newer commit won while this native compensation was queued.
+                    this.compensate(targetStateId, sequence);
+                    return;
+                }
+                const retained = this.entries.get(targetStateId);
+                if (retained)
+                    tryScroll(this.log, () => this.getScrollablePageElement(), retained.scrollY);
+                return;
+            }
 
             if (!this.currentStateId) {
                 this.log.warn(
@@ -124,6 +229,7 @@ export class History<State> {
                 navigation = listener(window.location.href, cachedState);
             } catch (error: unknown) {
                 this.log.error("onPopState listener error:", error);
+                this.compensate(targetStateId, sequence);
                 return;
             }
 
@@ -131,18 +237,20 @@ export class History<State> {
                 () => {
                     if (
                         sequence !== this.popstateSequence ||
-                        this.currentStateId !== targetStateId ||
-                        !entry
+                        this.currentStateId !== targetStateId
                     ) {
                         return;
                     }
 
+                    this.committedStateId = targetStateId;
+                    if (!entry) return;
                     const { scrollY } = entry;
                     this.log.info("restoring scroll to", scrollY);
                     tryScroll(this.log, () => this.getScrollablePageElement(), scrollY);
                 },
                 (error: unknown) => {
                     this.log.error("onPopState listener error:", error);
+                    this.compensate(targetStateId, sequence);
                 },
             );
         };
@@ -154,7 +262,8 @@ export class History<State> {
     pushUrl(url: string): void {
         cancelTryScroll();
         const id = generateUuid();
-        window.history.pushState({ id }, "", url);
+        this.recordWrite(id, true);
+        window.history.pushState(this.historyState(id), "", url);
         this.currentStateId = id;
         this.scrollTop = 0;
         this.log.info("pushUrl (no state)", url, id);
@@ -164,7 +273,8 @@ export class History<State> {
     replaceUrl(url: string): void {
         cancelTryScroll();
         const id = generateUuid();
-        window.history.replaceState({ id }, "", url);
+        this.recordWrite(id, false);
+        window.history.replaceState(this.historyState(id), "", url);
         this.currentStateId = id;
         this.scrollTop = 0;
         this.log.info("replaceUrl (no state)", url, id);
@@ -188,13 +298,7 @@ export class History<State> {
         // Canonicalize the current popstate entry without changing its identity or
         // cancelling the restoration that waits on the navigation listener.
         if (url !== undefined || this.persistInHistoryState)
-            window.history.replaceState(
-                this.persistInHistoryState
-                    ? { id: this.currentStateId, state: newState }
-                    : { id: this.currentStateId },
-                "",
-                url,
-            );
+            window.history.replaceState(this.historyState(this.currentStateId, newState), "", url);
     }
 
     private get scrollTop(): number {

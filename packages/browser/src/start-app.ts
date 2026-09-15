@@ -9,6 +9,7 @@ import {
     createNavigationSessionAdapter,
     createSessionStore,
     leaf,
+    resourceKey,
     stack,
     mapNavigationLeaves,
     collectVisibleDestinations,
@@ -211,6 +212,25 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
         };
         async function render(snapshot: NavigationSnapshot) {
             if (closed) return;
+            const committed = snapshot === controller?.getSnapshot();
+            if (snapshot.rejection) {
+                const error = leaf("@finesoft/rejected");
+                snapshot = {
+                    ...snapshot,
+                    tree: stack(error),
+                    destinations: [
+                        {
+                            ...error,
+                            resourceKey: resourceKey(error.intent, error.params),
+                            page: definition.getErrorPage(
+                                snapshot.rejection.status,
+                                snapshot.rejection.message,
+                            ),
+                            status: snapshot.rejection.status,
+                        },
+                    ],
+                };
+            }
             renderSnapshot = snapshot;
             const page =
                 snapshot.destinations.at(-1)?.page ??
@@ -258,6 +278,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
                 lastEntry = entry;
                 lastPageType = page.pageType;
             }
+            if (!committed) return;
             fw.currentEntry = collectVisibleDestinations(snapshot.tree).at(-1);
             try {
                 fw.didEnterPage(page);
@@ -293,6 +314,17 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
             const redirectedEntry = candidate.destinations.find(
                 (item) => item.status && item.status >= 300 && item.status < 400,
             )?.entryId;
+            if (!redirectedEntry) {
+                // Whole-transaction admission can redirect before any page is loaded.
+                return (
+                    (
+                        await resolveInitialNavigation(fw, path, {
+                            codec,
+                            initial: definition.navigation,
+                        })
+                    )?.tree ?? leaf("@finesoft/not-found", {}, { url: path })
+                );
+            }
             return mapNavigationLeaves(candidate.tree, (item) =>
                 item.entryId === redirectedEntry
                     ? leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
@@ -433,6 +465,7 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
         if (
             !root &&
             !entries &&
+            !firstSnapshot.redirect &&
             !firstSnapshot.destinations.some(
                 (item) => item.status && item.status >= 300 && item.status < 400,
             )

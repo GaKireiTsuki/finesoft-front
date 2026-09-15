@@ -56,7 +56,7 @@ sequenceDiagram
 
 策略先于查询缓存命中，嵌套调用继承 trace、绑定、策略、信号和 scope。并发资源初始化去重，失败可以重试；释放等待初始化并按依赖顺序完成。请求返回流时，资源直到 body 完成、取消或失败才结束。`runManagedTask` 提供独立任务 execution 并接入主机 `waitUntil`，不是持久队列，也不能延长已结束请求资源的使用权。
 
-Web 的 URL、SSR、预取和导航树叶都通过一个 PageLoader。全局、路由、导航前后守卫不会因缓存或树导航跳过；Split 的每个目标分别检查。URL admission 使旧异步结果失效，结构树编辑按队列执行；popstate 等页面及守卫提交后恢复滚动。
+Web 的 URL、SSR、预取和导航树叶都通过一个 PageLoader。可选 `beforeNavigate` / `beforeCommit` 由同一个 NavigationController 按事务执行；空树也受策略约束，提交前拒绝保留原快照、页面缓存、一次性预取、草稿和事件。扁平 SSR 也借用此控制器，但请求执行资源仍保持到渲染及公开 DTO 物化完成。全局、路由、导航前后守卫不会因缓存或树导航跳过；Split 的每个目标分别检查。URL admission 使旧异步结果失效，结构树编辑按队列执行；popstate 等页面及守卫提交后恢复滚动。自有历史条目被拒绝时由 History 补偿遍历回已提交条目；内部位置/所有权元数据跨刷新保留，未知外部条目只报告无法补偿，不猜测距离。
 
 ## 身份和生命周期
 
@@ -170,7 +170,7 @@ import { createWorkerHandler } from "@finesoft/front/worker";
 export default createWorkerHandler({ runtime, endpoints });
 ```
 
-完整 Web 模板只声明 app、views、browser 和 SSR 入口，Vite 配置选择 adapter。`bootstrapEntry` 现在用于声明模块的路由发现，不运行旧 imperative bootstrap。Node/workerd 的 portable 数据路径已真实运行；云服务部署仍是外部步骤。
+完整 Web 模板只声明 app、views、browser 和 SSR 入口，Vite 配置选择 adapter。路由发现读取构建后 renderer 的 `render.routes`；静态构建可通过 `staticAdapter({ routesExport })` 显式指定路由模块。Node/workerd 的 portable 数据路径已真实运行；云服务部署仍是外部步骤。
 
 ## 原有责任如何收敛
 

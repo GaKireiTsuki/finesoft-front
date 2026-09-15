@@ -18,12 +18,15 @@ function fakeController(initial: NavigationNode): {
 } {
     let tree = initial;
     const hydrated: NavigationNode[] = [];
+    let snapshot = { tree, destinations: [] };
     const controller = {
         getTree: () => tree,
+        getSnapshot: () => snapshot,
         hydrate: (next: NavigationNode) => {
             tree = next;
             hydrated.push(next);
-            return Promise.resolve({} as never);
+            snapshot = { tree, destinations: [] };
+            return Promise.resolve(snapshot);
         },
     } as unknown as NavigationController;
     return { controller, hydrated };

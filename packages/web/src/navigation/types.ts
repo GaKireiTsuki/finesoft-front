@@ -111,6 +111,8 @@ export type NavigationPath = readonly NavigationPathStep[];
 
 /** 单个可见目标的解析结果 */
 export interface ResolvedDestination {
+    readonly renderMode?: string;
+    readonly rewriteUrl?: string;
     readonly cache?: "public";
     readonly entryId: EntryId;
     readonly resourceKey: ResourceKey;
@@ -122,6 +124,10 @@ export interface ResolvedDestination {
 
 /** 导航快照：当前树 + 所有可见目标解析结果（顺序与 collectVisibleDestinations 一致） */
 export interface NavigationSnapshot {
+    /** Uncommitted redirect, including admission before any destination exists. */
+    readonly redirect?: { readonly url: string; readonly status: number };
+    /** Transaction denial is observable even for an empty tree; this snapshot is never committed. */
+    readonly rejection?: import("../middleware/types").DenyResult;
     readonly transitionId?: string;
     readonly historyMode?: "push" | "replace";
     readonly tree: NavigationNode;

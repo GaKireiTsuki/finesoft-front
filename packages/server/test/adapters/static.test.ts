@@ -43,8 +43,10 @@ function fixture(overrides: Record<string, unknown> = {}) {
     };
     dynamicImport.mockImplementation(async (specifier: string) => {
         if (specifier === "node:url") return { pathToFileURL };
-        if (specifier.endsWith("/ssr.js")) return { render, serializeServerData: JSON.stringify };
-        if (specifier.endsWith("/_routes.mjs")) return { app: { routes: [{ path: "/explicit" }] } };
+        if (specifier.includes("/ssr.js?build="))
+            return { render, serializeServerData: JSON.stringify };
+        if (specifier.includes("/_routes.mjs?build="))
+            return { app: { routes: [{ path: "/explicit" }] } };
         throw Error("Unexpected module " + specifier);
     });
     return { files, render, context };

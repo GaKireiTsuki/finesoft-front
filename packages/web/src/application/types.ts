@@ -35,6 +35,8 @@ export interface WebAppDefinition {
         FrameworkConfig,
         "definition" | "runtime" | "invocation" | "router" | "prefetchedIntents" | "setupRoutes"
     >;
+    readonly beforeNavigate?: readonly import("../navigation/controller").BeforeNavigatePolicy[];
+    readonly beforeCommit?: readonly import("../navigation/controller").BeforeCommitPolicy[];
     readonly beforeLoad?: readonly BeforeLoadGuard[];
     readonly afterLoad?: readonly AfterLoadGuard[];
 }

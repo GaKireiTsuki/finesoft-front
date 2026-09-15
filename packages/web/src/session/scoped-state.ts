@@ -17,13 +17,6 @@ import type { NavigationNode } from "../navigation/index";
 import { SessionError, type NavigationScopedState } from "./types";
 
 /**
- * 导航条目身份键：`intent + " " + stableStringify(params)`。
- *
- * 与 controller 的目标键同源、跨重载稳定（`stableStringify` 对 params 键排序，
- * 故 `{a,b}` 与 `{b,a}` 产出同一键）。
- */
-
-/**
  * 收集导航树中**全部 leaf** 的身份键（含不可见 / 未激活分支 / 各 split 列）。
  * 委派给 `collectAllLeaves`（同一「全部存在」遍历），映射成 entryKey。
  * 「全部存在」而非「可见」，用于 scoped 状态保留。

@@ -7,7 +7,7 @@ import type { RouteParams } from "../router/types";
 import type { WebAppDefinition } from "./types";
 
 export interface WebExecutionState {
-    readonly prefetched: PrefetchedIntents;
+    prefetched: PrefetchedIntents;
     readonly retained: WeakMap<object, BasePage>;
     readonly entryIds: WeakMap<object, string>;
 }
@@ -75,6 +75,8 @@ export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
             typeof input.navigation === "function"
                 ? input.navigation
                 : input.navigation && freezeSnapshot(structuredClone(input.navigation)),
+        beforeNavigate: input.beforeNavigate && Object.freeze([...input.beforeNavigate]),
+        beforeCommit: input.beforeCommit && Object.freeze([...input.beforeCommit]),
         beforeLoad: input.beforeLoad && Object.freeze([...input.beforeLoad]),
         afterLoad: input.afterLoad && Object.freeze([...input.afterLoad]),
         frameworkConfig: input.frameworkConfig && Object.freeze({ ...input.frameworkConfig }),

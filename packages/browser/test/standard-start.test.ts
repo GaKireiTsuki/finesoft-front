@@ -476,3 +476,67 @@ test("modal error callback is awaited once and rejection is owned by the action 
         await action;
     }
 });
+
+test("definition admission redirects through standard browser URL startup without a destination page", async () => {
+    const pushState = vi.spyOn(window.history, "pushState");
+    let redirectAdmission = false;
+    const app = definition({
+        beforeNavigate: [
+            () =>
+                redirectAdmission
+                    ? { kind: "redirect", status: 302, url: "/alias" }
+                    : { kind: "next" },
+        ],
+    });
+    const handle = await start({ app, renderer: renderer(), target: target() });
+    redirectAdmission = true;
+    await handle.navigate("/");
+    const leaves = handle.getSnapshot().destinations;
+    expect(leaves[0].intent).toBe("home");
+    expect(pushState).toHaveBeenLastCalledWith(expect.anything(), "", "/alias");
+});
+
+test("initial admission denial renders its explicit error and snapshot without a page visit", async () => {
+    const mounted = vi.fn();
+    const load = vi.fn(() => ({ id: "home", pageType: "home", title: "Home" }));
+    const handle = await start({
+        app: definition({
+            controllers: [{ id: "home", handler: load }],
+            beforeNavigate: [() => ({ kind: "deny", status: 403, message: "Admission blocked" })],
+        }),
+        renderer: {
+            mount: async (options) => {
+                mounted(options.page, options.context.snapshot);
+                return { update() {}, dispose() {} };
+            },
+        },
+        target: target(),
+        history: "memory",
+    });
+    expect(mounted).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "403" }),
+        expect.objectContaining({
+            rejection: { kind: "deny", status: 403, message: "Admission blocked" },
+        }),
+    );
+    expect(load).not.toHaveBeenCalled();
+    expect(handle.getSnapshot().destinations).toEqual([]);
+});
+
+test("initial admission external handoff does not render a fallback page", async () => {
+    const assign = vi.fn();
+    Object.assign(window.location, { assign });
+    const native = renderer();
+    await start({
+        app: definition({
+            beforeNavigate: [
+                () => ({ kind: "redirect", status: 302, url: "https://outside.example/" }),
+            ],
+        }),
+        renderer: native,
+        target: target(),
+        history: "memory",
+    });
+    expect(assign).toHaveBeenCalledWith("https://outside.example/");
+    expect(vi.mocked(native.mount)).not.toHaveBeenCalled();
+});

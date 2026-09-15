@@ -10,7 +10,13 @@ import type { SecureFetchOptions } from "@finesoft/core";
  */
 
 import { type TranslationMessages } from "@finesoft/core";
-import { Framework, loadPage, type BasePage } from "@finesoft/web";
+import {
+    Framework,
+    createNavigationController,
+    leaf,
+    type NavigationController,
+    type BasePage,
+} from "@finesoft/web";
 import { createServerContext } from "./middleware/context";
 import {
     resolveConfiguredMessages,
@@ -28,7 +34,6 @@ export interface SSRRenderOptions {
     url: string;
     /** Framework 配置（含路由注册等） */
     frameworkConfig: FrameworkConfig;
-    /** 注册 controllers 和路由的引导函数 */
     /** 获取错误页面 */
     getErrorPage: (status: number, message: string) => BasePage;
     /** 应用层渲染函数（如 Svelte SSR render / Vue renderToString） */
@@ -157,6 +162,7 @@ async function ssrRenderInternal(
         bindings: { ...ssrContext?.bindings, request: ssrContext?.request },
     });
 
+    let controller: NavigationController | undefined;
     try {
         const match = await framework.routeUrl(fullPath);
 
@@ -171,41 +177,49 @@ async function ssrRenderInternal(
             };
         }
 
-        const loaded = await loadPage({
+        let redirect: { url: string; status: number } | undefined;
+        const target = leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params ?? {}, {
+            url: fullPath,
+        });
+        controller = createNavigationController({
             framework,
-            target: fullPath,
+            initial: target,
             execution,
-            createContext: ({ url: destinationUrl, intent, execution: active }) =>
-                createServerContext({
-                    url: destinationUrl,
-                    intent,
-                    container: active.context.container,
+            isServer: true,
+            getErrorPage,
+            onRedirect: (result) => {
+                redirect = result;
+            },
+            createContext: ({ url: destinationUrl, intent, params }) => ({
+                container: execution.context.container,
+                navigation: createServerContext({
+                    url: destinationUrl ?? fullPath,
+                    intent: { id: intent, params },
+                    container: execution.context.container,
                     request: ssrContext?.request,
                 }),
+            }),
         });
-        if (loaded.kind === "redirect")
-            return {
-                html: "",
-                head: "",
-                css: "",
-                serverData: [],
-                redirect: { url: loaded.url, status: loaded.status },
-            };
-        const page =
-            loaded.kind === "page" ? loaded.page : getErrorPage(loaded.status, loaded.message);
+        const snapshot = await controller.resolve();
+        if (redirect) return { html: "", head: "", css: "", serverData: [], redirect };
+        const destination = snapshot.destinations[0];
+        const status = snapshot.rejection?.status ?? destination?.status;
+        const page = snapshot.rejection
+            ? getErrorPage(snapshot.rejection.status, snapshot.rejection.message)
+            : (destination?.page ?? getErrorPage(404, "Page not found"));
+        const accepted = snapshot === controller.getSnapshot();
         const serverData: PrefetchedIntent[] =
-            loaded.kind === "page"
+            accepted && destination
                 ? [
                       {
-                          entryId: loaded.target.entryId,
-                          intent: { id: loaded.target.intent, params: loaded.target.params },
+                          entryId: destination.entryId,
+                          intent: { id: destination.intent, params: destination.params },
                           data: page,
                       },
                   ]
                 : [];
-        const rewriteUrl = loaded.kind === "page" ? loaded.rewriteUrl : undefined;
-
-        if (loaded.kind === "page") framework.currentEntry = loaded.target;
+        const rewriteUrl = accepted ? destination?.rewriteUrl : undefined;
+        if (accepted && snapshot.tree.kind === "leaf") framework.currentEntry = snapshot.tree;
         const result = await renderApp(page, framework);
 
         // locale 属性：已在渲染前通过 resolveLocale 解析（若有），否则从 Framework 容器获取
@@ -216,16 +230,15 @@ async function ssrRenderInternal(
             head: result.head,
             css: result.css,
             serverData: materializeServerData(serverData),
-            renderMode: loaded.kind === "page" ? loaded.match?.renderMode : match?.renderMode,
-            ...(loaded.kind === "page" && loaded.match?.cache === "public"
-                ? { cache: "public" as const }
-                : {}),
+            renderMode: destination?.renderMode ?? match?.renderMode,
+            ...(accepted && destination?.cache === "public" ? { cache: "public" as const } : {}),
             slots: result.slots,
             locale,
             rewriteUrl,
-            ...(loaded.kind === "deny" ? { status: loaded.status } : {}),
+            ...(status !== undefined ? { status } : {}),
         };
     } finally {
+        await controller?.dispose();
         await framework.dispose();
     }
 }

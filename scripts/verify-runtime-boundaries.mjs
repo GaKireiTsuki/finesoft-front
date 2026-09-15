@@ -24,7 +24,11 @@ try {
     run(["exec", "node", root + "scripts/restore-front-publish.mjs"], root + "packages/front");
 }
 assert.deepEqual(await fs.readFile(manifestPath), before);
-const tarball = evidence + "/" + (await fs.readdir(evidence)).find((name) => name.endsWith(".tgz"));
+const packedPackage = JSON.parse(before);
+const tarball = path.join(
+    evidence,
+    `${packedPackage.name.replace(/^@/, "").replaceAll("/", "-")}-${packedPackage.version}.tgz`,
+);
 assert.ok(tarball.endsWith(".tgz"));
 const result = {
     tarball,

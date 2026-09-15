@@ -93,6 +93,12 @@ export {
 
 // ===== Controller（导航控制器）=====
 export {
+    type BeforeNavigatePolicy,
+    type BeforeCommitPolicy,
+    type BeforeNavigateResult,
+    type BeforeCommitResult,
+    type NavigationTransactionContext,
+    type NavigationCommitContext,
     createNavigationController,
     NAVIGATION_OP_KINDS,
     type HydrateOperation,

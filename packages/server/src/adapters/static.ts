@@ -16,9 +16,10 @@ export function staticAdapter(options: StaticAdapterOptions = {}): Adapter {
         name: "static",
         async build(context) {
             const { fs, path, root } = context;
+            context = { ...context, buildId: context.buildId ?? crypto.randomUUID() };
             const { pathToFileURL } = await dynamicImport("node:url");
             const module: SSRModule = await dynamicImport(
-                pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href,
+                `${pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href}?build=${encodeURIComponent(context.buildId!)}`,
             );
             const modes = { ...context.renderModes };
             const host = createSSRHost({
@@ -100,7 +101,9 @@ async function discoverRoutes(
             resolve: context.resolvedResolve,
         });
         const { pathToFileURL } = await dynamicImport("node:url");
-        const loaded = await dynamicImport(pathToFileURL(output).href);
+        const loaded = await dynamicImport(
+            `${pathToFileURL(output).href}?build=${encodeURIComponent(context.buildId!)}`,
+        );
         const routes =
             loaded.routes ?? loaded.app?.routes ?? loaded.default?.routes ?? loaded.default;
         if (!Array.isArray(routes))

@@ -65,10 +65,9 @@ export default defineConfig({
         finesoftFrontViteConfig({
             adapter: "node",
             ssr: { entry: "src/ssr.tsx" },
-            bootstrapEntry: "src/app-definition.ts",
         }),
     ],
 });
 ```
 
-`Home`、`ErrorPage` 是接收 `page` 的普通业务组件。Vue 对应 `createVueRenderer` / `createVueSSRRender`；Svelte 对应 `createSvelteRenderer` / `createSvelteSSRRender`。SSR body/data 占位符放在应用挂载目标内部。运行 `vp install`、`vp run dev`、`vp run build`。`bootstrapEntry` 指向用于发现路由的声明模块，不执行命令式启动函数。
+`Home`、`ErrorPage` 是接收 `page` 的普通业务组件。Vue 对应 `createVueRenderer` / `createVueSSRRender`；Svelte 对应 `createSvelteRenderer` / `createSvelteSSRRender`。SSR body/data 占位符放在应用挂载目标内部。运行 `vp install`、`vp run dev`、`vp run build`。路由发现读取构建后 renderer 的 `render.routes`。静态构建需要显式路由模块时，可使用 `staticAdapter({ routesExport: "src/app-definition.ts" })`。

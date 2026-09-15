@@ -65,10 +65,9 @@ export default defineConfig({
         finesoftFrontViteConfig({
             adapter: "node",
             ssr: { entry: "src/ssr.tsx" },
-            bootstrapEntry: "src/app-definition.ts",
         }),
     ],
 });
 ```
 
-`Home` and `ErrorPage` are ordinary application components receiving a `page` prop. Vue uses `createVueRenderer` / `createVueSSRRender`; Svelte uses `createSvelteRenderer` / `createSvelteSSRRender`. Put the SSR body/data placeholders inside the chosen app target. Run `vp install`, `vp run dev`, then `vp run build`. `bootstrapEntry` names the declaration module for route discovery; it does not call an imperative startup function.
+`Home` and `ErrorPage` are ordinary application components receiving a `page` prop. Vue uses `createVueRenderer` / `createVueSSRRender`; Svelte uses `createSvelteRenderer` / `createSvelteSSRRender`. Put the SSR body/data placeholders inside the chosen app target. Run `vp install`, `vp run dev`, then `vp run build`. Route discovery reads the built renderer’s `render.routes`. Static builds can use `staticAdapter({ routesExport: "src/app-definition.ts" })` for an explicit route module.

@@ -45,3 +45,25 @@ describe("PrefetchedIntents", () => {
         expect(cache.get(equivalentIntent, "entry-a")).toEqual({ ok: true });
     });
 });
+
+test("staged reads only consume unchanged selected entries and cannot delete replacements", () => {
+    const a = { id: "a" },
+        b = { id: "b" };
+    const cache = PrefetchedIntents.fromArray([
+        { entryId: "a", intent: a, data: "old" },
+        { entryId: "b", intent: b, data: "other" },
+    ]);
+    const first = cache.stage();
+    expect(first.cache.get(a, "a")).toBe("old");
+    const concurrent = cache.stage();
+    expect(concurrent.cache.get(b, "b")).toBe("other");
+    // Simulate a newer producer value at the same key; a stale stage cannot consume it.
+    const values = (cache as unknown as { intents: Map<string, unknown> }).intents;
+    const key = [...values.keys()].find((key) => key.includes('"a"'))!;
+    values.set(key, "new");
+    first.commit();
+    expect(cache.get(a, "a")).toBe("new");
+    expect(cache.has(b, "b")).toBe(true);
+    concurrent.commit();
+    expect(cache.size).toBe(0);
+});

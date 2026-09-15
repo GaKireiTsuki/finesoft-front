@@ -1,7 +1,7 @@
 /**
  * NavigationBridge — 把 NavigationController 接到浏览器 History / URL
  *
- * Controller 自身对内容无关、不碰 history/URL（见 core）。这里负责把它「落地」到浏览器：
+ * Controller 自身对内容无关、不碰 history/URL（由 Web 所有）。这里负责把它「落地」到浏览器：
  *
  * - **快照 → history**：订阅 controller，快照变更时用 `serializeNavigation(tree)` 作为
  *   HistoryState 推入 LRU、用 `codec.encode(tree, router)` 作为地址栏 URL；首屏 / 同 URL

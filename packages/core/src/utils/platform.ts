@@ -20,7 +20,8 @@ export interface PlatformInfo {
 /**
  * 从 User-Agent 字符串解析平台信息
  *
- * @param ua - User-Agent 字符串（默认取 navigator.userAgent）
+ * @param ua - 主机显式提供的 User-Agent 字符串，默认空字符串
+ * @param maxTouchPoints - 主机显式提供的触摸点数量，默认 0
  */
 export function detectPlatform(ua = "", maxTouchPoints = 0): PlatformInfo {
     const agent = ua;
