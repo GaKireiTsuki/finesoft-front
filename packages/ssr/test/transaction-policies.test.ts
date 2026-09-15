@@ -1,7 +1,15 @@
 import { expect, test, vi } from "vite-plus/test";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
-import { defineWebApp, next, deny, stack } from "@finesoft/web";
+import {
+    defineWebApp,
+    next,
+    deny,
+    stack,
+    split,
+    leaf,
+    type NavigationSnapshot,
+} from "@finesoft/web";
 import { createSSRRender } from "../src/create-render";
 import { createSSRNavigationRender } from "../src/navigation";
 
@@ -103,3 +111,102 @@ test("navigation SSR rejects empty-tree transactions with explicit status and no
     expect(result.serverData).toEqual([]);
     await render.dispose();
 });
+
+test.each(["beforeNavigate", "beforeCommit"] as const)(
+    "%s denial exposes only an error presentation to SSR snapshot consumers",
+    async (phase) => {
+        for (const shape of ["route", "split", "empty"] as const) {
+            let candidate: NavigationSnapshot | undefined;
+            let presented: NavigationSnapshot | undefined;
+            let loads = 0;
+            let disposals = 0;
+            const definition = defineWebApp({
+                id: "denied-presentation",
+                routes: [{ path: "/", intentId: "secret", cache: "public" }],
+                navigation:
+                    shape === "empty"
+                        ? stack([])
+                        : shape === "split"
+                          ? split([
+                                { id: "left", content: leaf("secret", { token: "PRIVATE_LEFT" }) },
+                                {
+                                    id: "right",
+                                    content: leaf("secret", { token: "PRIVATE_RIGHT" }),
+                                },
+                            ])
+                          : undefined,
+                controllers: [
+                    {
+                        id: "secret",
+                        handler: (_params, ctx) => {
+                            loads++;
+                            ctx.onDispose(() => {
+                                disposals++;
+                            });
+                            return { id: "secret", title: "PRIVATE_PAGE", pageType: "secret" };
+                        },
+                    },
+                ],
+                getErrorPage: (_, title) => ({ id: "error", title, pageType: "error" }),
+                beforeNavigate: phase === "beforeNavigate" ? [() => deny(403, "Denied")] : [],
+                beforeCommit:
+                    phase === "beforeCommit"
+                        ? [
+                              (ctx) => {
+                                  candidate = ctx.candidate;
+                                  return deny(403, "Denied");
+                              },
+                          ]
+                        : [],
+            });
+            const render = createSSRNavigationRender({
+                definition,
+                renderApp: async (page, _framework, snapshot) => {
+                    await Promise.resolve();
+                    expect(disposals).toBe(0);
+                    presented = snapshot;
+                    expect(snapshot.destinations).toHaveLength(1);
+                    expect(snapshot.destinations[0].page).toBe(page);
+                    expect(snapshot.destinations[0].params).toEqual({});
+                    expect(snapshot.destinations[0].cache).toBeUndefined();
+                    expect(JSON.stringify(snapshot)).not.toMatch(/PRIVATE|secret/);
+                    expect(snapshot.tree).toEqual(
+                        stack(
+                            leaf(
+                                "@finesoft/rejected",
+                                {},
+                                {
+                                    entryId: snapshot.destinations[0].entryId,
+                                },
+                            ),
+                        ),
+                    );
+                    return { html: page.title, head: "", css: "" };
+                },
+            });
+            try {
+                const result = await render("/");
+                expect(result.snapshot).toBe(presented);
+                expect(result.snapshot.rejection).toEqual(deny(403, "Denied"));
+                expect(result.status).toBe(403);
+                expect(result.serverData).toEqual([]);
+                expect(result.cache).toBeUndefined();
+                expect(disposals).toBe(loads);
+                if (phase === "beforeNavigate") expect(loads).toBe(0);
+                if (candidate) {
+                    expect(candidate).not.toBe(presented);
+                    expect(candidate.destinations).toHaveLength(
+                        shape === "empty" ? 0 : shape === "split" ? 2 : 1,
+                    );
+                    expect(
+                        candidate.destinations.every(
+                            (entry) => entry.page.title === "PRIVATE_PAGE",
+                        ),
+                    ).toBe(true);
+                }
+            } finally {
+                await render.dispose();
+            }
+        }
+    },
+);

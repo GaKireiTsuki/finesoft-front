@@ -265,13 +265,24 @@ export async function ssrRenderNavigation(
 
         // 主目标 = 激活叶子的解析结果；用于 renderApp 第一参数 + status。
         const primary = primaryDestination(snapshot, getErrorPage);
+        // Renderers also consume the tree/destinations. A denied candidate must never
+        // enter that presentation context; this error snapshot does not commit navigation.
+        const presentation: NavigationSnapshot = snapshot.rejection
+            ? {
+                  rejection: snapshot.rejection,
+                  transitionId: snapshot.transitionId,
+                  historyMode: snapshot.historyMode,
+                  tree: stack(leaf(primary.intent, {}, { entryId: primary.entryId })),
+                  destinations: [primary],
+              }
+            : snapshot;
 
         return await renderResult({
             framework,
             resolvedLocale,
             renderApp,
             page: primary.page,
-            snapshot,
+            snapshot: presentation,
             serverData: snapshot.rejection ? [] : materializeServerData(buildServerData(snapshot)),
             renderMode: fallbackRenderMode,
             status: primary.status,
