@@ -48,8 +48,8 @@ export function findForbiddenCoreDependencies(root = defaultRoot): string[] {
                 if (
                     specifier.startsWith("node:") ||
                     builtinModules.includes(specifier) ||
-                    /^@finesoft\/(web|browser|ssr|server)/.test(specifier) ||
-                    /^(hono|vite|react|vue|svelte)(\/|$)/.test(specifier)
+                    /^@finesoft\/(front|web|browser|ssr|server)(\/|$)/.test(specifier) ||
+                    /^(hono|vite|vite-plus|react|vue|svelte)(\/|$)/.test(specifier)
                 )
                     failures.add(`${name}: ${specifier}`);
                 if (
