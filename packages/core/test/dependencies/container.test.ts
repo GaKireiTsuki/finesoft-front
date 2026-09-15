@@ -55,19 +55,19 @@ describe("Container", () => {
         expect(() => container.resolve("a")).toThrow(/Circular dependency detected/);
     });
 
-    test("clears registrations when disposed", () => {
+    test("clears registrations when disposed", async () => {
         const container = new Container();
 
         container.register("token", () => "value");
         expect(container.resolve("token")).toBe("value");
 
-        container.dispose();
+        await container.dispose();
 
         expect(container.has("token")).toBe(false);
         expect(() => container.resolve("token")).toThrow(/No registration/);
     });
 
-    test("dispose recursively clears child scopes", () => {
+    test("dispose recursively clears child scopes", async () => {
         const parent = new Container();
         const child = parent.createScope();
         const grandchild = child.createScope();
@@ -80,7 +80,7 @@ describe("Container", () => {
         expect(grandchild.resolve("g")).toBe("grand-value");
         expect(child.resolve("c")).toBe("child-value");
 
-        parent.dispose();
+        await parent.dispose();
 
         // 父容器和所有后代都已清空
         expect(parent.has("p")).toBe(false);
@@ -88,22 +88,22 @@ describe("Container", () => {
         expect(grandchild.has("g")).toBe(false);
     });
 
-    test("disposing a child scope detaches it from the parent", () => {
+    test("disposing a child scope detaches it from the parent", async () => {
         const parent = new Container();
         const child = parent.createScope();
 
-        child.dispose();
+        await child.dispose();
 
         // 父容器后续 dispose 不应再触及已清理的 child（验证幂等 + 引用解除）
         expect(() => parent.dispose()).not.toThrow();
         expect(() => child.dispose()).not.toThrow();
     });
 
-    test("dispose is idempotent", () => {
+    test("dispose is idempotent", async () => {
         const container = new Container();
         container.register("token", () => "value");
 
-        container.dispose();
+        await container.dispose();
         expect(() => container.dispose()).not.toThrow();
         expect(container.has("token")).toBe(false);
     });

@@ -143,10 +143,10 @@ describe("Framework", () => {
         );
     });
 
-    test("disposes the container", () => {
+    test("disposes the container", async () => {
         const framework = Framework.create();
 
-        framework.dispose();
+        await framework.dispose();
 
         expect(framework.container.has(DEP_KEYS.LOGGER)).toBe(false);
     });

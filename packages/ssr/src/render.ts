@@ -236,7 +236,7 @@ async function ssrRenderInternal(
             rewriteUrl,
         };
     } finally {
-        framework.dispose();
+        await framework.dispose();
     }
 }
 

@@ -17,7 +17,7 @@ describe("IntentDispatcher", () => {
         await expect(dispatcher.dispatch(intent, container)).resolves.toEqual({
             title: "Home",
         });
-        expect(controller.perform).toHaveBeenCalledWith(intent, container);
+        expect(controller.perform).toHaveBeenCalledWith(intent, container, undefined);
         expect(dispatcher.has("home")).toBe(true);
     });
 

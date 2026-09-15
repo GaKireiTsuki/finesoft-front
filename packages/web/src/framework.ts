@@ -168,7 +168,7 @@ export class Framework {
     }
 
     /** 销毁 Framework 实例 */
-    dispose(): void {
-        this.container.dispose();
+    dispose(): Promise<void> {
+        return this.container.dispose();
     }
 }

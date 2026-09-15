@@ -1,3 +1,5 @@
+import type { Token } from "./token";
+import type { Provider, ProviderContext } from "./providers";
 /**
  * Container — 通用的依赖注入容器
  */
@@ -16,14 +18,107 @@ export class Container {
     private parent?: Container;
     private children = new Set<Container>();
 
+    private providers = new Map<Token, Provider<any>>();
+    private values = new Map<Token, Promise<unknown>>();
+    private pending = new Set<Promise<unknown>>();
+    private cleanups: (() => void | Promise<void>)[] = [];
+    private closed = false;
+    private disposal?: Promise<void>;
+    private bindings: Readonly<Record<string, unknown>> = Object.freeze({});
+
+    registerProvider<T>(provider: Provider<T>): this {
+        this.assertOpen();
+        this.providers.set(provider.token, provider);
+        return this;
+    }
+
+    onDispose(cleanup: () => void | Promise<void>): void {
+        this.assertOpen();
+        this.cleanups.push(cleanup);
+    }
+
+    private assertOpen(): void {
+        if (this.closed) throw new Error("Container is closed");
+    }
+
+    async get<T>(token: Token<T>): Promise<T> {
+        this.assertOpen();
+        return this.getProvider(token, []) as Promise<T>;
+    }
+
+    private findProvider(token: Token): { provider: Provider<any>; owner: Container } {
+        const provider = this.providers.get(token);
+        if (provider) return { provider, owner: this };
+        if (this.parent) return this.parent.findProvider(token);
+        throw new Error(`Unknown provider: ${token.id}`);
+    }
+
+    private getProvider(token: Token, path: readonly Token[]): Promise<unknown> {
+        if (path.includes(token))
+            return Promise.reject(new Error(`Cyclic provider dependency: ${token.id}`));
+        const { provider, owner } = this.findProvider(token);
+        const target = provider.lifetime === "runtime" ? owner : this;
+        const existing = provider.lifetime !== "transient" && target.values.get(token);
+        if (existing) return existing;
+        const nextPath = [...path, token];
+        const promise = Promise.resolve().then(async () => {
+            let creating = true;
+            const dependencies = new Map<Token, Promise<unknown>>();
+            const context: ProviderContext = {
+                bindings: provider.lifetime === "runtime" ? Object.freeze({}) : target.bindings,
+                get: async <T>(dependency: Token<T>): Promise<T> => {
+                    if (!creating) throw new Error(`Provider resolver is closed: ${token.id}`);
+                    if (!provider.dependencies?.includes(dependency))
+                        throw new Error(`Undeclared dependency: ${token.id} -> ${dependency.id}`);
+                    const dep = target.findProvider(dependency).provider;
+                    // Runtime factories cannot indirectly capture scope state through transients.
+                    if (
+                        nextPath.some(
+                            (t) => target.findProvider(t).provider.lifetime === "runtime",
+                        ) &&
+                        dep.lifetime === "scope"
+                    )
+                        throw new Error(`runtime provider cannot resolve scope: ${dependency.id}`);
+                    let value = dependencies.get(dependency);
+                    if (!value) {
+                        value = target.getProvider(dependency, nextPath);
+                        dependencies.set(dependency, value);
+                    }
+                    return value as Promise<T>;
+                },
+            };
+            try {
+                for (const dependency of provider.dependencies ?? []) await context.get(dependency);
+                const value = provider.create ? await provider.create(context) : provider.value;
+                if (provider.dispose && (provider.owned ?? !!provider.create))
+                    target.cleanups.push(() => provider.dispose!(value));
+                return value;
+            } finally {
+                creating = false;
+            }
+        });
+        target.pending.add(promise);
+        if (provider.lifetime !== "transient") target.values.set(token, promise);
+        void promise.then(
+            () => target.pending.delete(promise),
+            () => {
+                target.pending.delete(promise);
+                if (target.values.get(token) === promise) target.values.delete(token);
+            },
+        );
+        return promise;
+    }
+
     /** 注册依赖（默认单例） */
     register<T>(key: string, factory: Factory<T>, singleton = true): this {
+        this.assertOpen();
         this.registrations.set(key, { factory, singleton });
         return this;
     }
 
     /** 解析依赖 — 当前容器未注册时回退到 parent */
     resolve<T>(key: string): T {
+        if (this.closed) throw new Error("[Container] No registration: container is closed");
         const reg = this.registrations.get(key);
         if (!reg) {
             if (this.parent) {
@@ -56,7 +151,7 @@ export class Container {
 
     /** 检查是否已注册（含 parent） */
     has(key: string): boolean {
-        return this.registrations.has(key) || (this.parent?.has(key) ?? false);
+        return !this.closed && (this.registrations.has(key) || (this.parent?.has(key) ?? false));
     }
 
     /**
@@ -69,6 +164,7 @@ export class Container {
      * parent 注册」的情况，本方法不向上递归删除 —— scope 不应能影响 parent 状态）。
      */
     unregister(key: string): boolean {
+        this.assertOpen();
         return this.registrations.delete(key);
     }
 
@@ -79,8 +175,10 @@ export class Container {
      * 未覆写的 key 自动回退到父容器解析。子容器会被父容器跟踪，
      * 父容器 dispose 时一并销毁所有未独立 dispose 的子容器。
      */
-    createScope(): Container {
+    createScope(bindings: Readonly<Record<string, unknown>> = {}): Container {
+        this.assertOpen();
         const child = new Container();
+        child.bindings = Object.freeze({ ...bindings });
         child.parent = this;
         this.children.add(child);
         return child;
@@ -93,25 +191,32 @@ export class Container {
      * - 自身被 dispose 后从父容器移除引用，允许 GC
      * - 重复 dispose 安全（幂等）
      */
-    dispose(): void {
-        // 先递归销毁子容器。child.dispose 会从 this.children 移除自身，
-        // 所以必须先快照拷贝再迭代，否则会破坏 Set 迭代器。
-        const childSnapshot = Array.from(this.children);
-        for (const child of childSnapshot) {
-            child.dispose();
-        }
+    dispose(): Promise<void> {
+        if (this.disposal) return this.disposal;
+        this.closed = true;
+        const children = [...this.children].map((child) => child.dispose());
         this.children.clear();
-
-        // 清空自身注册
-        for (const reg of this.registrations.values()) {
-            reg.instance = undefined;
-        }
         this.registrations.clear();
-
-        // 从父容器移除自己的引用，让 GC 能回收
-        if (this.parent) {
-            this.parent.children.delete(this);
+        // Keep the parent link available until pending factories and their dependencies settle.
+        this.disposal = (async () => {
+            const errors: unknown[] = [];
+            for (const result of await Promise.allSettled(children))
+                if (result.status === "rejected") errors.push(result.reason);
+            while (this.pending.size) await Promise.allSettled(this.pending);
+            for (const cleanup of this.cleanups.reverse()) {
+                try {
+                    await cleanup();
+                } catch (error) {
+                    errors.push(error);
+                }
+            }
+            this.cleanups = [];
+            this.providers.clear();
+            this.values.clear();
+            this.parent?.children.delete(this);
             this.parent = undefined;
-        }
+            if (errors.length) throw new AggregateError(errors, "Container cleanup failed");
+        })();
+        return this.disposal;
     }
 }

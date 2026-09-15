@@ -2,6 +2,7 @@
  * Intent 类型定义
  */
 
+import type { ExecutionContext } from "../application/types";
 import type { Container } from "../dependencies/container";
 
 /** Intent — 描述一个用户意图 */
@@ -19,5 +20,5 @@ export interface IntentController<T = unknown> {
     /** Controller 对应的 Intent ID */
     intentId: string;
     /** 执行意图，返回页面数据 */
-    perform(intent: Intent<T>, container: Container): Promise<T> | T;
+    perform(intent: Intent<T>, container: Container, context?: ExecutionContext): Promise<T> | T;
 }

@@ -207,7 +207,7 @@ export async function ssrRenderNavigation(
         // 与单页 SSR 的 404 路径对齐。
         if (resolved === undefined) {
             const page = getErrorPage(404, "Page not found");
-            return renderResult({
+            return await renderResult({
                 framework,
                 resolvedLocale,
                 renderApp,
@@ -266,7 +266,7 @@ export async function ssrRenderNavigation(
         // 主目标 = 激活叶子的解析结果；用于 renderApp 第一参数 + status。
         const primary = primaryDestination(snapshot, getErrorPage);
 
-        return renderResult({
+        return await renderResult({
             framework,
             resolvedLocale,
             renderApp,
@@ -277,7 +277,7 @@ export async function ssrRenderNavigation(
             status: primary.status,
         });
     } finally {
-        framework.dispose();
+        await framework.dispose();
     }
 }
 

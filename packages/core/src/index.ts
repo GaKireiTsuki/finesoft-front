@@ -45,7 +45,12 @@ export {
 export type { LoggerFactory, Logger as LoggerInterface } from "./logger/types";
 export { stableStringify } from "./utils/stable-stringify";
 export { HostGuardError, HttpClient, HttpError } from "./http/client";
-export type { HttpClientConfig, RequestInterceptor, ResponseInterceptor } from "./http/client";
+export type {
+    HttpClientConfig,
+    HttpRequestOptions,
+    RequestInterceptor,
+    ResponseInterceptor,
+} from "./http/client";
 export { classifyHost, classifyUrl, type HostCheckResult } from "./http/host-guard";
 export { secureFetch, type SecureFetchOptions } from "./http/secure-fetch";
 export { BaseController } from "./intents/base-controller";
@@ -90,3 +95,6 @@ export type {
 } from "./dependencies/make-dependencies";
 export { enforceHostGuard, type DnsLookup, type TargetGuardOptions } from "./http/target-guard";
 export type { LogFilter } from "./logger/console";
+export * from "./application/index";
+export { createToken, type Token } from "./dependencies/token";
+export { provide, type Provider, type ProviderContext } from "./dependencies/providers";

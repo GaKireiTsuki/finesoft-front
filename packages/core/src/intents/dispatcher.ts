@@ -4,6 +4,7 @@
  * 注册 IntentController，按 intentId 分发。
  */
 
+import type { ExecutionContext } from "../application/types";
 import type { Container } from "../dependencies/container";
 import type { Intent, IntentController } from "./types";
 
@@ -16,7 +17,11 @@ export class IntentDispatcher {
     }
 
     /** 分发 Intent 到对应 Controller */
-    async dispatch<T>(intent: Intent<T>, container: Container): Promise<T> {
+    async dispatch<T>(
+        intent: Intent<T>,
+        container: Container,
+        context?: ExecutionContext,
+    ): Promise<T> {
         const controller = this.controllers.get(intent.id);
         if (!controller) {
             throw new Error(
@@ -24,7 +29,7 @@ export class IntentDispatcher {
                     `Registered: [${Array.from(this.controllers.keys()).join(", ")}]`,
             );
         }
-        return controller.perform(intent, container) as Promise<T>;
+        return controller.perform(intent, container, context) as Promise<T>;
     }
 
     /** 检查是否已注册某个 Intent */

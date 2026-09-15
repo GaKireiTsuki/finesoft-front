@@ -5,6 +5,7 @@
  * 子类只需实现 execute() 和可选的 fallback()。
  */
 
+import { ExecutionError, type ExecutionContext } from "../application/types";
 import type { Container } from "../dependencies/container";
 import type { Intent, IntentController } from "./types";
 
@@ -46,7 +47,11 @@ export abstract class BaseController<
      * @param container - DI 容器
      * @returns 页面数据
      */
-    abstract execute(params: TParams, container: Container): Promise<TResult> | TResult;
+    abstract execute(
+        params: TParams,
+        container: Container,
+        context?: ExecutionContext,
+    ): Promise<TResult> | TResult;
 
     /**
      * 错误回退 — 子类可选覆写
@@ -67,11 +72,24 @@ export abstract class BaseController<
      *
      * 自动 try/catch → fallback 模式。
      */
-    async perform(intent: Intent<TResult>, container: Container): Promise<TResult> {
+    async perform(
+        intent: Intent<TResult>,
+        container: Container,
+        context?: ExecutionContext,
+    ): Promise<TResult> {
         const params = (intent.params ?? {}) as TParams;
         try {
-            return await this.execute(params, container);
+            context?.signal.throwIfAborted();
+            const result = await this.execute(params, container, context);
+            context?.signal.throwIfAborted();
+            return result;
         } catch (e) {
+            if (
+                context?.signal.aborted ||
+                (e instanceof Error && e.name === "AbortError") ||
+                (e instanceof ExecutionError && e.code === "cancelled")
+            )
+                throw e;
             return this.fallback(params, e instanceof Error ? e : new Error(String(e)));
         }
     }

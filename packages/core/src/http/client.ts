@@ -21,6 +21,11 @@ export interface ResponseInterceptor {
     (response: Response, url: string): Response | Promise<Response>;
 }
 
+export interface HttpRequestOptions {
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+}
+
 /** HttpClient 构造配置 */
 export interface HttpClientConfig {
     /** API base URL（如 "/api" 或 "https://example.com/api"） */
@@ -100,8 +105,12 @@ export abstract class HttpClient {
     }
 
     /** GET 请求，返回解析后的 JSON */
-    protected async get<T>(path: string, params?: Record<string, string>): Promise<T> {
-        return this.request<T>("GET", path, { params });
+    protected async get<T>(
+        path: string,
+        params?: Record<string, string>,
+        options?: HttpRequestOptions,
+    ): Promise<T> {
+        return this.request<T>("GET", path, { ...options, params });
     }
 
     /** POST 请求，自动序列化 body 为 JSON */
@@ -109,8 +118,9 @@ export abstract class HttpClient {
         path: string,
         body?: unknown,
         params?: Record<string, string>,
+        options?: HttpRequestOptions,
     ): Promise<T> {
-        return this.request<T>("POST", path, { body, params });
+        return this.request<T>("POST", path, { ...options, body, params });
     }
 
     /** PUT 请求 */
@@ -118,13 +128,18 @@ export abstract class HttpClient {
         path: string,
         body?: unknown,
         params?: Record<string, string>,
+        options?: HttpRequestOptions,
     ): Promise<T> {
-        return this.request<T>("PUT", path, { body, params });
+        return this.request<T>("PUT", path, { ...options, body, params });
     }
 
     /** DELETE 请求 */
-    protected async del<T>(path: string, params?: Record<string, string>): Promise<T> {
-        return this.request<T>("DELETE", path, { params });
+    protected async del<T>(
+        path: string,
+        params?: Record<string, string>,
+        options?: HttpRequestOptions,
+    ): Promise<T> {
+        return this.request<T>("DELETE", path, { ...options, params });
     }
 
     /**
@@ -145,8 +160,10 @@ export abstract class HttpClient {
             params?: Record<string, string>;
             body?: unknown;
             headers?: Record<string, string>;
+            signal?: AbortSignal;
         },
     ): Promise<T> {
+        options?.signal?.throwIfAborted();
         const url = this.buildUrl(path, options?.params);
 
         if (!this.allowInternalHosts) {
@@ -158,7 +175,7 @@ export abstract class HttpClient {
             ...options?.headers,
         };
 
-        let init: RequestInit = { method, headers };
+        let init: RequestInit = { method, headers, signal: options?.signal };
 
         if (options?.body !== undefined) {
             // 大小写不敏感地检测用户是否已设置 Content-Type
@@ -176,7 +193,14 @@ export abstract class HttpClient {
             init = await interceptor(url, init);
         }
 
+        const signal =
+            options?.signal && init.signal && init.signal !== options.signal
+                ? AbortSignal.any([options.signal, init.signal])
+                : (options?.signal ?? init.signal);
+        signal?.throwIfAborted();
+        init = { ...init, signal };
         let response = await this.fetchFn(url, init);
+        signal?.throwIfAborted();
 
         // 响应拦截器链
         for (const interceptor of this.responseInterceptors) {
@@ -189,7 +213,9 @@ export abstract class HttpClient {
         }
 
         try {
-            return (await response.json()) as T;
+            const result = (await response.json()) as T;
+            signal?.throwIfAborted();
+            return result;
         } catch (e) {
             if (e instanceof SyntaxError) {
                 throw new HttpError(

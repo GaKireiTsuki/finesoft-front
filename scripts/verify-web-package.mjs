@@ -51,13 +51,21 @@ try {
         writeFileSync(
             sourcePath,
             `
-import { Container, type Intent } from "@finesoft/core";
+import { Container, type Intent, createRuntime, defineApp, defineOperation, createToken, provide } from "@finesoft/core";
 import { Framework, Router } from "@finesoft/web";
 const framework: Framework = Framework.create();
 const container: Container = framework.container;
 const router: Router = framework.router;
 const intent: Intent<string> = { id: "artifact-check" };
-void [container, router, intent];
+const token = createToken<number>("value");
+const double = defineOperation({ id: "double", kind: "query", handler: (n: number) => n * 2 });
+const runtime = createRuntime({ app: defineApp({ id: "check", operations: [double], providers: [provide({ token, lifetime: "scope", create: () => 42 })] }) });
+const numberResult: Promise<number> = runtime.execute(double, 21);
+// @ts-expect-error Input reference must reject strings through built declarations.
+runtime.execute(double, "wrong");
+const tokenResult: Promise<number> = runtime.createExecution().context.get(token);
+const closing: Promise<void> = framework.dispose();
+void [container, router, intent, numberResult, tokenResult, closing];
 `,
         );
         const options = {
