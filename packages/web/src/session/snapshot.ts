@@ -8,7 +8,48 @@
 
 import { stableStringify } from "@finesoft/core";
 import { deserializeNavigation } from "../navigation/serialization";
-import type { SessionSnapshot } from "./types";
+import { SessionError, type SessionSnapshot } from "./types";
+
+/** @internal Synchronously detach JSON state without freezing or invoking object codecs. */
+export function cloneSnapshotValue<T>(value: T): T {
+    try {
+        return cloneValue(value, new Set()) as T;
+    } catch {
+        throw new SessionError("invalid-snapshot-value");
+    }
+}
+
+function cloneValue(value: unknown, ancestors: Set<object>): unknown {
+    if (
+        value === undefined ||
+        value === null ||
+        typeof value === "string" ||
+        typeof value === "boolean"
+    )
+        return value;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value !== "object" || value === null || ancestors.has(value))
+        throw new SessionError("invalid-snapshot-value");
+    if (
+        !Array.isArray(value) &&
+        Object.getPrototypeOf(value) !== Object.prototype &&
+        Object.getPrototypeOf(value) !== null
+    )
+        throw new SessionError("invalid-snapshot-value");
+    ancestors.add(value);
+    try {
+        if (Array.isArray(value))
+            return Array.from(value, (item) => cloneValue(item, ancestors) ?? null);
+        const result: Record<string, unknown> = Object.create(null);
+        for (const key of Object.keys(value)) {
+            const item = cloneValue((value as Record<string, unknown>)[key], ancestors);
+            if (item !== undefined) result[key] = item;
+        }
+        return result;
+    } finally {
+        ancestors.delete(value);
+    }
+}
 
 /** 把快照编码为确定性字符串（keys 排序），用作 `storage.set` 的值。 */
 export function encodeSnapshot(snapshot: SessionSnapshot): string {

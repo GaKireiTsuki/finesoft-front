@@ -92,3 +92,37 @@ describe("encode/decode snapshot", () => {
         expect(decodeSnapshot(encodeSnapshot(s), SESSION_DEFAULT_VERSION)).toEqual(s);
     });
 });
+
+test("snapshot cloning preserves JSON values and shared subobjects without mutating sources", async () => {
+    const { cloneSnapshotValue } = await import("../../src/session/snapshot");
+    const shared = { text: "value" };
+    const source = { a: shared, b: shared, optional: undefined, array: [undefined, shared, null] };
+    const copied = cloneSnapshotValue(source);
+    expect(copied).toEqual({
+        a: { text: "value" },
+        b: { text: "value" },
+        array: [null, { text: "value" }, null],
+    });
+    expect(copied.a).not.toBe(shared);
+    expect(copied.a).not.toBe(copied.b);
+    expect(Object.hasOwn(source, "optional")).toBe(true);
+    expect(source.array[0]).toBeUndefined();
+    expect(Object.isFrozen(source)).toBe(false);
+    shared.text = "edited";
+    expect(copied.a.text).toBe("value");
+});
+
+test("snapshot cloning rejects non-JSON values without invoking object serialization methods", async () => {
+    const { cloneSnapshotValue } = await import("../../src/session/snapshot");
+    let invoked = false;
+    class Stateful {
+        toJSON() {
+            invoked = true;
+            return { value: "converted" };
+        }
+    }
+    for (const value of [NaN, Infinity, 1n, Symbol("private"), () => "private", new Stateful()]) {
+        expect(() => cloneSnapshotValue({ nested: value })).toThrow("invalid-snapshot-value");
+    }
+    expect(invoked).toBe(false);
+});

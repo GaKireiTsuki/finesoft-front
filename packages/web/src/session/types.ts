@@ -192,9 +192,9 @@ export interface SessionStore {
     register(provider: SessionStateProvider): () => void;
     /** 导航作用域状态读写 + prune。 */
     readonly scope: NavigationScopedState;
-    /** 组装当前快照（nav + slices + scoped），不落盘。 */
+    /** 同步复制 nav/slices/scoped 的 JSON 值，独立于可变来源；不冻结来源、不落盘。 */
     capture(): SessionSnapshot;
-    /** 落盘（省略参数则先 `capture`）。 */
+    /** 显式快照在调用时复制/编码；省略参数则在排队写入开始时捕获最新状态。 */
     persist(snapshot?: SessionSnapshot): Promise<SessionWriteResult>;
     /** 读取并校验，返回 loaded/missing/invalid/expired/failed/unavailable/closed。 */
     load(): Promise<SessionLoadResult>;

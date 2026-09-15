@@ -1,4 +1,4 @@
-import { decodeSnapshot, encodeSnapshot } from "./snapshot";
+import { cloneSnapshotValue, decodeSnapshot, encodeSnapshot } from "./snapshot";
 import { createNavigationScopedState } from "./scoped-state";
 import {
     SESSION_DEFAULT_KEY,
@@ -61,15 +61,20 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
         const slices: Record<string, SessionSlice> = Object.create(null);
         for (const provider of providers.values()) {
             try {
-                slices[provider.key] = { version: provider.version, data: provider.capture() };
+                slices[provider.key] = {
+                    version: provider.version,
+                    data: cloneSnapshotValue(provider.capture()),
+                };
             } catch {
                 report({ phase: "capture", key: provider.key, code: "slice-failed" });
             }
         }
-        const scoped = Object.fromEntries(scope.keys().map((id) => [id, scope.get(id)]));
+        const scoped = cloneSnapshotValue(
+            Object.fromEntries(scope.keys().map((id) => [id, scope.get(id)])),
+        );
         return {
             version,
-            navigation: navigation?.capture(),
+            navigation: cloneSnapshotValue(navigation?.capture()),
             url: navigation?.captureUrl?.(),
             slices,
             scoped,
@@ -90,9 +95,17 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
         }
     }
     function persist(snapshot?: SessionSnapshot): Promise<SessionWriteResult> {
+        if (closed) return Promise.resolve({ status: "closed" });
+        // Explicit snapshots belong to the caller. Take independent bytes before yielding to the queue.
+        let admitted: string | undefined;
+        try {
+            if (snapshot !== undefined) admitted = encodeSnapshot(cloneSnapshotValue(snapshot));
+        } catch (cause) {
+            return Promise.resolve(failure(cause, "persist"));
+        }
         return enqueue(async () => {
             try {
-                await storage.set(key, encodeSnapshot(snapshot ?? capture()));
+                await storage.set(key, admitted ?? encodeSnapshot(capture()));
                 return { status: "saved" as const };
             } catch (cause) {
                 return failure(cause, "persist");

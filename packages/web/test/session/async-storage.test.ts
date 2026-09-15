@@ -169,3 +169,135 @@ test("malformed and duplicate EntryIds fail before navigation and scoped mutatio
     expect(apply).not.toHaveBeenCalled();
     expect(store.scope.get("retained")).toBe("draft");
 });
+
+test("capture detaches every channel and explicit persist owns admission-time data while implicit save stays latest", async () => {
+    const draft = { nested: { text: "captured" } };
+    const scoped = { nested: { note: "captured" } };
+    const navigation = {
+        kind: "leaf" as const,
+        entryId: "entry-a",
+        intent: "home",
+        params: { nested: { value: "captured" } },
+    };
+    let release!: () => void;
+    let started!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+        started = resolve;
+    });
+    const writes: import("../../src/session/types").SessionSnapshot[] = [];
+    const store = createSessionStore({
+        now: () => 7,
+        storage: {
+            ...storage(),
+            set: async (_key, data) => {
+                writes.push(JSON.parse(data));
+                if (writes.length === 1) {
+                    started();
+                    await new Promise<void>((resolve) => {
+                        release = resolve;
+                    });
+                }
+            },
+        },
+        navigation: { capture: () => navigation, apply: () => {}, presentKeys: () => ["entry-a"] },
+    });
+    store.register({ ...provider("draft"), capture: () => draft });
+    store.scope.set("entry-a", scoped);
+    const first = store.save();
+    await firstStarted;
+    const snapshot = store.capture();
+    const admitted = JSON.parse(JSON.stringify(snapshot));
+    const explicit = store.persist(snapshot);
+    draft.nested.text = "changed-after-capture";
+    scoped.nested.note = "changed-after-capture";
+    navigation.params.nested.value = "changed-after-capture";
+    expect(snapshot).toEqual(admitted);
+    for (const source of [
+        draft,
+        draft.nested,
+        scoped,
+        scoped.nested,
+        navigation,
+        navigation.params.nested,
+    ])
+        expect(Object.isFrozen(source)).toBe(false);
+    // Callers also retain ownership of their snapshot object after persistence admission.
+    (snapshot.slices.draft as { data: typeof draft }).data.nested.text = "changed-after-admission";
+    (snapshot.scoped["entry-a"] as typeof scoped).nested.note = "changed-after-admission";
+    (snapshot.navigation as typeof navigation).params.nested.value = "changed-after-admission";
+    const implicit = store.save();
+    release();
+    expect(await first).toEqual({ status: "saved" });
+    expect(await explicit).toEqual({ status: "saved" });
+    expect(await implicit).toEqual({ status: "saved" });
+    expect(writes[1]).toEqual(admitted);
+    expect(writes[2]).toMatchObject({
+        slices: { draft: { data: draft } },
+        scoped: { "entry-a": scoped },
+        navigation,
+    });
+    await store.dispose();
+});
+
+test("capture clone failures isolate invalid providers from valid siblings and diagnostics stay bounded", async () => {
+    const onError = vi.fn();
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    const privateGetter = {
+        get value() {
+            throw Error("PRIVATE_CAPTURE_ERROR");
+        },
+    };
+    const writes: string[] = [];
+    const store = createSessionStore({
+        storage: {
+            ...storage(),
+            set: async (_key, data) => {
+                writes.push(data);
+            },
+        },
+        onError,
+    });
+    store.register({ ...provider("cycle"), capture: () => cycle });
+    store.register({ ...provider("getter"), capture: () => privateGetter });
+    store.register({ ...provider("good"), capture: () => ({ value: "kept" }) });
+    expect(store.capture().slices).toEqual({ good: { version: 2, data: { value: "kept" } } });
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(onError.mock.calls)).not.toContain("PRIVATE_CAPTURE_ERROR");
+    expect(await store.save()).toEqual({ status: "saved" });
+    expect(JSON.parse(writes[0]).slices).toEqual({ good: { version: 2, data: { value: "kept" } } });
+    await store.dispose();
+});
+
+test("invalid explicit or structural snapshot values fail without writing or poisoning the queue", async () => {
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    const set = vi.fn(async () => {});
+    let navigation: unknown;
+    const store = createSessionStore({
+        storage: { ...storage(), set },
+        navigation: { capture: () => navigation as never, apply: () => {}, presentKeys: () => [] },
+    });
+    const snapshot = { version: 1, capturedAt: 7, slices: { bad: cycle }, scoped: {} };
+    await expect(store.persist(snapshot)).resolves.toMatchObject({ status: "failed" });
+    expect(set).not.toHaveBeenCalled();
+    store.scope.set("entry-a", cycle);
+    expect(() => store.capture()).toThrow("invalid-snapshot-value");
+    expect(await store.save()).toMatchObject({ status: "failed" });
+    store.scope.delete("entry-a");
+    navigation = { entryId: "entry-a", url: "/", internal: cycle };
+    expect(() => store.capture()).toThrow("invalid-snapshot-value");
+    expect(await store.save()).toMatchObject({ status: "failed" });
+    expect(set).not.toHaveBeenCalled();
+    navigation = undefined;
+    expect(await store.save()).toEqual({ status: "saved" });
+    expect(set).toHaveBeenCalledTimes(1);
+    await store.dispose();
+    // A closed store must reject admission before inspecting a caller-owned snapshot.
+    const getter = vi.fn(() => {
+        throw Error("must-not-read");
+    });
+    Object.defineProperty(snapshot, "scoped", { get: getter });
+    expect(await store.persist(snapshot)).toEqual({ status: "closed" });
+    expect(getter).not.toHaveBeenCalled();
+});
