@@ -1,23 +1,29 @@
 <script lang="ts">
+	import type { Action } from "@finesoft/front/web";
 	import { NAV_ACTIONS } from "../actions";
-	import { getPerform } from "../lib/framework-svelte";
 	import type { ErrorPage } from "../lib/models/product";
 
-	let { page }: { page: ErrorPage } = $props();
-
-	const perform = getPerform();
+	let { page, onAction }: { page: ErrorPage; onAction?: (action: Action) => void } = $props();
 </script>
 
-<div>
+<section class="page page-error">
 	<h1>{page.title}</h1>
 	<p>{page.description}</p>
 	<a
 		href="/"
 		onclick={(e) => {
-			if (perform) {
-				e.preventDefault();
-				void perform(NAV_ACTIONS.home);
-			}
+			if (
+				!onAction ||
+				e.defaultPrevented ||
+				e.button !== 0 ||
+				e.metaKey ||
+				e.ctrlKey ||
+				e.shiftKey ||
+				e.altKey
+			)
+				return;
+			e.preventDefault();
+			onAction(NAV_ACTIONS.home);
 		}}>← Go Home</a
 	>
-</div>
+</section>

@@ -1,4 +1,4 @@
-import type { Action } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
 import type { AboutPage } from "../lib/models/product";
 
 interface AboutProps {
@@ -8,9 +8,9 @@ interface AboutProps {
 
 export default function About({ page }: AboutProps) {
     return (
-        <div>
+        <section className="page page-about">
             <h1>{page.title}</h1>
             <p>{page.content}</p>
-        </div>
+        </section>
     );
 }

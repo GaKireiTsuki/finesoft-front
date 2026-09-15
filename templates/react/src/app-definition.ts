@@ -1,3 +1,4 @@
+import { appId } from "./config";
 import { definePage, defineWebApp, int } from "@finesoft/front/web";
 import { AboutController } from "./lib/controllers/about";
 import { HomeController } from "./lib/controllers/home";
@@ -14,7 +15,7 @@ export const productDetailPage = definePage({
 export const searchPage = definePage({ id: "search", create: () => new SearchController() });
 export const aboutPage = definePage({ id: "about", create: () => new AboutController() });
 export const app = defineWebApp({
-    id: "react",
+    id: appId,
     controllers: [homePage, productDetailPage, searchPage, aboutPage],
     routes: [
         homePage.route("/"),
@@ -25,6 +26,6 @@ export const app = defineWebApp({
         aboutPage.route("/about", { renderMode: "csr" }),
         homePage.route("/admin", { beforeLoad: [authGuard] }),
     ],
-    getErrorPage: getErrorPage,
+    getErrorPage,
     afterLoad: [seoGuard],
 });

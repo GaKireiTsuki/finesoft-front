@@ -1,0 +1,9 @@
+
+ RUN  v4.1.10 /Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries
+
+
+ Test Files  2 passed (2)
+      Tests  17 passed (17)
+   Start at  00:40:45
+   Duration  145ms (transform 59ms, setup 0ms, import 90ms, tests 22ms, environment 0ms)
+

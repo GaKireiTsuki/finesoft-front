@@ -1,0 +1,21 @@
+{
+  "name": "finesoft-vue-minimal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview"
+  },
+  "dependencies": {
+    "@finesoft/front": "file:/Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries/reports/application-boundaries/final-delivery/packed/finesoft-front-0.5.1.tgz",
+    "vue": "^3.5.41"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "hono": "^4.13.1",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.8",
+    "vite-plus": "0.2.8"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

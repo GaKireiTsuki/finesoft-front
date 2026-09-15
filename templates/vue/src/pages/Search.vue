@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
 import ProductCard from "../components/ProductCard.vue";
 import type { SearchPage } from "../lib/models/product";
 
@@ -7,7 +7,7 @@ const { page, onAction } = defineProps<{ page: SearchPage; onAction?: (action: A
 </script>
 
 <template>
-    <div>
+    <section class="page page-search">
         <h1>{{ page.title }}</h1>
         <p>{{ page.description }}</p>
 
@@ -21,13 +21,5 @@ const { page, onAction } = defineProps<{ page: SearchPage; onAction?: (action: A
         </div>
 
         <p v-if="page.results.length === 0">No products found.</p>
-    </div>
+    </section>
 </template>
-
-<style scoped>
-.results {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-</style>

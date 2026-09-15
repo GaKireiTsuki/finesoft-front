@@ -4,17 +4,20 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 const root = new URL("../", import.meta.url).pathname;
-const evidence = root + "reports/application-boundaries/created-consumers";
+const evidence = root + "reports/template-unification/created-consumers";
+assert.ok(process.argv[2], "Usage: vp exec node scripts/verify-created-consumers.mjs <front.tgz>");
+const tarball = path.resolve(process.argv[2]);
+const sha256 = createHash("sha256")
+    .update(await fs.readFile(tarball))
+    .digest("hex");
 await fs.mkdir(evidence, { recursive: true });
 const run = (args, cwd) =>
     execFileSync("vp", args, { cwd, encoding: "utf8", maxBuffer: 30 * 1024 * 1024 });
 await fs.writeFile(
     evidence + "/prepare.log",
     run(["exec", "node", "scripts/prepare-create-cli.mjs"], root),
-);
-const packed = JSON.parse(
-    await fs.readFile(root + "reports/application-boundaries/packed/result.json"),
 );
 const scratch = await fs.mkdtemp(path.join(tmpdir(), "front-created-consumers-"));
 const result = [];
@@ -35,17 +38,9 @@ try {
         assert.ok(!JSON.stringify(pkg).includes("workspace:"));
         assert.ok(!JSON.stringify(pkg).includes("catalog:"));
         await fs.copyFile(source + "/tsconfig.json", evidence + "/" + name + "-tsconfig.json");
-        if (!name.endsWith("-minimal")) {
-            result.push({
-                name,
-                independentConfiguration: "passed",
-                build: "full version built and exercised in workspace matrix",
-            });
-            continue;
-        }
         const cwd = scratch + "/" + name;
         await fs.cp(source, cwd, { recursive: true });
-        pkg.dependencies["@finesoft/front"] = "file:" + packed.tarball;
+        pkg.dependencies["@finesoft/front"] = "file:" + tarball;
         pkg.packageManager = "pnpm@11.20.0";
         await fs.writeFile(cwd + "/package.json", JSON.stringify(pkg, null, 2));
         await fs.writeFile(evidence + "/" + name + "-install.log", run(["install"], cwd));
@@ -62,10 +57,10 @@ try {
     }
     await fs.writeFile(
         evidence + "/result.json",
-        JSON.stringify({ tarballSha256: packed.sha256, result }, null, 2),
+        JSON.stringify({ tarball, tarballSha256: sha256, result }, null, 2),
     );
     console.log(
-        "All six generated configs independent; React/Vue/Svelte minimal installed and built outside workspace.",
+        "All six generated applications installed the explicit local tarball and built outside the workspace.",
     );
 } finally {
     await fs.rm(scratch, { recursive: true, force: true });

@@ -13,6 +13,8 @@ vp run dev
 
 The CLI copies a complete template with shared application declarations, native view bindings and ordinary browser/SSR startup. Choose the UI peers for that template.
 
+Full provides product/search/guard examples; minimal provides Feed/detail/Notes with navigation and session restoration. Each tier has the same contracts and behavior in React, Vue and Svelte. See the [template structure](packages/front/docs/engineering/project-structure.md) / [模板约定](packages/front/docs/zh/engineering/project-structure.md).
+
 ## Public entries
 
 | Entry                                            | Owner                                                               |

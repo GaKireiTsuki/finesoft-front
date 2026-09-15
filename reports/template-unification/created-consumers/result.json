@@ -1,0 +1,42 @@
+{
+  "tarball": "/Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries/reports/application-boundaries/final-delivery/packed/finesoft-front-0.5.1.tgz",
+  "tarballSha256": "6cc3ee4da2e673d9b2f916ec986acdf1fe6a6d068bc2414d23d0cf179f75adba",
+  "result": [
+    {
+      "name": "react",
+      "independentConfiguration": "passed",
+      "build": "installed local tarball and built client/SSR outside workspace",
+      "ssrBytes": 155426
+    },
+    {
+      "name": "react-minimal",
+      "independentConfiguration": "passed",
+      "build": "installed local tarball and built client/SSR outside workspace",
+      "ssrBytes": 150980
+    },
+    {
+      "name": "vue",
+      "independentConfiguration": "passed",
+      "build": "installed local tarball and built client/SSR outside workspace",
+      "ssrBytes": 163778
+    },
+    {
+      "name": "vue-minimal",
+      "independentConfiguration": "passed",
+      "build": "installed local tarball and built client/SSR outside workspace",
+      "ssrBytes": 153720
+    },
+    {
+      "name": "svelte",
+      "independentConfiguration": "passed",
+      "build": "installed local tarball and built client/SSR outside workspace",
+      "ssrBytes": 213997
+    },
+    {
+      "name": "svelte-minimal",
+      "independentConfiguration": "passed",
+      "build": "installed local tarball and built client/SSR outside workspace",
+      "ssrBytes": 208879
+    }
+  ]
+}

@@ -1,14 +1,33 @@
-import type { SessionStateProvider, NavigationSnapshot } from "@finesoft/front/web";
-import type { BrowserAppHandle } from "@finesoft/front/browser";
-import { reactive } from "vue";
-export interface AppState {
-    name: string;
-    snapshot: NavigationSnapshot | null;
+import type { SessionStateProvider } from "@finesoft/front/web";
+
+export interface NameStore {
+    get(): string;
+    set(value: string): void;
+    subscribe(listener: () => void): () => void;
 }
-export type AppController = BrowserAppHandle;
+
+interface Profile {
+    readonly name: string;
+}
+
+/** Called once per mount: no application state is shared between roots. */
 export function createInstance() {
-    const state = reactive<AppState>({ name: "", snapshot: null });
-    const profileProvider: SessionStateProvider = {
+    let value = "";
+    const listeners = new Set<() => void>();
+    const nameStore: NameStore = {
+        get: () => value,
+        set: (v) => {
+            value = v;
+            listeners.forEach((l) => l());
+        },
+        subscribe: (l) => {
+            listeners.add(l);
+            return () => {
+                listeners.delete(l);
+            };
+        },
+    };
+    const profileProvider: SessionStateProvider<Profile> = {
         key: "profile",
         version: 1,
         decode: (data) => {
@@ -21,11 +40,9 @@ export function createInstance() {
                 throw Error("invalid-profile-state");
             return { name: data.name };
         },
-        capture: () => ({ name: state.name }),
-        restore: (data) => {
-            state.name = (data as { name?: string }).name ?? "";
-        },
+        capture: () => ({ name: nameStore.get() }),
+        restore: (data) => nameStore.set(data.name),
     };
 
-    return { state, profileProvider };
+    return { nameStore, profileProvider };
 }

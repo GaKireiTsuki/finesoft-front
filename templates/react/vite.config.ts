@@ -6,13 +6,8 @@ export default defineConfig({
     plugins: lazyPlugins(() => [
         react(),
         finesoftFrontViteConfig({
-            ssr: { entry: "src/ssr.tsx" },
-            proxies: [
-                {
-                    prefix: "/api",
-                    target: "https://jsonplaceholder.typicode.com",
-                },
-            ],
+            ssr: { entry: "src/ssr.ts" },
+            proxies: [{ prefix: "/api", target: "https://jsonplaceholder.typicode.com" }],
         }),
     ]),
 });

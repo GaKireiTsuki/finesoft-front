@@ -1,19 +1,17 @@
-import { homePage, detailPage, notesPage } from "./app-definition";
 import App from "./App.vue";
-import HomeView from "./views/HomeView.vue";
-import DetailView from "./views/DetailView.vue";
-import NotesView from "./views/NotesView.vue";
+import { detailPage, homePage, notesPage } from "./app-definition";
+import Home from "./pages/Home.vue";
+import Detail from "./pages/Detail.vue";
+import Notes from "./pages/Notes.vue";
+import NotFound from "./pages/NotFound.vue";
+
 export const views = {
     mode: "entries" as const,
     chrome: App,
     views: {
-        ...homePage.bindView("home", HomeView),
-        ...detailPage.bindView("detail", DetailView),
-        ...notesPage.bindView("notes", NotesView),
+        ...homePage.bindView("home", Home),
+        ...detailPage.bindView("detail", Detail),
+        ...notesPage.bindView("notes", Notes),
+        error: NotFound,
     },
-    props: ({
-        initialSnapshot,
-    }: {
-        initialSnapshot: import("@finesoft/front/web").NavigationSnapshot;
-    }) => ({ state: { name: "", snapshot: initialSnapshot } }),
 };

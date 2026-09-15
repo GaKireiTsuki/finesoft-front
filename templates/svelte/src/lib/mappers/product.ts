@@ -1,4 +1,5 @@
-import { makeFlowAction, mapEach, type Mapper } from "@finesoft/front/browser";
+import { mapEach, type Mapper } from "@finesoft/front";
+import { makeFlowAction } from "@finesoft/front/web";
 import type { ProductItem } from "../models/product";
 
 /** Raw API response shape */
@@ -22,6 +23,6 @@ const toProductItem: Mapper<ApiProduct, ProductItem> = (raw) => ({
 /**
  * Composed mapper pipeline: ApiProduct[] → ProductItem[]
  *
- * Demonstrates pipe() + mapEach() for data transformation.
+ * Demonstrates mapEach() for data transformation.
  */
 export const mapProducts: Mapper<ApiProduct[], ProductItem[]> = mapEach(toProductItem);

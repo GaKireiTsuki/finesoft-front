@@ -1,5 +1,5 @@
-import type { Action } from "@finesoft/front/browser";
-import { makeFlowAction } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
+import { NAV_ACTIONS } from "../actions";
 import type { ErrorPage } from "../lib/models/product";
 
 interface NotFoundProps {
@@ -8,18 +8,28 @@ interface NotFoundProps {
 }
 
 export default function NotFound({ page, onAction }: NotFoundProps) {
-    const handleHome = (e: React.MouseEvent) => {
-        e.preventDefault();
-        onAction?.(makeFlowAction("/"));
+    const handleHome = (event: React.MouseEvent<HTMLAnchorElement>) => {
+        if (
+            !onAction ||
+            event.defaultPrevented ||
+            event.button !== 0 ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey
+        )
+            return;
+        event.preventDefault();
+        onAction(NAV_ACTIONS.home);
     };
 
     return (
-        <div>
+        <section className="page page-error">
             <h1>{page.title}</h1>
             <p>{page.description}</p>
             <a href="/" onClick={handleHome}>
                 ← Go Home
             </a>
-        </div>
+        </section>
     );
 }

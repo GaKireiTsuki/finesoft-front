@@ -1,58 +1,40 @@
 <script setup lang="ts">
-import { makeExternalUrlAction, makeFlowAction, type Action } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
+import { NAV_LINKS } from "../actions";
 
 const { currentPath = "/", onAction } = defineProps<{
     currentPath?: string;
     onAction?: (action: Action) => void;
 }>();
 
-const links = [
-    { label: "Home", action: makeFlowAction("/"), path: "/" },
-    { label: "Search", action: makeFlowAction("/search"), path: "/search" },
-    { label: "About", action: makeFlowAction("/about"), path: "/about" },
-    { label: "GitHub", action: makeExternalUrlAction("https://github.com"), path: null as null },
-];
-
-function handleClick(action: Action) {
-    return (e: MouseEvent) => {
-        if (onAction) {
-            e.preventDefault();
-            onAction(action);
-        }
-    };
+function handleClick(action: Action, event: MouseEvent) {
+    if (
+        !onAction ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+    ) {
+        return;
+    }
+    event.preventDefault();
+    onAction(action);
 }
 </script>
 
 <template>
-    <nav>
+    <nav class="navigation">
         <a
-            v-for="link in links"
+            v-for="link in NAV_LINKS"
             :key="link.label"
-            :href="link.action.url"
+            :href="link.path ?? link.action.url"
+            class="navigation-link"
             :class="{ active: link.path !== null && currentPath === link.path }"
-            @click="handleClick(link.action)"
+            @click="handleClick(link.action, $event)"
         >
             {{ link.label }}
         </a>
     </nav>
 </template>
-
-<style scoped>
-nav {
-    display: flex;
-    gap: 1rem;
-    padding: 1rem;
-    border-bottom: 1px solid #eee;
-}
-a {
-    text-decoration: none;
-    color: #333;
-}
-a:hover {
-    color: #007bff;
-}
-a.active {
-    color: #007bff;
-    font-weight: bold;
-}
-</style>

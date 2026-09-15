@@ -1,0 +1,17 @@
+[ProductDetailController] Loading product 2
+react preview passed
+react-minimal preview passed
+[ProductDetailController] Loading product 2
+vue preview passed
+vue-minimal preview passed
+[ProductDetailController] Loading product 2
+svelte preview passed
+svelte-minimal preview passed
+
+[33m[finesoft][0m dev server is exposing source via /src/* and /@fs/* (HMR).
+[2m           Do NOT expose this server to untrusted networks; run `vp build && vp preview` for production.
+[0m
+12:41:06 AM [vite+] (client) Re-optimizing dependencies because vite config has changed
+react-minimal generated-loader and independent mounts passed
+vue-minimal generated-loader and independent mounts passed
+svelte-minimal generated-loader and independent mounts passed

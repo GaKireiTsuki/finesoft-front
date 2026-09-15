@@ -1,4 +1,4 @@
-import { HttpClient, type HttpClientConfig } from "@finesoft/front/browser";
+import { HttpClient, type HttpClientConfig } from "@finesoft/front";
 
 /**
  * Demo API client — extends HttpClient for typed endpoint access.
@@ -8,8 +8,8 @@ import { HttpClient, type HttpClientConfig } from "@finesoft/front/browser";
 export class ApiClient extends HttpClient {
     constructor(config: Partial<HttpClientConfig> & Pick<HttpClientConfig, "fetch">) {
         super({
-            baseUrl: config?.baseUrl ?? "/api",
-            defaultHeaders: { "Content-Type": "application/json", ...config?.defaultHeaders },
+            baseUrl: config.baseUrl ?? "/api",
+            defaultHeaders: { "Content-Type": "application/json", ...config.defaultHeaders },
             fetch: config.fetch,
             validateDns: config.validateDns,
             lookup: config.lookup,

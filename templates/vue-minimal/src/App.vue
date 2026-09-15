@@ -1,72 +1,54 @@
 <script setup lang="ts">
-import { isStackNode, isTabsNode } from "@finesoft/front/browser";
-import { computed } from "vue";
-import type { AppController, AppState } from "./instance";
+import type { BrowserAppHandle } from "@finesoft/front/browser";
+import type { NavigationSnapshot } from "@finesoft/front/web";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import type { NameStore } from "./instance";
+import { getNavigationChrome, TAB_LABELS } from "./lib/navigation";
 
-const { state, profile, controller, initialSnapshot } = defineProps<{
-    state?: AppState;
-    profile?: AppState;
-    initialSnapshot?: import("@finesoft/front/web").NavigationSnapshot;
-    controller?: AppController;
+defineOptions({ inheritAttrs: false });
+const { initialSnapshot, controller, nameStore } = defineProps<{
+    initialSnapshot?: NavigationSnapshot;
+    controller?: BrowserAppHandle;
+    nameStore?: NameStore;
 }>();
-
-const tree = computed(() => (initialSnapshot ?? state?.snapshot)?.tree ?? null);
-
-/** Tab bar（tree 为 tabs 节点时）。 */
-const tabs = computed(() => {
-    const t = tree.value;
-    return t && isTabsNode(t) ? { order: t.order, active: t.active } : null;
+const chrome = computed(() => getNavigationChrome(initialSnapshot));
+// Start empty on both server and client; restore the profile after hydration.
+const name = ref("");
+let unsubscribe: (() => void) | undefined;
+onMounted(() => {
+    if (!nameStore) return;
+    name.value = nameStore.get();
+    unsubscribe = nameStore.subscribe(() => {
+        name.value = nameStore.get();
+    });
 });
-const tabLabels: Record<string, string> = { home: "Feed", notes: "Notes" };
-
-/** 激活 tab 的栈深 > 1 → 可返回。 */
-const canGoBack = computed(() => {
-    const t = tree.value;
-    if (!t || !isTabsNode(t)) return false;
-    const branch = t.branches[t.active];
-    return !!branch && isStackNode(branch) && branch.entries.length > 1;
-});
-
-/** 全局切片：名字（跨 tab / 跨重载）。 */
-const name = computed({
-    get: () => profile?.name ?? state?.name ?? "",
-    set: (v) => {
-        if (profile) profile.name = v;
-        else if (state) state.name = v;
-    },
-});
+onUnmounted(() => unsubscribe?.());
 </script>
 
 <template>
-    <div style="max-width: 32rem; margin: 0 auto; padding: 1rem; font-family: system-ui">
-        <!-- 全局切片：名字 -->
-        <header style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem">
-            <label style="flex: 1">
+    <div class="app-chrome">
+        <header class="profile">
+            <label>
                 Your name (global):
-                <input v-model="name" placeholder="anon" @blur="controller?.session?.save()" />
+                <input
+                    :value="name"
+                    placeholder="anon"
+                    @input="nameStore?.set(($event.target as HTMLInputElement).value)"
+                    @blur="controller?.session?.save()"
+                />
             </label>
             <span v-if="name">👋 {{ name }}</span>
         </header>
-
-        <!-- TabView -->
-        <nav v-if="tabs" style="display: flex; gap: 0.5rem; margin-bottom: 1rem">
+        <nav v-if="chrome.tabs" class="tabs" aria-label="Pages">
             <button
-                v-for="key in tabs.order"
+                v-for="key in chrome.tabs.order"
                 :key="key"
-                :style="{ fontWeight: key === tabs.active ? '700' : '400' }"
-                :aria-current="key === tabs.active"
+                :aria-current="key === chrome.tabs.active"
                 @click="controller?.navigation?.selectTab(key)"
             >
-                {{ tabLabels[key] ?? key }}
+                {{ TAB_LABELS[key] ?? key }}
             </button>
         </nav>
-
-        <button
-            v-if="canGoBack"
-            style="margin-bottom: 0.5rem"
-            @click="controller?.navigation?.pop()"
-        >
-            ← Back
-        </button>
+        <button v-if="chrome.canGoBack" @click="controller?.navigation?.pop()">← Back</button>
     </div>
 </template>

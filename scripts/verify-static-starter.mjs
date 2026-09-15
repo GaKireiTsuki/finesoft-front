@@ -9,10 +9,12 @@ import { build } from "vite-plus";
 import { chromium } from "playwright";
 import { finesoftFrontViteConfig, staticAdapter } from "../packages/front/dist/vite.mjs";
 const root = new URL("../", import.meta.url).pathname;
-const artifact = root + "reports/application-boundaries/static-starter";
+const artifact = root + "reports/template-unification/static-starter";
 await fs.mkdir(artifact, { recursive: true });
 await fs.cp(root + "templates/react-minimal/src", artifact + "/src", { recursive: true });
 await fs.copyFile(root + "templates/react-minimal/index.html", artifact + "/index.html");
+// SSR sub-builds read the application's Vite config, including its locale loader plugin.
+await fs.copyFile(root + "templates/react-minimal/vite.config.ts", artifact + "/vite.config.ts");
 await fs.writeFile(artifact + "/package.json", '{"type":"module","private":true}\n');
 try {
     await fs.symlink(
@@ -32,7 +34,8 @@ await build({
         react(),
         finesoftFrontViteConfig({
             adapter: staticAdapter({ dynamicRoutes: ["/item/2"] }),
-            ssr: { entry: "src/ssr.tsx" },
+            ssr: { entry: "src/ssr.ts" },
+            i18n: { messagesDir: "src/locales" },
         }),
     ],
 });

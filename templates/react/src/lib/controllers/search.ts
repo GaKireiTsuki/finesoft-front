@@ -1,40 +1,7 @@
-import { markPublic, BaseController, makeFlowAction } from "@finesoft/front/browser";
-import type { ProductItem, SearchPage } from "../models/product";
-
-const ALL_PRODUCTS: ProductItem[] = [
-    {
-        id: "1",
-        itemType: "product",
-        name: "TypeScript Handbook",
-        price: 29.99,
-        imageUrl: "/img/ts.svg",
-        clickAction: makeFlowAction("/products/1"),
-    },
-    {
-        id: "2",
-        itemType: "product",
-        name: "Vite Starter Kit",
-        price: 19.99,
-        imageUrl: "/img/vite.svg",
-        clickAction: makeFlowAction("/products/2"),
-    },
-    {
-        id: "3",
-        itemType: "product",
-        name: "Hono Framework Guide",
-        price: 24.99,
-        imageUrl: "/img/hono.svg",
-        clickAction: makeFlowAction("/products/3"),
-    },
-    {
-        id: "4",
-        itemType: "product",
-        name: "SSR Deep Dive",
-        price: 34.99,
-        imageUrl: "/img/ssr.svg",
-        clickAction: makeFlowAction("/products/4"),
-    },
-];
+import { PRODUCTS } from "../data/products";
+import { BaseController } from "@finesoft/front";
+import { markPublic } from "@finesoft/front/web";
+import type { SearchPage } from "../models/product";
 
 export class SearchController extends BaseController<{ q?: string }, SearchPage> {
     readonly intentId = "search";
@@ -42,8 +9,8 @@ export class SearchController extends BaseController<{ q?: string }, SearchPage>
     execute(params: { q?: string }): SearchPage {
         const query = params.q ?? "";
         const results = query
-            ? ALL_PRODUCTS.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
-            : ALL_PRODUCTS;
+            ? PRODUCTS.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+            : PRODUCTS;
 
         return markPublic(
             {

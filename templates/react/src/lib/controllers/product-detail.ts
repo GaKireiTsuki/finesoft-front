@@ -1,11 +1,11 @@
 import {
-    markPublic,
     BaseController,
     type Container,
     DEP_KEYS,
     type Logger,
     type LoggerFactory,
-} from "@finesoft/front/browser";
+} from "@finesoft/front";
+import { markPublic } from "@finesoft/front/web";
 import type { ProductPage } from "../models/product";
 
 export class ProductDetailController extends BaseController<{ id: number }, ProductPage> {

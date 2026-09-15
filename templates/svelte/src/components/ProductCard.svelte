@@ -1,37 +1,31 @@
 <script lang="ts">
-	import { getPerform } from "../lib/framework-svelte";
+	import type { Action } from "@finesoft/front/web";
 	import type { ProductItem } from "../lib/models/product";
 
-	let { item }: { item: ProductItem } = $props();
-
-	const perform = getPerform();
+	let { item, onAction }: { item: ProductItem; onAction?: (action: Action) => void } = $props();
 </script>
 
-<div class="product-card">
+<article class="product-card">
 	<h3>{item.name}</h3>
 	<p class="price">${item.price.toFixed(2)}</p>
 	{#if item.clickAction && "url" in item.clickAction}
 		<a
 			href={item.clickAction.url}
 			onclick={(e) => {
-				if (perform && item.clickAction) {
-					e.preventDefault();
-					void perform(item.clickAction);
-				}
+				if (
+					!onAction ||
+					!item.clickAction ||
+					e.defaultPrevented ||
+					e.button !== 0 ||
+					e.metaKey ||
+					e.ctrlKey ||
+					e.shiftKey ||
+					e.altKey
+				)
+					return;
+				e.preventDefault();
+				onAction(item.clickAction);
 			}}>View Details &rarr;</a
 		>
 	{/if}
-</div>
-
-<style>
-	.product-card {
-		border: 1px solid #eee;
-		border-radius: 8px;
-		padding: 1rem;
-		min-width: 200px;
-	}
-	.price {
-		color: #007bff;
-		font-weight: bold;
-	}
-</style>
+</article>

@@ -1,4 +1,4 @@
-import type { Action } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
 import type { AppPage } from "../lib/models/product";
 import About from "../pages/About";
 import Home from "../pages/Home";
@@ -24,18 +24,5 @@ export function PageRenderer({ page, onAction }: PageRendererProps) {
             return <About page={page} onAction={onAction} />;
         case "error":
             return <NotFound page={page} onAction={onAction} />;
-        default:
-            return (
-                <NotFound
-                    page={{
-                        id: "unknown",
-                        pageType: "error",
-                        title: "Unknown Page",
-                        description: "Page not found",
-                        status: 404,
-                    }}
-                    onAction={onAction}
-                />
-            );
     }
 }

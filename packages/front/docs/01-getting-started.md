@@ -2,6 +2,8 @@
 
 Use the published portable root and explicit environment entries. Install only the UI peers you select. The six repository templates contain complete React, Vue and Svelte examples; the CLI copies these same declarations. Node must satisfy `^22.18.0 || >=24.11.0`. Use Vite+ commands for development.
 
+Choose full for products, search and guards; choose minimal for Feed, detail, Notes and session restoration. Each tier is consistent across the three frameworks; see [application structure and template contracts](./engineering/project-structure.md).
+
 ## Application declaration / 应用声明
 
 ```ts
@@ -64,7 +66,7 @@ export default defineConfig({
         react(),
         finesoftFrontViteConfig({
             adapter: "node",
-            ssr: { entry: "src/ssr.tsx" },
+            ssr: { entry: "src/ssr.ts" },
         }),
     ],
 });

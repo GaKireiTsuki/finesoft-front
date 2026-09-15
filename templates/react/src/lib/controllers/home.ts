@@ -1,32 +1,7 @@
-import { markPublic, BaseController, makeFlowAction } from "@finesoft/front/browser";
-import type { HomePage, ProductItem, ProductShelf } from "../models/product";
-
-const MOCK_PRODUCTS: ProductItem[] = [
-    {
-        id: "1",
-        itemType: "product",
-        name: "TypeScript Handbook",
-        price: 29.99,
-        imageUrl: "/img/ts.svg",
-        clickAction: makeFlowAction("/products/1"),
-    },
-    {
-        id: "2",
-        itemType: "product",
-        name: "Vite Starter Kit",
-        price: 19.99,
-        imageUrl: "/img/vite.svg",
-        clickAction: makeFlowAction("/products/2"),
-    },
-    {
-        id: "3",
-        itemType: "product",
-        name: "Hono Framework Guide",
-        price: 24.99,
-        imageUrl: "/img/hono.svg",
-        clickAction: makeFlowAction("/products/3"),
-    },
-];
+import { PRODUCTS } from "../data/products";
+import { BaseController } from "@finesoft/front";
+import { markPublic, makeFlowAction } from "@finesoft/front/web";
+import type { HomePage, ProductShelf } from "../models/product";
 
 export class HomeController extends BaseController<Record<string, string>, HomePage> {
     readonly intentId = "home";
@@ -38,7 +13,7 @@ export class HomeController extends BaseController<Record<string, string>, HomeP
             title: "Featured Products",
             isHorizontal: true,
             seeAllAction: makeFlowAction("/search"),
-            items: MOCK_PRODUCTS,
+            items: PRODUCTS.slice(0, 3),
         };
 
         return markPublic(

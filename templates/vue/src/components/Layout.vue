@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
 import Navigation from "./Navigation.vue";
 
 const { currentPath = "/", onAction } = defineProps<{
@@ -9,9 +9,9 @@ const { currentPath = "/", onAction } = defineProps<{
 </script>
 
 <template>
-    <div>
+    <div class="app-shell">
         <Navigation :current-path="currentPath" :on-action="onAction" />
-        <main style="padding: 1rem">
+        <main class="app-main">
             <slot />
         </main>
     </div>

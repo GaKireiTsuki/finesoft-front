@@ -1,0 +1,20 @@
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +102
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Packages are cloned from the content-addressable store to the virtual store.
+  Content-addressable store is at: /Users/megumi/Library/pnpm/store/v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 180, reused 102, downloaded 0, added 102, done
+[WARN] Issues with peer dependencies found. Run "pnpm peers check" to list them.
+
+dependencies:
++ @finesoft/front 0.5.1
++ vite <- @voidzero-dev/vite-plus-core 0.2.8 (0.3.2 is available)
++ vue 3.5.42
+
+devDependencies:
++ @vitejs/plugin-vue 6.0.9
++ hono 4.13.7
++ vite-plus 0.2.8 (0.3.2 is available)
+
+Done in 586ms using pnpm v11.20.0

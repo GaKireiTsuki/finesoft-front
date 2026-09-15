@@ -1,32 +1,34 @@
 import { startBrowserApp } from "@finesoft/front/browser";
 import { createVueRenderer } from "@finesoft/front/renderers/vue/browser";
 import { app } from "./app-definition";
-import { views } from "./views";
+import { appId } from "./config";
 import { createInstance } from "./instance";
+import { views } from "./views";
+import "./styles.css";
+
 export function mountApplication(
     target: HTMLElement,
-    persistenceKey = "vue-minimal",
+    persistenceKey = appId,
     history: "browser" | "memory" = "browser",
+    url?: string,
 ) {
-    const { state, profileProvider } = createInstance();
+    const { nameStore, profileProvider } = createInstance();
     return startBrowserApp({
         app,
         target,
         history,
+        url,
         persistenceKey,
         domRestore: true,
         session: { providers: [profileProvider] },
-        renderer: createVueRenderer({
-            ...views,
-            props: ({ initialSnapshot }) => ({
-                state: { ...state, snapshot: initialSnapshot },
-                profile: state,
-            }),
-        }),
+        renderer: createVueRenderer({ ...views, props: () => ({ nameStore }) }),
     });
 }
+
 export const started = mountApplication(document.getElementById("app")!);
-if (import.meta.hot)
+
+if (import.meta.hot) {
     import.meta.hot.dispose(async () => {
         await (await started).dispose();
     });
+}

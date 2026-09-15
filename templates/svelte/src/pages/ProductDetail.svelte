@@ -1,32 +1,30 @@
 <script lang="ts">
+	import type { Action } from "@finesoft/front/web";
 	import { NAV_ACTIONS } from "../actions";
-	import { getPerform } from "../lib/framework-svelte";
 	import type { ProductPage } from "../lib/models/product";
 
-	let { page }: { page: ProductPage } = $props();
-
-	const perform = getPerform();
+	let { page, onAction }: { page: ProductPage; onAction?: (action: Action) => void } = $props();
 </script>
 
-<div>
+<section class="page page-product">
 	<a
 		href="/"
 		onclick={(e) => {
-			if (perform) {
-				e.preventDefault();
-				void perform(NAV_ACTIONS.home);
-			}
+			if (
+				!onAction ||
+				e.defaultPrevented ||
+				e.button !== 0 ||
+				e.metaKey ||
+				e.ctrlKey ||
+				e.shiftKey ||
+				e.altKey
+			)
+				return;
+			e.preventDefault();
+			onAction(NAV_ACTIONS.home);
 		}}>← Back</a
 	>
 	<h1>{page.product.name}</h1>
-	<p class="price">${page.product.price.toFixed(2)}</p>
+	<p class="price price-large">${page.product.price.toFixed(2)}</p>
 	<p>{page.product.description}</p>
-</div>
-
-<style>
-	.price {
-		font-size: 1.5rem;
-		color: #007bff;
-		font-weight: bold;
-	}
-</style>
+</section>

@@ -7,12 +7,7 @@ export default defineConfig({
         vue(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
-            proxies: [
-                {
-                    prefix: "/api",
-                    target: "https://jsonplaceholder.typicode.com",
-                },
-            ],
+            proxies: [{ prefix: "/api", target: "https://jsonplaceholder.typicode.com" }],
         }),
     ]),
 });

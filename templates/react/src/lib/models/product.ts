@@ -1,4 +1,4 @@
-import type { BaseItem, BasePage, BaseShelf } from "@finesoft/front/browser";
+import type { BaseItem, BasePage, BaseShelf } from "@finesoft/front/web";
 
 export interface ProductItem extends BaseItem {
     itemType: "product";

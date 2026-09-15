@@ -1,29 +1,24 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front/browser";
-import { computed } from "vue";
+import type { Action } from "@finesoft/front/web";
 import Layout from "./components/Layout.vue";
 import Loading from "./components/Loading.vue";
 import PageRenderer from "./components/PageRenderer.vue";
 import type { AppPage } from "./lib/models/product";
 
-// state: reactive object for CSR; page: initial prop for SSR
 const {
-    state,
-    page: ssrPage,
+    page,
+    loading = false,
     onAction,
 } = defineProps<{
-    state?: { page: AppPage | null; loading: boolean };
-    page?: AppPage;
+    page?: AppPage | null;
+    loading?: boolean;
     onAction?: (action: Action) => void;
 }>();
-
-const currentPage = computed(() => state?.page ?? ssrPage ?? null);
-const loading = computed(() => state?.loading ?? false);
 </script>
 
 <template>
-    <Layout :current-path="currentPage?.url ?? '/'" :on-action="onAction">
+    <Layout :current-path="page?.url ?? '/'" :on-action="onAction">
         <Loading v-if="loading" />
-        <PageRenderer v-else-if="currentPage" :page="currentPage" :on-action="onAction" />
+        <PageRenderer v-if="page" :page="page" :on-action="onAction" />
     </Layout>
 </template>

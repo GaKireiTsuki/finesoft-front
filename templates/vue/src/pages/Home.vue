@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
 import ProductCard from "../components/ProductCard.vue";
 import type { HomePage } from "../lib/models/product";
 
@@ -7,11 +7,11 @@ const { page, onAction } = defineProps<{ page: HomePage; onAction?: (action: Act
 </script>
 
 <template>
-    <div>
+    <section class="page page-home">
         <h1>{{ page.title }}</h1>
         <p>{{ page.description }}</p>
 
-        <section v-for="shelf in page.shelves" :key="shelf.id">
+        <section v-for="shelf in page.shelves" :key="shelf.id" class="shelf-section">
             <h2>{{ shelf.title }}</h2>
             <div class="shelf" :class="{ horizontal: shelf.isHorizontal }">
                 <ProductCard
@@ -22,17 +22,5 @@ const { page, onAction } = defineProps<{ page: HomePage; onAction?: (action: Act
                 />
             </div>
         </section>
-    </div>
+    </section>
 </template>
-
-<style scoped>
-.shelf {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-.shelf.horizontal {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-}
-</style>

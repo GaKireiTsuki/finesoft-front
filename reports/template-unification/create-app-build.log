@@ -1,0 +1,9 @@
+~/packages/create-app$ vp pack ⊘ cache disabled
+ℹ entry: src/index.ts
+ℹ tsconfig: tsconfig.json
+ℹ Build start
+ℹ Cleaning 1 files
+ℹ dist/index.mjs  4.55 kB │ gzip: 1.78 kB
+ℹ 1 files, total: 4.55 kB
+✔ Build complete in 86ms
+

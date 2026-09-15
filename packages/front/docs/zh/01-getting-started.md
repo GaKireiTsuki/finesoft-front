@@ -2,6 +2,8 @@
 
 根入口提供可移植运行时；页面、浏览器、SSR 和平台使用独立入口。只安装所选 UI 的依赖。仓库六个 React、Vue、Svelte 模板与脚手架使用相同声明。Node 需满足 `^22.18.0 || >=24.11.0`，开发工具统一通过 Vite+ 调用。
 
+选择 full 可查看商品、搜索和守卫示例；选择 minimal 可查看 Feed、详情、Notes 及会话恢复。同档位的三框架模板保持一致，详见[应用结构与模板约定](./engineering/project-structure.md)。
+
 ## Application declaration / 应用声明
 
 ```ts
@@ -64,7 +66,7 @@ export default defineConfig({
         react(),
         finesoftFrontViteConfig({
             adapter: "node",
-            ssr: { entry: "src/ssr.tsx" },
+            ssr: { entry: "src/ssr.ts" },
         }),
     ],
 });

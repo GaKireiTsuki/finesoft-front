@@ -1,16 +1,6 @@
-import { markPublic, BaseController, type BasePage } from "@finesoft/front/browser";
-
-/** 一个 feed 项。 */
-export interface FeedItem {
-    readonly id: string;
-    readonly title: string;
-}
-
-/** Home（feed）页面：携带可 push 进 detail 的列表项。 */
-export interface FeedPage extends BasePage {
-    readonly pageType: "home";
-    readonly items: readonly FeedItem[];
-}
+import { BaseController } from "@finesoft/front";
+import { markPublic } from "@finesoft/front/web";
+import type { FeedItem, HomePage } from "../models/page";
 
 const ITEMS: readonly FeedItem[] = [
     { id: "1", title: "Structured navigation" },
@@ -18,10 +8,10 @@ const ITEMS: readonly FeedItem[] = [
     { id: "3", title: "Navigation-scoped state" },
 ];
 
-export class HomeController extends BaseController<Record<string, string>, FeedPage> {
+export class HomeController extends BaseController<Record<string, string>, HomePage> {
     readonly intentId = "home";
 
-    execute(): FeedPage {
+    execute(): HomePage {
         return markPublic(
             {
                 id: "home",

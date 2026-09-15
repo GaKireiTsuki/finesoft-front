@@ -1,3 +1,4 @@
+import { appId } from "./config";
 import { definePage, defineWebApp, int } from "@finesoft/front/web";
 import { AboutController } from "./lib/controllers/about";
 import { HomeController } from "./lib/controllers/home";
@@ -14,22 +15,17 @@ export const productDetailPage = definePage({
 export const searchPage = definePage({ id: "search", create: () => new SearchController() });
 export const aboutPage = definePage({ id: "about", create: () => new AboutController() });
 export const app = defineWebApp({
-    id: "vue",
+    id: appId,
     controllers: [homePage, productDetailPage, searchPage, aboutPage],
     routes: [
-        // SSR routes (default)
         homePage.route("/"),
         productDetailPage.route("/products/:id", {
             params: { id: int() },
         }),
         searchPage.route("/search"),
-
-        // CSR-only route
         aboutPage.route("/about", { renderMode: "csr" }),
-
-        // Guarded route — requires auth cookie
         homePage.route("/admin", { beforeLoad: [authGuard] }),
     ],
-    getErrorPage: getErrorPage,
+    getErrorPage,
     afterLoad: [seoGuard],
 });

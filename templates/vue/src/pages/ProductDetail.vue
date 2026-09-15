@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
 import { NAV_ACTIONS } from "../actions";
 import type { ProductPage } from "../lib/models/product";
 
@@ -9,26 +9,26 @@ const { page, onAction } = defineProps<{
 }>();
 
 function handleBack(e: MouseEvent) {
-    if (onAction) {
-        e.preventDefault();
-        onAction(NAV_ACTIONS.home);
-    }
+    if (
+        !onAction ||
+        e.defaultPrevented ||
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey
+    )
+        return;
+    e.preventDefault();
+    onAction(NAV_ACTIONS.home);
 }
 </script>
 
 <template>
-    <div>
+    <section class="page page-product">
         <a href="/" @click="handleBack">← Back</a>
         <h1>{{ page.product.name }}</h1>
-        <p class="price">${{ page.product.price.toFixed(2) }}</p>
+        <p class="price price-large">${{ page.product.price.toFixed(2) }}</p>
         <p>{{ page.product.description }}</p>
-    </div>
+    </section>
 </template>
-
-<style scoped>
-.price {
-    font-size: 1.5rem;
-    color: #007bff;
-    font-weight: bold;
-}
-</style>

@@ -56,7 +56,7 @@ export default defineConfig({
         react(),
         finesoftFrontViteConfig({
             adapter: "node",
-            ssr: { entry: "src/ssr.tsx" },
+            ssr: { entry: "src/ssr.ts" },
         }),
     ],
 });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front/browser";
+import type { Action } from "@finesoft/front/web";
 import type { AppPage } from "../lib/models/product";
 import About from "../pages/About.vue";
 import Home from "../pages/Home.vue";
@@ -11,16 +11,12 @@ const { page, onAction } = defineProps<{
     page: AppPage;
     onAction?: (action: Action) => void;
 }>();
-
-const pageComponents: Record<string, unknown> = {
-    home: Home,
-    product: ProductDetail,
-    search: Search,
-    about: About,
-    error: NotFound,
-};
 </script>
 
 <template>
-    <component :is="pageComponents[page.pageType] ?? NotFound" :page="page" :on-action="onAction" />
+    <Home v-if="page.pageType === 'home'" :page="page" :on-action="onAction" />
+    <ProductDetail v-else-if="page.pageType === 'product'" :page="page" :on-action="onAction" />
+    <Search v-else-if="page.pageType === 'search'" :page="page" :on-action="onAction" />
+    <About v-else-if="page.pageType === 'about'" :page="page" :on-action="onAction" />
+    <NotFound v-else :page="page" :on-action="onAction" />
 </template>

@@ -1,0 +1,26 @@
+[2Ktransforming...✓ 46 modules transformed.
+rendering chunks...
+computing gzip size...
+reports/template-unification/static-starter/dist/client/index.html                    0.44 kB │ gzip:  0.27 kB
+reports/template-unification/static-starter/dist/client/assets/index-BIpawk8n.css     0.75 kB │ gzip:  0.39 kB
+reports/template-unification/static-starter/dist/client/assets/zh-Hans-G5f0fMu2.js    0.25 kB │ gzip:  0.26 kB
+reports/template-unification/static-starter/dist/client/assets/en-US-xnXOlHIk.js      0.27 kB │ gzip:  0.21 kB
+reports/template-unification/static-starter/dist/client/assets/index-CEJ-eQNf.js    280.80 kB │ gzip: 88.51 kB
+
+✓ built in 67ms
+
+  Building SSR bundle...
+
+[2Ktransforming...✓ 34 modules transformed.
+rendering chunks...
+computing gzip size...
+reports/template-unification/static-starter/dist/server/assets/zh-Hans-BVICWREs.js    0.38 kB │ gzip:  0.33 kB
+reports/template-unification/static-starter/dist/server/assets/en-US-BVDBE9ey.js      0.40 kB │ gzip:  0.27 kB
+reports/template-unification/static-starter/dist/server/ssr.js                      150.05 kB │ gzip: 45.13 kB
+
+✓ built in 14ms
+  Running adapter: static...
+
+  Static output → dist/static/ (3 pages)
+
+static starter: built route metadata, shared target-local wire HTML, browser hydration and retained draft passed

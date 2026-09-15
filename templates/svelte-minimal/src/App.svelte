@@ -1,24 +1,40 @@
 <script lang="ts">
-	import { type BasePage, Framework } from "@finesoft/front/browser";
-	import { untrack } from "svelte";
-	import { setFrameworkContext } from "./lib/framework-svelte";
-	import Home from "./pages/Home.svelte";
+    import type { BrowserAppHandle } from "@finesoft/front/browser";
+    import type { NavigationSnapshot } from "@finesoft/front/web";
+    import { onMount } from "svelte";
+    import type { NameStore } from "./instance";
+    import { getNavigationChrome, TAB_LABELS } from "./lib/navigation";
 
-	type Props = {
-		framework?: Framework;
-		page?: BasePage | null;
-	};
-
-	let props: Props = $props();
-
-	// context 只需在初始化时设置一次，用 untrack 明确声明仅读取初始值
-	const framework = untrack(() => props.framework);
-	if (framework) {
-		setFrameworkContext(framework);
-	}
-
+    let { initialSnapshot, controller, nameStore }: {
+        initialSnapshot?: NavigationSnapshot;
+        controller?: BrowserAppHandle;
+        nameStore?: NameStore;
+    } = $props();
+    const chrome = $derived(getNavigationChrome(initialSnapshot));
+    // Start empty on both server and client; restore the profile after hydration.
+    let name = $state("");
+    onMount(() => {
+        if (!nameStore) return;
+        const store = nameStore;
+        name = store.get();
+        return store.subscribe(() => { name = store.get(); });
+    });
 </script>
 
-<main style="padding: 1rem">
- {#if props.page}<Home page={props.page} />{/if}
-</main>
+<div class="app-chrome">
+    <header class="profile">
+        <label>
+            Your name (global):
+            <input value={name} placeholder="anon" oninput={(event) => nameStore?.set(event.currentTarget.value)} onblur={() => controller?.session?.save()} />
+        </label>
+        {#if name}<span>👋 {name}</span>{/if}
+    </header>
+    {#if chrome.tabs}
+        <nav class="tabs" aria-label="Pages">
+            {#each chrome.tabs.order as key (key)}
+                <button aria-current={key === chrome.tabs.active} onclick={() => void controller?.navigation?.selectTab(key)}>{TAB_LABELS[key] ?? key}</button>
+            {/each}
+        </nav>
+    {/if}
+    {#if chrome.canGoBack}<button onclick={() => void controller?.navigation?.pop()}>← Back</button>{/if}
+</div>

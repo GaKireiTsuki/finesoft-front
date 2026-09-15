@@ -1,4 +1,4 @@
-import { type BeforeLoadGuard, next, redirect } from "@finesoft/front/browser";
+import { type BeforeLoadGuard, next, redirect } from "@finesoft/front/web";
 
 /**
  * Auth guard — redirects unauthenticated users to login.

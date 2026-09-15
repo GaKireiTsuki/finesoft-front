@@ -6,7 +6,8 @@ export default defineConfig({
     plugins: lazyPlugins(() => [
         react(),
         finesoftFrontViteConfig({
-            ssr: { entry: "src/ssr.tsx" },
+            ssr: { entry: "src/ssr.ts" },
+            i18n: { messagesDir: "src/locales" },
         }),
     ]),
 });

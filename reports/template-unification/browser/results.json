@@ -1,0 +1,2066 @@
+[
+  {
+    "name": "react",
+    "artifact": "production preview",
+    "status": "passed",
+    "contents": {
+      "detail": {
+        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing BaseController with typed params and DI container usage.",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-product"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            },
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [
+                "price",
+                "price-large"
+              ],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            }
+          ]
+        }
+      },
+      "about": {
+        "text": "About\n\nFinesoft Front is a full-stack TypeScript framework with router, DI, middleware, SSR, and multi-platform deployment.",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-about"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            }
+          ]
+        }
+      },
+      "search": {
+        "text": "Search: Vite\n\n1 result(s)\n\nVite Starter Kit\n\n$19.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-search"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "results"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "home": {
+        "text": "Home\n\nWelcome to Finesoft Front Demo\n\nFeatured Products\nTypeScript Handbook\n\n$29.99\n\nView Details →\nVite Starter Kit\n\n$19.99\n\nView Details →\nHono Framework Guide\n\n$24.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-home"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "section",
+              "classes": [
+                "shelf-section"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "h2",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                },
+                {
+                  "tag": "div",
+                  "classes": [
+                    "horizontal",
+                    "shelf"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/1"
+                          },
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/2"
+                          },
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/3"
+                          },
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "error": {
+        "text": "Error 404\n\nPage not found\n\n← Go Home",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-error"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            }
+          ]
+        }
+      },
+      "chrome": {
+        "text": "Home\nSearch\nAbout\nGitHub",
+        "structure": {
+          "tag": "nav",
+          "classes": [
+            "navigation"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "a",
+              "classes": [
+                "active",
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/search"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/about"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "https://github.com/nicepkg/finesoft"
+              },
+              "children": []
+            }
+          ]
+        }
+      }
+    },
+    "errors": []
+  },
+  {
+    "name": "react-minimal",
+    "artifact": "production preview",
+    "status": "passed",
+    "contents": {
+      "notes": {
+        "text": "Notes\n\nThis textarea is navigation-scoped — switch tabs and it survives.\n\nNotes draft",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "draft"
+              ],
+              "attributes": {
+                "data-restore-root": true
+              },
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "textarea",
+                      "classes": [],
+                      "attributes": {
+                        "name": "notes",
+                        "placeholder": "Write a note; switch tabs or reload to restore it",
+                        "rows": "6"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "home": {
+        "text": "Feed\n\nTap an item to push a detail screen.\n\nStructured navigation\nSession restoration\nNavigation-scoped state\n\n当前语言: zh-Hans\n\n浏览器接管后，翻译器仍然可用。\n\n修改 src/app-definition.ts 中的 frameworkConfig.locale：en-US 为英文，zh-Hans 为中文。",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "ul",
+              "classes": [
+                "feed"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "section",
+              "classes": [
+                "locale-info"
+              ],
+              "attributes": {
+                "aria-label": "Locale"
+              },
+              "children": [
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "strong",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                },
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "detail": {
+        "text": "Item 2\n\nA pushed detail screen. Its scoped note is lost once you pop it.\n\nDetail note",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "draft"
+              ],
+              "attributes": {
+                "data-restore-root": true
+              },
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "input",
+                      "classes": [],
+                      "attributes": {
+                        "name": "note",
+                        "placeholder": "Kept while this screen is alive; lost when popped"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "error": {
+        "text": "Error 404\n\nPage not found\n\n← Go Home",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            }
+          ]
+        }
+      },
+      "chrome": {
+        "text": "Your name (global):\nFeed\nNotes",
+        "structure": {
+          "tag": "div",
+          "classes": [
+            "app-chrome"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "header",
+              "classes": [
+                "profile"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "input",
+                      "classes": [],
+                      "attributes": {
+                        "placeholder": "anon"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "nav",
+              "classes": [
+                "tabs"
+              ],
+              "attributes": {
+                "aria-label": "Pages"
+              },
+              "children": [
+                {
+                  "tag": "button",
+                  "classes": [],
+                  "attributes": {
+                    "aria-current": "true"
+                  },
+                  "children": []
+                },
+                {
+                  "tag": "button",
+                  "classes": [],
+                  "attributes": {
+                    "aria-current": "false"
+                  },
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "errors": []
+  },
+  {
+    "name": "vue",
+    "artifact": "production preview",
+    "status": "passed",
+    "contents": {
+      "detail": {
+        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing BaseController with typed params and DI container usage.",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-product"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            },
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [
+                "price",
+                "price-large"
+              ],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            }
+          ]
+        }
+      },
+      "about": {
+        "text": "About\n\nFinesoft Front is a full-stack TypeScript framework with router, DI, middleware, SSR, and multi-platform deployment.",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-about"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            }
+          ]
+        }
+      },
+      "search": {
+        "text": "Search: Vite\n\n1 result(s)\n\nVite Starter Kit\n\n$19.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-search"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "results"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "home": {
+        "text": "Home\n\nWelcome to Finesoft Front Demo\n\nFeatured Products\nTypeScript Handbook\n\n$29.99\n\nView Details →\nVite Starter Kit\n\n$19.99\n\nView Details →\nHono Framework Guide\n\n$24.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-home"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "section",
+              "classes": [
+                "shelf-section"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "h2",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                },
+                {
+                  "tag": "div",
+                  "classes": [
+                    "horizontal",
+                    "shelf"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/1"
+                          },
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/2"
+                          },
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/3"
+                          },
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "error": {
+        "text": "Error 404\n\nPage not found\n\n← Go Home",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-error"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            }
+          ]
+        }
+      },
+      "chrome": {
+        "text": "Home\nSearch\nAbout\nGitHub",
+        "structure": {
+          "tag": "nav",
+          "classes": [
+            "navigation"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "a",
+              "classes": [
+                "active",
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/search"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/about"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "https://github.com/nicepkg/finesoft"
+              },
+              "children": []
+            }
+          ]
+        }
+      }
+    },
+    "errors": []
+  },
+  {
+    "name": "vue-minimal",
+    "artifact": "production preview",
+    "status": "passed",
+    "contents": {
+      "notes": {
+        "text": "Notes\n\nThis textarea is navigation-scoped — switch tabs and it survives.\n\nNotes draft",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "draft"
+              ],
+              "attributes": {
+                "data-restore-root": true
+              },
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "textarea",
+                      "classes": [],
+                      "attributes": {
+                        "name": "notes",
+                        "placeholder": "Write a note; switch tabs or reload to restore it",
+                        "rows": "6"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "home": {
+        "text": "Feed\n\nTap an item to push a detail screen.\n\nStructured navigation\nSession restoration\nNavigation-scoped state\n\n当前语言: zh-Hans\n\n浏览器接管后，翻译器仍然可用。\n\n修改 src/app-definition.ts 中的 frameworkConfig.locale：en-US 为英文，zh-Hans 为中文。",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "ul",
+              "classes": [
+                "feed"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "section",
+              "classes": [
+                "locale-info"
+              ],
+              "attributes": {
+                "aria-label": "Locale"
+              },
+              "children": [
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "strong",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                },
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "detail": {
+        "text": "Item 2\n\nA pushed detail screen. Its scoped note is lost once you pop it.\n\nDetail note",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "draft"
+              ],
+              "attributes": {
+                "data-restore-root": true
+              },
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "input",
+                      "classes": [],
+                      "attributes": {
+                        "name": "note",
+                        "placeholder": "Kept while this screen is alive; lost when popped"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "error": {
+        "text": "Error 404\n\nPage not found\n\n← Go Home",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            }
+          ]
+        }
+      },
+      "chrome": {
+        "text": "Your name (global):\nFeed\nNotes",
+        "structure": {
+          "tag": "div",
+          "classes": [
+            "app-chrome"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "header",
+              "classes": [
+                "profile"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "input",
+                      "classes": [],
+                      "attributes": {
+                        "placeholder": "anon"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "nav",
+              "classes": [
+                "tabs"
+              ],
+              "attributes": {
+                "aria-label": "Pages"
+              },
+              "children": [
+                {
+                  "tag": "button",
+                  "classes": [],
+                  "attributes": {
+                    "aria-current": "true"
+                  },
+                  "children": []
+                },
+                {
+                  "tag": "button",
+                  "classes": [],
+                  "attributes": {
+                    "aria-current": "false"
+                  },
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "errors": []
+  },
+  {
+    "name": "svelte",
+    "artifact": "production preview",
+    "status": "passed",
+    "contents": {
+      "detail": {
+        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing BaseController with typed params and DI container usage.",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-product"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            },
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [
+                "price",
+                "price-large"
+              ],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            }
+          ]
+        }
+      },
+      "about": {
+        "text": "About\n\nFinesoft Front is a full-stack TypeScript framework with router, DI, middleware, SSR, and multi-platform deployment.",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-about"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            }
+          ]
+        }
+      },
+      "search": {
+        "text": "Search: Vite\n\n1 result(s)\n\nVite Starter Kit\n\n$19.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-search"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "results"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "home": {
+        "text": "Home\n\nWelcome to Finesoft Front Demo\n\nFeatured Products\nTypeScript Handbook\n\n$29.99\n\nView Details →\nVite Starter Kit\n\n$19.99\n\nView Details →\nHono Framework Guide\n\n$24.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-home"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "section",
+              "classes": [
+                "shelf-section"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "h2",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                },
+                {
+                  "tag": "div",
+                  "classes": [
+                    "horizontal",
+                    "shelf"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/1"
+                          },
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/2"
+                          },
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "article",
+                      "classes": [
+                        "product-card"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h3",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [
+                            "price"
+                          ],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "a",
+                          "classes": [],
+                          "attributes": {
+                            "href": "/products/3"
+                          },
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "error": {
+        "text": "Error 404\n\nPage not found\n\n← Go Home",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-error"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            }
+          ]
+        }
+      },
+      "chrome": {
+        "text": "Home\nSearch\nAbout\nGitHub",
+        "structure": {
+          "tag": "nav",
+          "classes": [
+            "navigation"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "a",
+              "classes": [
+                "active",
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/search"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "/about"
+              },
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [
+                "navigation-link"
+              ],
+              "attributes": {
+                "href": "https://github.com/nicepkg/finesoft"
+              },
+              "children": []
+            }
+          ]
+        }
+      }
+    },
+    "errors": []
+  },
+  {
+    "name": "svelte-minimal",
+    "artifact": "production preview",
+    "status": "passed",
+    "contents": {
+      "notes": {
+        "text": "Notes\n\nThis textarea is navigation-scoped — switch tabs and it survives.\n\nNotes draft",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "draft"
+              ],
+              "attributes": {
+                "data-restore-root": true
+              },
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "textarea",
+                      "classes": [],
+                      "attributes": {
+                        "name": "notes",
+                        "placeholder": "Write a note; switch tabs or reload to restore it",
+                        "rows": "6"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "home": {
+        "text": "Feed\n\nTap an item to push a detail screen.\n\nStructured navigation\nSession restoration\nNavigation-scoped state\n\n当前语言: zh-Hans\n\n浏览器接管后，翻译器仍然可用。\n\n修改 src/app-definition.ts 中的 frameworkConfig.locale：en-US 为英文，zh-Hans 为中文。",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "ul",
+              "classes": [
+                "feed"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "li",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "button",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "section",
+              "classes": [
+                "locale-info"
+              ],
+              "attributes": {
+                "aria-label": "Locale"
+              },
+              "children": [
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "strong",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                },
+                {
+                  "tag": "p",
+                  "classes": [],
+                  "attributes": {},
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "detail": {
+        "text": "Item 2\n\nA pushed detail screen. Its scoped note is lost once you pop it.\n\nDetail note",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "draft"
+              ],
+              "attributes": {
+                "data-restore-root": true
+              },
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "input",
+                      "classes": [],
+                      "attributes": {
+                        "name": "note",
+                        "placeholder": "Kept while this screen is alive; lost when popped"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "error": {
+        "text": "Error 404\n\nPage not found\n\n← Go Home",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "a",
+              "classes": [],
+              "attributes": {
+                "href": "/"
+              },
+              "children": []
+            }
+          ]
+        }
+      },
+      "chrome": {
+        "text": "Your name (global):\nFeed\nNotes",
+        "structure": {
+          "tag": "div",
+          "classes": [
+            "app-chrome"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "header",
+              "classes": [
+                "profile"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "label",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "input",
+                      "classes": [],
+                      "attributes": {
+                        "placeholder": "anon"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "nav",
+              "classes": [
+                "tabs"
+              ],
+              "attributes": {
+                "aria-label": "Pages"
+              },
+              "children": [
+                {
+                  "tag": "button",
+                  "classes": [],
+                  "attributes": {
+                    "aria-current": "true"
+                  },
+                  "children": []
+                },
+                {
+                  "tag": "button",
+                  "classes": [],
+                  "attributes": {
+                    "aria-current": "false"
+                  },
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "errors": []
+  },
+  {
+    "name": "react-minimal",
+    "artifact": "development generated loader and independent mounts",
+    "status": "passed"
+  },
+  {
+    "name": "vue-minimal",
+    "artifact": "development generated loader and independent mounts",
+    "status": "passed"
+  },
+  {
+    "name": "svelte-minimal",
+    "artifact": "development generated loader and independent mounts",
+    "status": "passed"
+  }
+]

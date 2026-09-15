@@ -1,25 +1,22 @@
 <script lang="ts">
-	import type { BasePage } from "@finesoft/front/browser";
-	import { getFramework } from "../lib/framework-svelte";
+    import type { BrowserAppHandle } from "@finesoft/front/browser";
+    import type { Framework } from "@finesoft/front/web";
+    import type { HomePage } from "../lib/models/page";
+    import { getHomeLocale } from "../lib/locale";
 
-	let { page }: { page: BasePage } = $props();
-
-	const framework = getFramework();
-	const locale = framework?.getLocale()?.lang ?? "unknown";
-	const translator = framework?.getTranslator();
-	const localeLabel = translator?.t("home.localeLabel") ?? "Current locale";
-	const runtimeBadge =
-		translator?.t("home.runtimeBadge") ??
-		"Hydration kept the translator alive on the client.";
-	const switchHint =
-		translator?.t("home.switchHint") ??
-		'Change frameworkConfig.locale in src/app-definition.ts to load another JSON file.';
+    let { page, controller, framework }: { page: HomePage; controller?: BrowserAppHandle; framework?: Framework } = $props();
+    const locale = $derived(getHomeLocale(framework));
 </script>
 
-<div>
-	<h1>{page.title}</h1>
-	<p>{page.description}</p>
-	<p><strong>{localeLabel}:</strong> {locale}</p>
-	<p>{runtimeBadge}</p>
-	<p>{switchHint}</p>
-</div>
+<section class="page">
+    <h1>{page.title}</h1>
+    <p>{page.description}</p>
+    <ul class="feed">
+        {#each page.items as item (item.id)}<li><button onclick={() => void controller?.navigation?.push("detail", { id: item.id })}>{item.title}</button></li>{/each}
+    </ul>
+    <section class="locale-info" aria-label="Locale">
+        <p><strong>{locale.label}:</strong> {locale.lang}</p>
+        <p>{locale.badge}</p>
+        <p>{locale.hint}</p>
+    </section>
+</section>

@@ -11,35 +11,19 @@ interface FrameworkOption {
     variants: { name: string; display: string }[];
 }
 
-const FRAMEWORKS: FrameworkOption[] = [
-    {
-        name: "vue",
-        display: "Vue",
-        color: green,
-        variants: [
-            { name: "vue", display: "Full (SSR + routing + DI + guards)" },
-            { name: "vue-minimal", display: "Minimal" },
-        ],
-    },
-    {
-        name: "react",
-        display: "React",
-        color: cyan,
-        variants: [
-            { name: "react", display: "Full (SSR + routing + DI + guards)" },
-            { name: "react-minimal", display: "Minimal" },
-        ],
-    },
-    {
-        name: "svelte",
-        display: "Svelte",
-        color: red,
-        variants: [
-            { name: "svelte", display: "Full (SSR + routing + DI + guards)" },
-            { name: "svelte-minimal", display: "Minimal" },
-        ],
-    },
+const VARIANTS = [
+    { suffix: "", display: "Full (products, search, guards)" },
+    { suffix: "-minimal", display: "Minimal (tabs, drafts, session restore)" },
 ];
+
+const FRAMEWORKS: FrameworkOption[] = [
+    { name: "vue", display: "Vue", color: green },
+    { name: "react", display: "React", color: cyan },
+    { name: "svelte", display: "Svelte", color: red },
+].map((framework) => ({
+    ...framework,
+    variants: VARIANTS.map(({ suffix, display }) => ({ name: framework.name + suffix, display })),
+}));
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 

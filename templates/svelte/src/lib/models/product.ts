@@ -1,4 +1,4 @@
-import type { BaseItem, BasePage, BaseShelf } from "@finesoft/front/browser";
+import type { BaseItem, BasePage, BaseShelf } from "@finesoft/front/web";
 
 export interface ProductItem extends BaseItem {
     itemType: "product";
@@ -44,4 +44,5 @@ export interface ErrorPage extends BasePage {
     status: number;
 }
 
+/** 所有页面类型联合 */
 export type AppPage = HomePage | ProductPage | SearchPage | AboutPage | ErrorPage;

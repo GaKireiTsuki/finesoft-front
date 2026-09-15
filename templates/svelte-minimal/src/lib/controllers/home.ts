@@ -1,27 +1,27 @@
-import {
-    BaseController,
-    DEP_KEYS,
-    type BasePage,
-    type Container,
-    type Translator,
-} from "@finesoft/front/browser";
+import { BaseController } from "@finesoft/front";
+import { markPublic } from "@finesoft/front/web";
+import type { FeedItem, HomePage } from "../models/page";
 
-export class HomeController extends BaseController<Record<string, string>, BasePage> {
+const ITEMS: readonly FeedItem[] = [
+    { id: "1", title: "Structured navigation" },
+    { id: "2", title: "Session restoration" },
+    { id: "3", title: "Navigation-scoped state" },
+];
+
+export class HomeController extends BaseController<Record<string, string>, HomePage> {
     readonly intentId = "home";
 
-    execute(_params: Record<string, string>, container: Container): BasePage {
-        const translator = container.has(DEP_KEYS.TRANSLATOR)
-            ? container.resolve<Translator>(DEP_KEYS.TRANSLATOR)
-            : undefined;
-
-        return {
-            id: "home",
-            pageType: "home",
-            url: "/",
-            title: translator?.t("home.title") ?? "Hello from Finesoft Front",
-            description:
-                translator?.t("home.description") ??
-                "This page uses locale JSON files loaded by finesoftFrontViteConfig.",
-        };
+    execute(): HomePage {
+        return markPublic(
+            {
+                id: "home",
+                pageType: "home",
+                url: "/",
+                title: "Feed",
+                description: "Tap an item to push a detail screen.",
+                items: ITEMS,
+            },
+            { items: { id: true, title: true } },
+        );
     }
 }

@@ -7,9 +7,7 @@ export default defineConfig({
         svelte(),
         finesoftFrontViteConfig({
             ssr: { entry: "src/ssr.ts" },
-            i18n: {
-                messagesDir: "src/locales",
-            },
+            i18n: { messagesDir: "src/locales" },
         }),
     ]),
 });

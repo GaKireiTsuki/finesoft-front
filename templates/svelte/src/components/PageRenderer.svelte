@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Action } from "@finesoft/front/web";
 	import type { AppPage } from "../lib/models/product";
 	import About from "../pages/About.svelte";
 	import Home from "../pages/Home.svelte";
@@ -6,17 +7,17 @@
 	import ProductDetail from "../pages/ProductDetail.svelte";
 	import Search from "../pages/Search.svelte";
 
-	let { page }: { page: AppPage } = $props();
-
-	const pageComponents: Record<string, any> = {
-		home: Home,
-		product: ProductDetail,
-		search: Search,
-		about: About,
-		error: NotFound,
-	};
-
-	const PageComponent = $derived(pageComponents[page.pageType] ?? NotFound);
+	let { page, onAction }: { page: AppPage; onAction?: (action: Action) => void } = $props();
 </script>
 
-<PageComponent {page} />
+{#if page.pageType === "home"}
+	<Home {page} {onAction} />
+{:else if page.pageType === "product"}
+	<ProductDetail {page} {onAction} />
+{:else if page.pageType === "search"}
+	<Search {page} {onAction} />
+{:else if page.pageType === "about"}
+	<About {page} {onAction} />
+{:else}
+	<NotFound {page} {onAction} />
+{/if}
