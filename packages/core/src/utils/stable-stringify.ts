@@ -4,12 +4,10 @@
  * 用作缓存 key：相同内容的对象始终产生相同字符串。
  */
 
-/** WeakMap 缓存已序列化的对象，避免重复计算 */
-const stringifyCache = new WeakMap<object, string>();
-
 /** 最大递归深度 */
 const MAX_DEPTH = 50;
 
+// Read current values on every call; callers may reuse mutable input objects.
 export function stableStringify(obj: unknown): string {
     return stringifyWithContext(obj, new Set<object>(), 0);
 }
@@ -17,9 +15,6 @@ export function stableStringify(obj: unknown): string {
 function stringifyWithContext(obj: unknown, seen: Set<object>, depth: number): string {
     if (obj === null || obj === undefined) return String(obj);
     if (typeof obj !== "object") return JSON.stringify(obj);
-
-    const cached = stringifyCache.get(obj as object);
-    if (cached !== undefined) return cached;
 
     if (depth > MAX_DEPTH) return '"[Max Depth]"';
 
@@ -42,7 +37,6 @@ function stringifyWithContext(obj: unknown, seen: Set<object>, depth: number): s
             result = "{" + parts.join(",") + "}";
         }
 
-        stringifyCache.set(obj as object, result);
         return result;
     } finally {
         // 离开节点后从 seen 移除，允许 DAG 中同一对象在兄弟分支被复用

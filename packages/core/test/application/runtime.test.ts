@@ -246,3 +246,41 @@ test("cleanup failures stay private and do not replace a classified business err
     await expect(runtime.execute(denied, undefined)).rejects.toMatchObject({ code: "denied" });
     await runtime.dispose();
 });
+
+test("query cache keys reflect current values when the same input object is reused", async () => {
+    const handler = vi.fn((input: { n: number }) => input.n * 2);
+    const op = defineOperation({
+        id: "mutable-input",
+        kind: "query",
+        handler,
+        cache: { ttlMs: 1000 },
+    });
+    const runtime = createRuntime({ app: defineApp({ id: "app", operations: [op] }) });
+    const input = { n: 1 };
+    expect(await runtime.execute(op, input)).toBe(2);
+    input.n = 2;
+    expect(await runtime.execute(op, input)).toBe(4);
+    expect(await runtime.execute(op, input)).toBe(4);
+    expect(handler).toHaveBeenCalledTimes(2);
+    await runtime.dispose();
+});
+
+test("query cache keys reflect nested mutation even through a new outer input", async () => {
+    const handler = vi.fn((input: { filter: { n: number } }) => input.filter.n * 2);
+    const op = defineOperation({
+        id: "nested-input",
+        kind: "query",
+        handler,
+        cache: { ttlMs: 1000 },
+    });
+    const runtime = createRuntime({ app: defineApp({ id: "app", operations: [op] }) });
+    const filter = { n: 1 },
+        input = { filter };
+    expect(await runtime.execute(op, input)).toBe(2);
+    filter.n = 2;
+    expect(await runtime.execute(op, input)).toBe(4);
+    filter.n = 3;
+    expect(await runtime.execute(op, { filter })).toBe(6);
+    expect(handler).toHaveBeenCalledTimes(3);
+    await runtime.dispose();
+});

@@ -212,3 +212,83 @@ test("declared dependencies initialize once per factory and dispose after their 
     await runtime.dispose();
     expect(disposed).toEqual(["dependent", "dependency"]);
 });
+
+test.each([false, true])(
+    "supplied owned runtime values are released exactly once (resolved: %s)",
+    async (resolve) => {
+        const token = createToken<object>("owned-connection"),
+            connection = {};
+        const dispose = vi.fn();
+        const runtime = createRuntime({
+            app: defineApp({
+                id: "app",
+                providers: [
+                    provide({
+                        token,
+                        lifetime: "runtime",
+                        value: connection,
+                        owned: true,
+                        dispose,
+                    }),
+                ],
+            }),
+        });
+        if (resolve) expect(await runtime.createExecution().context.get(token)).toBe(connection);
+        await runtime.dispose();
+        await runtime.dispose();
+        expect(dispose).toHaveBeenCalledExactlyOnceWith(connection);
+    },
+);
+
+test.each([false, true])(
+    "supplied external values stay external (resolved: %s)",
+    async (resolve) => {
+        const token = createToken<object>("external-connection"),
+            connection = {};
+        const dispose = vi.fn();
+        const runtime = createRuntime({
+            app: defineApp({
+                id: "app",
+                providers: [provide({ token, lifetime: "runtime", value: connection, dispose })],
+            }),
+        });
+        if (resolve) expect(await runtime.createExecution().context.get(token)).toBe(connection);
+        await runtime.dispose();
+        await runtime.dispose();
+        expect(dispose).not.toHaveBeenCalled();
+    },
+);
+
+test("unresolved supplied runtime dependents are released before separately initialized dependencies", async () => {
+    const dependency = createToken<object>("created-dependency"),
+        dependent = createToken<object>("supplied-dependent");
+    const disposed: string[] = [];
+    const runtime = createRuntime({
+        app: defineApp({
+            id: "app",
+            providers: [
+                provide({
+                    token: dependent,
+                    lifetime: "runtime",
+                    value: {},
+                    owned: true,
+                    dependencies: [dependency],
+                    dispose: () => {
+                        disposed.push("dependent");
+                    },
+                }),
+                provide({
+                    token: dependency,
+                    lifetime: "runtime",
+                    create: () => ({}),
+                    dispose: () => {
+                        disposed.push("dependency");
+                    },
+                }),
+            ],
+        }),
+    });
+    await runtime.createExecution().context.get(dependency);
+    await runtime.dispose();
+    expect(disposed).toEqual(["dependent", "dependency"]);
+});

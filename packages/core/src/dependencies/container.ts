@@ -12,6 +12,11 @@ interface Registration<T> {
     instance?: T;
 }
 
+interface Cleanup {
+    dispose: () => void | Promise<void>;
+    provider?: Provider<any>;
+}
+
 export class Container {
     private registrations = new Map<string, Registration<unknown>>();
     private resolutionStack = new Set<string>();
@@ -21,7 +26,7 @@ export class Container {
     private providers = new Map<Token, Provider<any>>();
     private values = new Map<Token, Promise<unknown>>();
     private pending = new Set<Promise<unknown>>();
-    private cleanups: (() => void | Promise<void>)[] = [];
+    private cleanups: Cleanup[] = [];
     private closed = false;
     private disposal?: Promise<void>;
     private bindings: Readonly<Record<string, unknown>> = Object.freeze({});
@@ -29,12 +34,21 @@ export class Container {
     registerProvider<T>(provider: Provider<T>): this {
         this.assertOpen();
         this.providers.set(provider.token, provider);
+        // Ownership of an existing runtime resource transfers at registration, not first use.
+        if (
+            provider.lifetime === "runtime" &&
+            Object.hasOwn(provider, "value") &&
+            provider.owned &&
+            provider.dispose
+        ) {
+            this.cleanups.push({ provider, dispose: () => provider.dispose!(provider.value as T) });
+        }
         return this;
     }
 
     onDispose(cleanup: () => void | Promise<void>): void {
         this.assertOpen();
-        this.cleanups.push(cleanup);
+        this.cleanups.push({ dispose: cleanup });
     }
 
     private assertOpen(): void {
@@ -90,8 +104,12 @@ export class Container {
             try {
                 for (const dependency of provider.dependencies ?? []) await context.get(dependency);
                 const value = provider.create ? await provider.create(context) : provider.value;
-                if (provider.dispose && (provider.owned ?? !!provider.create))
-                    target.cleanups.push(() => provider.dispose!(value));
+                if (
+                    provider.dispose &&
+                    (provider.owned ?? !!provider.create) &&
+                    (provider.create || provider.lifetime !== "runtime")
+                )
+                    target.cleanups.push({ provider, dispose: () => provider.dispose!(value) });
                 return value;
             } finally {
                 creating = false;
@@ -107,6 +125,30 @@ export class Container {
             },
         );
         return promise;
+    }
+
+    /** Sort owned cleanup by dependencies, retaining creation order for unrelated resources. */
+    private orderedCleanups(): Cleanup[] {
+        const ordered: Cleanup[] = [];
+        const visited = new Set<Cleanup>();
+        const visit = (cleanup: Cleanup) => {
+            if (visited.has(cleanup)) return;
+            visited.add(cleanup);
+            const dependencies = (provider: Provider<any>, path: Set<Token>) => {
+                for (const token of provider.dependencies ?? []) {
+                    if (path.has(token)) continue;
+                    path.add(token);
+                    // Follow even unowned intermediary providers to retain transitive ordering.
+                    dependencies(this.findProvider(token).provider, path);
+                    for (const dependency of this.cleanups)
+                        if (dependency.provider?.token === token) visit(dependency);
+                }
+            };
+            if (cleanup.provider) dependencies(cleanup.provider, new Set());
+            ordered.push(cleanup);
+        };
+        for (const cleanup of this.cleanups) visit(cleanup);
+        return ordered.reverse();
     }
 
     /** 注册依赖（默认单例） */
@@ -203,9 +245,9 @@ export class Container {
             for (const result of await Promise.allSettled(children))
                 if (result.status === "rejected") errors.push(result.reason);
             while (this.pending.size) await Promise.allSettled(this.pending);
-            for (const cleanup of this.cleanups.reverse()) {
+            for (const cleanup of this.orderedCleanups()) {
                 try {
-                    await cleanup();
+                    await cleanup.dispose();
                 } catch (error) {
                     errors.push(error);
                 }
