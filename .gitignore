@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 reports/
+.worktrees/
 *.local
 
 # playwright MCP screenshots / console logs (transient verification artifacts)

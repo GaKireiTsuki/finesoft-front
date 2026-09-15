@@ -2,6 +2,8 @@
 
 This document expands the high-level package view from the root README and shows how the runtime pieces fit together in a real application.
 
+For the core module's dependency boundaries, execution paths, state ownership, and verified architectural tradeoffs, see [core 架构评估视图](./core-architecture-review.md).
+
 The application example below uses [`templates/svelte-minimal`](../templates/svelte-minimal).
 
 ## Package Architecture
