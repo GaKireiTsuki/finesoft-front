@@ -1,4 +1,5 @@
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
+import { format } from "node:util";
 import { createRuntime, defineApp, defineOperation, createToken, provide } from "@finesoft/core";
 import { createHttpHandler, defineEndpoint, runManagedTask } from "../src/http";
 import { startNodeHandler } from "../src/node";
@@ -216,3 +217,161 @@ test.each(["callback", "cleanup", "both"] as const)(
         if (mode !== "callback") expect(messages(failures[0])).toContain(cleanupFailure.message);
     },
 );
+
+test.each(["default", "throw", "reject"] as const)(
+    "%s diagnostics omit arbitrary task/reporter payloads",
+    async (mode) => {
+        const markers = [
+            "body-marker",
+            "cookie-marker",
+            "credential-marker",
+            "page-marker",
+            "page-data-marker",
+            "message-marker",
+            "cause-marker",
+            "reporter-marker",
+        ];
+        const taskFailure = Object.assign(
+            new Error("message-marker", { cause: new Error("cause-marker") }),
+            {
+                requestBody: "body-marker",
+                cookie: "cookie-marker",
+                credentials: "credential-marker",
+                page: { html: "page-marker", serverData: { private: "page-data-marker" } },
+            },
+        );
+        const reporterFailure = Object.assign(new Error("reporter-marker"), {
+            request: taskFailure,
+        });
+        const observed: unknown[] = [];
+        const diagnostics: unknown[][] = [];
+        const consoleError = vi
+            .spyOn(console, "error")
+            .mockImplementation((...values: unknown[]) => {
+                diagnostics.push(values);
+            });
+        const operation = defineOperation({
+            id: "diagnostics",
+            kind: "command",
+            handler: (_: undefined, ctx) => {
+                runManagedTask(ctx, () => {
+                    throw taskFailure;
+                });
+                return "ok";
+            },
+        });
+        const runtime = createRuntime({
+            app: defineApp({ id: "diagnostics", operations: [operation] }),
+        });
+        const onTaskError =
+            mode === "default"
+                ? undefined
+                : (error: unknown) => {
+                      observed.push(error);
+                      if (mode === "throw") throw reporterFailure;
+                      return Promise.reject(reporterFailure);
+                  };
+        let host: Awaited<ReturnType<typeof startNodeHandler>> | undefined;
+        try {
+            host = await startNodeHandler({
+                runtime,
+                port: 0,
+                hostname: "127.0.0.1",
+                onTaskError,
+                handler: createHttpHandler({
+                    runtime,
+                    endpoints: [
+                        defineEndpoint({
+                            method: "GET",
+                            path: "/",
+                            operation,
+                            decode: () => undefined,
+                            encode: (value) => new Response(value),
+                        }),
+                    ],
+                }),
+            });
+            const address = host.server.address();
+            if (!address || typeof address === "string") throw new Error("missing address");
+            expect(await (await fetch(`http://127.0.0.1:${address.port}`)).text()).toBe("ok");
+            await host.dispose();
+            expect(diagnostics).toHaveLength(1);
+            const formatted = diagnostics.map((values) => format(...values)).join("\n");
+            for (const marker of markers) expect(formatted).not.toContain(marker);
+            expect(diagnostics[0]).toEqual([
+                "[Node managed task]",
+                mode === "default"
+                    ? { code: "failure" }
+                    : { code: "failure", reporterFailed: true },
+            ]);
+            expect(observed).toEqual(mode === "default" ? [] : [taskFailure]);
+        } finally {
+            await host?.dispose();
+            await runtime.dispose();
+            consoleError.mockRestore();
+        }
+    },
+);
+
+test("the explicit task reporter retains the original failure and is awaited by host shutdown", async () => {
+    const failure = new Error("explicit observer payload");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    let begin!: () => void;
+    const begun = new Promise<void>((resolve) => {
+        begin = resolve;
+    });
+    const events: string[] = [];
+    const operation = defineOperation({
+        id: "await-reporter",
+        kind: "command",
+        handler: (_: undefined, ctx) => {
+            runManagedTask(ctx, () => {
+                throw failure;
+            });
+            return "ok";
+        },
+    });
+    const runtime = createRuntime({ app: defineApp({ id: "reporter", operations: [operation] }) });
+    const host = await startNodeHandler({
+        runtime,
+        port: 0,
+        hostname: "127.0.0.1",
+        onTaskError: async (error) => {
+            expect(error).toBe(failure);
+            events.push("reporter-start");
+            begin();
+            await gate;
+            events.push("reporter-end");
+        },
+        handler: createHttpHandler({
+            runtime,
+            endpoints: [
+                defineEndpoint({
+                    method: "GET",
+                    path: "/",
+                    operation,
+                    decode: () => undefined,
+                    encode: (value) => new Response(value),
+                }),
+            ],
+        }),
+    });
+    const address = host.server.address();
+    if (!address || typeof address === "string") throw new Error("missing address");
+    await (await fetch(`http://127.0.0.1:${address.port}`)).text();
+    await begun;
+    const closing = host.dispose().then(() => {
+        events.push("host-disposed");
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    try {
+        expect(events).toEqual(["reporter-start"]);
+    } finally {
+        release();
+        await closing;
+    }
+    expect(events).toEqual(["reporter-start", "reporter-end", "host-disposed"]);
+});

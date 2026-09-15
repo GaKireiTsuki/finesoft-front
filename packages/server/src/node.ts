@@ -9,7 +9,7 @@ export interface NodeHandlerOptions {
     bindings?: Readonly<Record<string, unknown>>;
     /** Passing a runtime explicitly transfers its shutdown responsibility to this host. */
     runtime?: RuntimeHandle;
-    /** Receives callback and/or task cleanup failures. Defaults to console.error. Awaited during drain. */
+    /** Explicit full-error observer, awaited during drain. Default/fallback diagnostics contain only a safe failure code. */
     onTaskError?: (error: unknown) => void | Promise<void>;
 }
 export interface NodeHandlerServer {
@@ -30,7 +30,7 @@ export async function startNodeHandler(options: NodeHandlerOptions): Promise<Nod
         requests.add(completed);
     };
     const reportTaskError =
-        options.onTaskError ?? ((error: unknown) => console.error("[Node managed task]", error));
+        options.onTaskError ?? (() => console.error("[Node managed task]", { code: "failure" }));
     const server = await new Promise<ServerType>((resolve, reject) => {
         const listener = serve(
             {
@@ -45,13 +45,11 @@ export async function startNodeHandler(options: NodeHandlerOptions): Promise<Nod
                                         async (error) => {
                                             try {
                                                 await reportTaskError(error);
-                                            } catch (reportError) {
-                                                console.error(
-                                                    "[Node task error reporter]",
-                                                    reportError,
-                                                    "Task failure:",
-                                                    error,
-                                                );
+                                            } catch {
+                                                console.error("[Node managed task]", {
+                                                    code: "failure",
+                                                    reporterFailed: true,
+                                                });
                                             }
                                         },
                                     )

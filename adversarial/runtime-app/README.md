@@ -43,8 +43,9 @@ Nested task scheduling is deliberately unsupported. Node's `startNodeHandler().d
 accepting connections, drains full handler/response lifetimes (including disconnected encoders) and
 managed tasks, then disposes an explicitly
 transferred runtime. `onTaskError(error)` reports callback and cleanup failures and is awaited during
-drain; the default reporter uses `console.error`. If both fail, it receives an AggregateError containing
-both failures. Hosts retaining their own runtime must drain registered tasks before disposing
+drain. This explicit hook receives the original failures, including an AggregateError when callback
+and cleanup both fail. Default/fallback console diagnostics emit only the fixed `failure` code and,
+when applicable, `reporterFailed: true`; they never include arbitrary messages, causes or payloads. Hosts retaining their own runtime must drain registered tasks before disposing
 it. Worker tasks inherit the host's limits and shutdown behavior; this is not a durable queue.
 
 `createSSRHandler` owns only portable HTML response assembly and its bounded public HTML cache.
