@@ -1,4 +1,5 @@
 import { defineConfig } from "vite-plus";
+import { configDefaults } from "vite-plus/test/config";
 import type { CoverageV8Options } from "vite-plus/test/node";
 
 const coverage: CoverageV8Options = {
@@ -64,6 +65,8 @@ export default defineConfig({
         "*.{ts,tsx,js,jsx,mjs,cjs}": "vp check --fix",
     },
     test: {
+        // Other checkouts and saved probes are not this workspace's test suite.
+        exclude: [...configDefaults.exclude, ".worktrees/**", "reports/**"],
         alias: {
             "@finesoft/core": new URL("./packages/core/src/index.ts", import.meta.url).pathname,
             "@finesoft/web": new URL("./packages/web/src/index.ts", import.meta.url).pathname,
