@@ -1,5 +1,4 @@
 import { mapEach, type Mapper } from "@finesoft/front";
-import { makeFlowAction } from "@finesoft/front/web";
 import type { ProductItem } from "../models/product";
 
 /** Raw API response shape */
@@ -17,7 +16,7 @@ const toProductItem: Mapper<ApiProduct, ProductItem> = (raw) => ({
     name: raw.title,
     price: raw.price,
     imageUrl: raw.thumbnail ?? "/img/placeholder.svg",
-    clickAction: makeFlowAction(`/products/${raw.id}`),
+    clickAction: { url: `/products/${raw.id}` },
 });
 
 /**

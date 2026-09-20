@@ -1,15 +1,7 @@
 # 水合不一致
 
-服务端、浏览器共用应用声明和视图绑定，先水合服务端 HTML，再恢复持久状态。
+浏览器与 SSR 共享同一页面声明、App 和 Outlet 视图表。SSR 使用 `createSSRRender({ definition, render: app => nativeRender(app) })`；浏览器根据 `app.hydrate` 选择原生 hydrate 或 mount，完成挂载后再等待 `app.ready`。
 
-## Shared SSR / 共用 SSR
+先水合服务器快照，再恢复持久化状态。避免首次渲染读取随机数、时间或浏览器独有全局。不要在挂载前等待 ready，也不要手动改动 Outlet 的子树。
 
-```ts
-import { createReactSSRRender } from "@finesoft/front/renderers/react/server";
-import { app } from "./app-definition";
-import { views } from "./views";
-export const render = createReactSSRRender({ app, renderer: views });
-export { serializeServerData } from "@finesoft/front/ssr";
-```
-
-控制器数据需明确公开投影，嵌套数据需嵌套声明或 codec。严格序列化在物化之后仍拒绝未标记页面。初次渲染避免时间、随机数、浏览器全局差异。wire/build 不匹配时按设计重新加载。核查实际浏览器警告和 DOM，不能只看 HTML 字符串。
+显式声明公开数据投影；嵌套对象需要嵌套声明或 codec。wire/buildId 不匹配时重新加载。排查时同时检查实际浏览器警告、页面 DOM、网络请求和 entry 身份。

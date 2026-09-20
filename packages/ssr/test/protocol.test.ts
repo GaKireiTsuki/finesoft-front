@@ -1,23 +1,27 @@
-import { expect, test, vi } from "vite-plus/test";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
+import { expect, test, vi } from "vite-plus/test";
+
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
-import { markPublic, decodeWireEnvelope } from "@finesoft/web";
-import { serializeServerData, materializeServerData } from "../src/server-data";
+
+import { decodeWireEnvelope, leaf, markPublic, serializeNavigation, stack } from "@finesoft/web";
+import { materializeServerData, serializeServerData } from "../src/server-data";
+
+function hydration(data: unknown, entryId = "entry-1") {
+    return {
+        tree: serializeNavigation(stack([leaf("home", {}, { entryId })])),
+        pages: [{ entryId, intent: { id: "home", params: {} }, data }],
+    };
+}
 
 test("protocol/build mismatch requests fresh load, valid envelope retains identities", () => {
     const wire = JSON.parse(
         serializeServerData(
-            [
-                {
-                    entryId: "entry-1",
-                    intent: { id: "home" },
-                    data: { id: "home", pageType: "home", title: "Home", secret: "SECRET" },
-                },
-            ],
+            hydration({ id: "home", pageType: "home", title: "Home", secret: "SECRET" }),
             { buildId: "build-a" },
         ),
     );
-    expect(wire.payload[0].data).toEqual({ id: "home", pageType: "home", title: "Home" });
+    expect(wire.payload.pages[0].data).toEqual({ id: "home", pageType: "home", title: "Home" });
+    expect(wire.payload.tree).toEqual(expect.any(Object));
     expect(decodeWireEnvelope(wire, "build-a")).toMatchObject({ status: "ready" });
     expect(decodeWireEnvelope(wire, "build-b")).toEqual({
         status: "fresh-load",
@@ -28,9 +32,15 @@ test("protocol/build mismatch requests fresh load, valid envelope retains identi
         code: "protocol-mismatch",
     });
     expect(
-        decodeWireEnvelope({ ...wire, payload: [wire.payload[0], wire.payload[0]] }, "build-a"),
+        decodeWireEnvelope(
+            {
+                ...wire,
+                payload: { ...wire.payload, pages: [wire.payload.pages[0], wire.payload.pages[0]] },
+            },
+            "build-a",
+        ),
     ).toMatchObject({ status: "fresh-load", code: "invalid-payload" });
-    delete wire.payload[0].entryId;
+    delete wire.payload.pages[0].entryId;
     expect(decodeWireEnvelope(wire, "build-a")).toMatchObject({ status: "fresh-load" });
 });
 
@@ -51,14 +61,16 @@ test("nested values require explicit public projections and materialize before r
         { id: "p", pageType: "p", title: "Page", user, unsafe: { secret: "UNMARKED_SECRET" } },
         ["user", "unsafe"],
     );
-    const data = materializeServerData([{ entryId: "p", intent: { id: "p" }, data: page }]);
+    const data = materializeServerData({
+        pages: [{ entryId: "p", intent: { id: "p" }, data: page }],
+    });
     alive = false;
     const output = serializeServerData(data);
     expect(output).toContain("Alice");
     expect(output).toContain("\\u003C");
     expect(output).not.toContain("SECRET");
     expect(output).not.toContain("</script>");
-    expect(JSON.parse(output).payload[0].data).toMatchObject({
+    expect(JSON.parse(output).payload.pages[0].data).toMatchObject({
         id: "p",
         title: "Page",
         user: { name: "Alice" },
@@ -74,8 +86,8 @@ test("bare true does not traverse unmarked objects; recursive projection and cod
     };
     const page = markPublic({ id: "p", title: "P", pageType: "p", ...source }, true);
     const bare = JSON.parse(
-        serializeServerData([{ entryId: "p", intent: { id: "p" }, data: page }]),
-    ).payload[0].data;
+        serializeServerData({ pages: [{ entryId: "p", intent: { id: "home" }, data: page }] }),
+    ).payload.pages[0].data;
     expect(bare.nested).toEqual({});
     expect(bare.list).toEqual([]);
     markPublic(page, {
@@ -83,8 +95,8 @@ test("bare true does not traverse unmarked objects; recursive projection and cod
         nested: { kind: "codec", encode: () => ({ allowed: "yes" }) },
     });
     const explicit = JSON.parse(
-        serializeServerData([{ entryId: "p", intent: { id: "p" }, data: page }]),
-    ).payload[0].data;
+        serializeServerData({ pages: [{ entryId: "p", intent: { id: "home" }, data: page }] }),
+    ).payload.pages[0].data;
     expect(explicit.list).toEqual([{ title: "One" }]);
     expect(explicit.nested).toEqual({ allowed: "yes" });
 });
@@ -94,13 +106,13 @@ test("codec failures reject serialization and arbitrary service instances are no
         secret = "SERVICE_SECRET";
     }
     const page = markPublic({ id: "p", pageType: "p", title: "P", service: new Service() }, true);
-    expect(serializeServerData([{ entryId: "p", intent: { id: "p" }, data: page }])).not.toContain(
-        "SERVICE_SECRET",
-    );
+    expect(
+        serializeServerData({ pages: [{ entryId: "p", intent: { id: "home" }, data: page }] }),
+    ).not.toContain("SERVICE_SECRET");
     markPublic(page, { service: { kind: "codec", encode: (value) => value } });
-    expect(() => serializeServerData([{ entryId: "p", intent: { id: "p" }, data: page }])).toThrow(
-        "public-materialization-failed",
-    );
+    expect(() =>
+        serializeServerData({ pages: [{ entryId: "p", intent: { id: "home" }, data: page }] }),
+    ).toThrow("public-materialization-failed");
     markPublic(page, {
         service: {
             kind: "codec",
@@ -109,7 +121,7 @@ test("codec failures reject serialization and arbitrary service instances are no
             },
         },
     });
-    expect(() => serializeServerData([{ entryId: "p", intent: { id: "p" }, data: page }])).toThrow(
-        "public-materialization-failed",
-    );
+    expect(() =>
+        serializeServerData({ pages: [{ entryId: "p", intent: { id: "home" }, data: page }] }),
+    ).toThrow("public-materialization-failed");
 });

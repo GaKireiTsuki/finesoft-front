@@ -15,26 +15,25 @@ export class CompositeLoggerFactory implements LoggerFactory {
 export class CompositeLogger implements Logger {
     constructor(private readonly loggers: Logger[]) {}
 
-    debug(...args: unknown[]): string {
-        return this.callAll("debug", args);
+    debug(...args: unknown[]): void {
+        this.callAll("debug", args);
     }
 
-    info(...args: unknown[]): string {
-        return this.callAll("info", args);
+    info(...args: unknown[]): void {
+        this.callAll("info", args);
     }
 
-    warn(...args: unknown[]): string {
-        return this.callAll("warn", args);
+    warn(...args: unknown[]): void {
+        this.callAll("warn", args);
     }
 
-    error(...args: unknown[]): string {
-        return this.callAll("error", args);
+    error(...args: unknown[]): void {
+        this.callAll("error", args);
     }
 
-    private callAll(method: "debug" | "info" | "warn" | "error", args: unknown[]): string {
+    private callAll(method: "debug" | "info" | "warn" | "error", args: unknown[]): void {
         for (const logger of this.loggers) {
             logger[method](...args);
         }
-        return "";
     }
 }

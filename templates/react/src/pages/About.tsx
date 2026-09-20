@@ -1,9 +1,7 @@
-import type { Action } from "@finesoft/front/web";
 import type { AboutPage } from "../lib/models/product";
 
 interface AboutProps {
     page: AboutPage;
-    onAction?: (action: Action) => void;
 }
 
 export default function About({ page }: AboutProps) {

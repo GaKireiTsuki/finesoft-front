@@ -1,4 +1,5 @@
-import { BaseController, type BasePage } from "@finesoft/front/browser";
+import { BaseController } from "@finesoft/front";
+import type { BasePage } from "@finesoft/front/web";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -9,8 +10,6 @@ interface StaticFileParams extends Record<string, string | undefined> {
 const PUBLIC_DIR = resolve(process.cwd(), "public");
 
 export class StaticFileController extends BaseController<StaticFileParams, BasePage> {
-    readonly intentId = "static-file";
-
     execute(params: StaticFileParams): BasePage {
         const filename = params.file ?? "welcome.txt";
 

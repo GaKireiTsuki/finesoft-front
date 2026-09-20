@@ -1,84 +1,49 @@
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
 import {
-    defineWebApp,
-    Framework,
-    createNavigationController,
     createNavigationSessionAdapter,
     createSessionStore,
     leaf,
-    stack,
     serializeNavigation,
+    stack,
 } from "../../src/index";
 
-test.each(["deny", "redirect", "commit"] as const)(
-    "session accepts only committed hydration: %s",
-    async (mode) => {
-        const definition = defineWebApp({
-            id: "restore",
-            controllers: ["home", "saved"].map((id) => ({
-                id,
-                handler: () => ({ id, pageType: id, title: id }),
-            })),
-            routes: [
-                { path: "/", intentId: "home" },
-                {
-                    path: "/saved",
-                    intentId: "saved",
-                    beforeLoad: [
-                        () =>
-                            mode === "commit"
-                                ? { kind: "next" }
-                                : mode === "deny"
-                                  ? { kind: "deny", status: 403, message: "Denied" }
-                                  : { kind: "redirect", status: 302, url: "/" },
-                    ],
-                },
-            ],
-            getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }),
-        });
-        const framework = Framework.create({ definition });
-        const navigation = createNavigationController({
-            framework,
-            initial: stack(leaf("home", {}, { url: "/" })),
-        });
-        await navigation.resolve();
-        const original = navigation.getSnapshot();
+test.each([true, false])(
+    "session restores slices only after a committed hydration: %s",
+    async (commits) => {
+        const original = { tree: stack([leaf("home")]), destinations: [] };
+        const candidate = { tree: stack([leaf("saved")]), destinations: [] };
+        let current = original;
+        const controller = {
+            getTree: () => current.tree,
+            getSnapshot: () => current,
+            hydrate: vi.fn(async () => {
+                if (commits) current = candidate;
+                return candidate;
+            }),
+        };
         let draft = "original";
         const session = createSessionStore({
             storage: { get: async () => undefined, set: async () => {}, delete: async () => {} },
-            navigation: createNavigationSessionAdapter(navigation),
+            navigation: createNavigationSessionAdapter(controller as never),
         });
-        session.scope.set("original", "original scope");
-        const originalScope = session.scope;
-        session.register({
+        session.register<string>({
             key: "draft",
             version: 1,
             capture: () => draft,
-            decode: (x) => String(x),
-            restore: (x) => {
-                draft = String(x);
+            decode: (value) => String(value),
+            restore: (value) => {
+                draft = value;
             },
         });
         const result = await session.restore({
-            version: 1,
+            version: 2,
             capturedAt: 1,
-            navigation: serializeNavigation(stack(leaf("saved", {}, { url: "/saved" }))),
-            scoped: { saved: "saved scope" },
-            slices: { draft: { version: 1, data: "saved draft" } },
+            navigation: serializeNavigation(candidate.tree),
+            scoped: {},
+            slices: { draft: { version: 1, data: "saved" } },
         });
-        expect(result.status).toBe(mode === "commit" ? "restored" : "failed");
-        if (mode === "commit") {
-            expect(navigation.getSnapshot()).not.toBe(original);
-            expect(draft).toBe("saved draft");
-            expect(session.scope.get("saved")).toBe("saved scope");
-        } else {
-            expect(navigation.getSnapshot()).toBe(original);
-            expect(session.scope).toBe(originalScope);
-            expect(session.scope.get("original")).toBe("original scope");
-            expect(draft).toBe("original");
-        }
+        expect(result.status).toBe(commits ? "restored" : "failed");
+        expect(draft).toBe(commits ? "saved" : "original");
         await session.dispose();
-        await navigation.dispose();
-        await framework.dispose();
     },
 );

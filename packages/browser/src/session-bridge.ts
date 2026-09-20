@@ -16,13 +16,13 @@
  * 不配 session 的应用不构造 bridge；产物体积以实际构建测量为准。
  */
 
-import { isUrlLocation } from "@finesoft/web";
 import type {
     NavigationScopedState,
     SessionNavigationAdapter,
-    SessionSnapshot,
-    SessionStore,
     SessionRestoreResult,
+    SessionSnapshot,
+    SessionStateProvider,
+    SessionStore,
     SessionWriteResult,
 } from "@finesoft/web";
 
@@ -53,6 +53,8 @@ export interface SessionHandle {
      * 始终委托当前 store 的 scope —— restore 会重建 scope map，经此 getter 取到的恒是最新实例。
      */
     readonly scope: NavigationScopedState;
+    /** Register native component state while its provider is mounted. */
+    register<T>(provider: SessionStateProvider<T>): () => void;
     /** boot 时调用：读快照，通过门控则整体恢复（nav + slices + scoped）。 */
     restore(currentUrl: string): Promise<SessionRestoreResult>;
     /** 手动落盘（= `store.save()`）。 */
@@ -78,8 +80,7 @@ function pathOf(url: string): string {
  *   `location`）：当且仅当 `currentUrl` 全等 `snapshot.url`，**或** `currentUrl` 路径为根 `/`
  *   （重载同深链 / 全新进入 → 恢复；改去别的深链 → 跳过，显式深链不被旧会话覆盖）。
  *   这让结构化导航与扁平**对称**：重载 `/item/1` 即恢复其作用域状态。
- * - **回退（无 `url`）**：旧快照 / 适配器不提供 URL 时 —— 扁平比 `nav.url`，结构化只在根 `/`
- *   放行（树无单一可比 URL，门设在「入口」；要更细由应用覆盖 predicate）。
+ * - **回退（无 `url`）**：适配器不提供 URL 时只在根 `/` 放行。
  * - **无 `navigation`**（仅切片）：总恢复（与 URL 无关）。
  *
  * 「根」判定为路径 `=== "/"`（剥离 query/hash）；带 base path 的应用应覆盖 `shouldRestore`。
@@ -90,8 +91,6 @@ export function defaultShouldRestore(snapshot: SessionSnapshot, currentUrl: stri
     const atRoot = pathOf(currentUrl) === "/";
     // 可比 URL 优先（capture 时刻的真实位置）：扁平/结构化经此走对称逻辑。
     if (snapshot.url !== undefined) return currentUrl === snapshot.url || atRoot;
-    // 回退：旧快照无 url 字段 —— 扁平用 nav.url，结构化只在根放行。
-    if (isUrlLocation(nav)) return currentUrl === nav.url || atRoot;
     return atRoot;
 }
 
@@ -150,6 +149,9 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
         get scope(): NavigationScopedState {
             return store.scope;
         },
+        register<T>(provider: SessionStateProvider<T>): () => void {
+            return store.register(provider);
+        },
         async restore(currentUrl: string): Promise<SessionRestoreResult> {
             if (disposed) return { status: "closed" };
             restoring = true;
@@ -173,8 +175,8 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
         },
         dispose(): Promise<void> {
             if (disposed) return disposed;
-            // Flush a pending debounce before closing the queue. Browsers cannot guarantee unload completion.
-            if (timer !== undefined) flush();
+            // Queue one final current-state capture before closing; store.dispose waits for it.
+            if (!restoring) flush();
             cancelTimer();
             unsubscribeNavigation?.();
             window.removeEventListener("pagehide", flush);

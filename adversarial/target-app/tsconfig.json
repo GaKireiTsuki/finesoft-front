@@ -18,14 +18,16 @@
             "@finesoft/ssr": ["../../packages/ssr/src/index.ts"],
             "@finesoft/server": ["../../packages/server/src/index.ts"],
             "@finesoft/web": ["../../packages/web/src/index.ts"],
-            "@finesoft/front/renderers/*": ["../../packages/front/src/renderers/*"],
             "@finesoft/front/web": ["../../packages/front/src/web.ts"],
             "@finesoft/front/vite": ["../../packages/front/src/vite.ts"],
             "@finesoft/front/ssr": ["../../packages/front/src/ssr.ts"],
             "@finesoft/front/http": ["../../packages/front/src/http.ts"],
             "@finesoft/front/worker": ["../../packages/front/src/worker.ts"],
             "@finesoft/front/node": ["../../packages/front/src/node.ts"],
-            "@finesoft/server/*": ["../../packages/server/src/*"]
+            "@finesoft/server/*": ["../../packages/server/src/*"],
+            "@finesoft/front/react": ["../../packages/front/src/react.ts"],
+            "@finesoft/front/vue": ["../../packages/front/src/vue.ts"],
+            "@finesoft/front/svelte": ["../../packages/front/src/svelte.ts"]
         }
     },
     "include": ["src/**/*", "env.d.ts", "vite.config.ts"]

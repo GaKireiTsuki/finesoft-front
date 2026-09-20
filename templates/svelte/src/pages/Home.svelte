@@ -1,9 +1,8 @@
 <script lang="ts">
-	import type { Action } from "@finesoft/front/web";
 	import ProductCard from "../components/ProductCard.svelte";
 	import type { HomePage } from "../lib/models/product";
 
-	let { page, onAction }: { page: HomePage; onAction?: (action: Action) => void } = $props();
+	let { page }: { page: HomePage } = $props();
 </script>
 
 <section class="page page-home">
@@ -15,7 +14,7 @@
 			<h2>{shelf.title}</h2>
 			<div class="shelf" class:horizontal={shelf.isHorizontal}>
 				{#each shelf.items as item}
-					<ProductCard {item} {onAction} />
+					<ProductCard {item} />
 				{/each}
 			</div>
 		</section>

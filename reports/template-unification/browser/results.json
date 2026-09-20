@@ -617,7 +617,7 @@
         }
       },
       "chrome": {
-        "text": "Your name (global):\nFeed\nNotes",
+        "text": "Your name (global):\nFeed\nNotes\nFeed\n\nTap an item to push a detail screen.\n\nStructured navigation\nSession restoration\nNavigation-scoped state\n\n当前语言: zh-Hans\n\n浏览器接管后，翻译器仍然可用。\n\n修改 src/app-definition.ts 中的 frameworkConfig.locale：en-US 为英文，zh-Hans 为中文。",
         "structure": {
           "tag": "div",
           "classes": [
@@ -673,6 +673,181 @@
                     "aria-current": "false"
                   },
                   "children": []
+                }
+              ]
+            },
+            {
+              "tag": "main",
+              "classes": [],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "section",
+                      "classes": [
+                        "page"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h1",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "ul",
+                          "classes": [
+                            "feed"
+                          ],
+                          "attributes": {},
+                          "children": [
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "section",
+                          "classes": [
+                            "locale-info"
+                          ],
+                          "attributes": {
+                            "aria-label": "Locale"
+                          },
+                          "children": [
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "strong",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": []
+                            },
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tag": "div",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "section",
+                      "classes": [
+                        "page"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h1",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "draft"
+                          ],
+                          "attributes": {
+                            "data-restore-root": true
+                          },
+                          "children": [
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "textarea",
+                                  "classes": [],
+                                  "attributes": {
+                                    "name": "notes",
+                                    "placeholder": "Write a note; switch tabs or reload to restore it",
+                                    "rows": "6"
+                                  },
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             }
@@ -1300,7 +1475,7 @@
         }
       },
       "chrome": {
-        "text": "Your name (global):\nFeed\nNotes",
+        "text": "Your name (global):\nFeed\nNotes\nFeed\n\nTap an item to push a detail screen.\n\nStructured navigation\nSession restoration\nNavigation-scoped state\n\n当前语言: zh-Hans\n\n浏览器接管后，翻译器仍然可用。\n\n修改 src/app-definition.ts 中的 frameworkConfig.locale：en-US 为英文，zh-Hans 为中文。",
         "structure": {
           "tag": "div",
           "classes": [
@@ -1356,6 +1531,181 @@
                     "aria-current": "false"
                   },
                   "children": []
+                }
+              ]
+            },
+            {
+              "tag": "main",
+              "classes": [],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "section",
+                      "classes": [
+                        "page"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h1",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "ul",
+                          "classes": [
+                            "feed"
+                          ],
+                          "attributes": {},
+                          "children": [
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "section",
+                          "classes": [
+                            "locale-info"
+                          ],
+                          "attributes": {
+                            "aria-label": "Locale"
+                          },
+                          "children": [
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "strong",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": []
+                            },
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tag": "div",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "section",
+                      "classes": [
+                        "page"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h1",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "draft"
+                          ],
+                          "attributes": {
+                            "data-restore-root": true
+                          },
+                          "children": [
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "textarea",
+                                  "classes": [],
+                                  "attributes": {
+                                    "name": "notes",
+                                    "placeholder": "Write a note; switch tabs or reload to restore it",
+                                    "rows": "6"
+                                  },
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             }
@@ -1983,7 +2333,7 @@
         }
       },
       "chrome": {
-        "text": "Your name (global):\nFeed\nNotes",
+        "text": "Your name (global):\nFeed\nNotes\nFeed\n\nTap an item to push a detail screen.\n\nStructured navigation\nSession restoration\nNavigation-scoped state\n\n当前语言: zh-Hans\n\n浏览器接管后，翻译器仍然可用。\n\n修改 src/app-definition.ts 中的 frameworkConfig.locale：en-US 为英文，zh-Hans 为中文。",
         "structure": {
           "tag": "div",
           "classes": [
@@ -2039,6 +2389,181 @@
                     "aria-current": "false"
                   },
                   "children": []
+                }
+              ]
+            },
+            {
+              "tag": "main",
+              "classes": [],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "section",
+                      "classes": [
+                        "page"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h1",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "ul",
+                          "classes": [
+                            "feed"
+                          ],
+                          "attributes": {},
+                          "children": [
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "li",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "section",
+                          "classes": [
+                            "locale-info"
+                          ],
+                          "attributes": {
+                            "aria-label": "Locale"
+                          },
+                          "children": [
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "strong",
+                                  "classes": [],
+                                  "attributes": {},
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": []
+                            },
+                            {
+                              "tag": "p",
+                              "classes": [],
+                              "attributes": {},
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tag": "div",
+                  "classes": [],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "section",
+                      "classes": [
+                        "page"
+                      ],
+                      "attributes": {},
+                      "children": [
+                        {
+                          "tag": "h1",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "p",
+                          "classes": [],
+                          "attributes": {},
+                          "children": []
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "draft"
+                          ],
+                          "attributes": {
+                            "data-restore-root": true
+                          },
+                          "children": [
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attributes": {},
+                              "children": [
+                                {
+                                  "tag": "textarea",
+                                  "classes": [],
+                                  "attributes": {
+                                    "name": "notes",
+                                    "placeholder": "Write a note; switch tabs or reload to restore it",
+                                    "rows": "6"
+                                  },
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             }

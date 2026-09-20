@@ -1,37 +1,14 @@
 <script lang="ts">
-	import type { Action } from "@finesoft/front/web";
-	import { NAV_LINKS } from "../actions";
-
-	let {
-		currentPath = "/",
-		onAction,
-	}: { currentPath?: string; onAction?: (action: Action) => void } = $props();
-
-	function handleNavClick(action: Action) {
-		return (e: MouseEvent) => {
-			if (
-				!onAction ||
-				e.defaultPrevented ||
-				e.button !== 0 ||
-				e.metaKey ||
-				e.ctrlKey ||
-				e.shiftKey ||
-				e.altKey
-			)
-				return;
-			e.preventDefault();
-			onAction(action);
-		};
-	}
+	let { currentPath = "/" }: { currentPath?: string } = $props();
+	const links = [{ label: "Home", href: "/" }, { label: "Search", href: "/search" }, { label: "About", href: "/about" }, { label: "GitHub", href: "https://github.com/nicepkg/finesoft" }];
 </script>
 
 <nav class="navigation">
-	{#each NAV_LINKS as link}
+	{#each links as link}
 		<a
-			href={link.path ?? link.action.url}
+			href={link.href}
 			class="navigation-link"
-			class:active={link.path !== null && currentPath === link.path}
-			onclick={handleNavClick(link.action)}>{link.label}</a
+			class:active={currentPath === link.href}>{link.label}</a
 		>
 	{/each}
 </nav>

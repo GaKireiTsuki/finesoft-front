@@ -1,629 +1,228 @@
-import { markPublic } from "@finesoft/web";
-import { leaf, treeShape } from "../../web/test/helpers/navigation";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import type { BasePage } from "@finesoft/web";
-import type { IntentController } from "@finesoft/core";
-import type { NavigationCodec, NavigationNode } from "@finesoft/web";
+import { expect, test, vi } from "vite-plus/test";
+
+vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
+
 import {
     createActiveLeafCodec,
     createFullStateCodec,
+    createNavigationController,
+    createWebRuntime,
+    defineWebApp,
+    deserializeNavigation,
+    leaf,
     PrefetchedIntents,
-    serializeNavigation,
     split,
     stack,
     tabs,
 } from "@finesoft/web";
-import { fixtureDefinition } from "../../web/test/helpers/definition";
+import { routePages } from "../../web/test/helpers/definition";
+import { createSSRRender } from "../src/create-render";
 
-vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
-
-import { serializeServerData } from "../src/server-data";
-import {
-    createSSRNavigationRender,
-    extractNavigationTree,
-    NAVIGATION_TREE_INTENT_ID,
-    ssrRenderNavigation,
-    stripNavigationTree,
-} from "../src/navigation";
-
-// =====================================================================
-// helpers
-// =====================================================================
-
-function page(id: string, extra: Record<string, unknown> = {}): BasePage {
-    return { id, pageType: "test", title: id, ...extra };
-}
-
-function makeController(intentId: string, result: BasePage): IntentController<BasePage> {
-    return {
-        intentId,
-        perform() {
-            return result;
-        },
-    };
-}
-
-/** Controller that echoes intent id + params into the page so multi-target dispatch is observable. */
-function makeEchoController(intentId: string): IntentController<BasePage> {
-    return {
-        intentId,
-        perform(intent) {
-            return markPublic(page(intentId, { params: intent.params ?? {} }), {
-                params: { itemId: true },
-            });
-        },
-    };
-}
-
-function makeErrorPage(status: number, message: string): BasePage {
-    return { id: `error-${status}`, pageType: "error", title: message };
-}
-
-/** Find the destination entry for an intent id in serverData (excludes the tree sentinel). */
-function dataForIntent(
-    serverData: { intent: { id: string }; data: unknown }[],
-    intentId: string,
-): unknown {
-    return serverData.find((e) => e.intent.id === intentId)?.data;
-}
-
-// =====================================================================
-// tests
-// =====================================================================
-
-describe("ssrRenderNavigation", () => {
-    afterEach(() => {
-        vi.unstubAllGlobals();
-        vi.restoreAllMocks();
-    });
-
-    test("single LeafNode tree behaves like flat single-page (one destination + tree sentinel)", async () => {
-        const home = page("home");
-        const result = await ssrRenderNavigation({
-            url: "/?from=test",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    { path: "/", intentId: "home", controller: makeController("home", home) },
-                ]),
-            },
-            navigation: { codec: createActiveLeafCodec() },
-
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.title, head: "", css: "" };
-            },
-        });
-
-        expect(result.html).toBe("home");
-        // primary page is the dispatched home page
-        expect(result.snapshot.destinations).toHaveLength(1);
-        expect(result.snapshot.destinations[0].intent).toBe("home");
-        expect(result.snapshot.destinations[0].params).toEqual({ from: "test" });
-
-        // serverData: home destination (matches single-page shape) + the tree sentinel
-        expect(result.serverData).toHaveLength(2);
-        expect(dataForIntent(result.serverData, "home")).toEqual(home);
-        expect(dataForIntent(result.serverData, "home")).not.toBe(home);
-
-        // tree round-trips out of the sentinel
-        const restored = extractNavigationTree(result.serverData);
-        expect(restored).toMatchObject(treeShape(stack(leaf("home", { from: "test" }))));
-        expect(result.snapshot.tree).toMatchObject(
-            treeShape(stack(leaf("home", { from: "test" }))),
-        );
-    });
-
-    test("split prefetches ALL visible columns (multi-region)", async () => {
-        const result = await ssrRenderNavigation({
-            url: "/list",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    { path: "/list", intentId: "list", controller: makeEchoController("list") },
-                    {
-                        path: "/detail/:itemId",
-                        intentId: "detail",
-                        controller: makeEchoController("detail"),
-                    },
-                ]),
-            },
-            navigation: {
-                codec: createActiveLeafCodec(),
-                // default structural skeleton: two-column split, both filled
-                initial: () =>
-                    split([
-                        { id: "list", content: leaf("list") },
-                        { id: "detail", content: leaf("detail", { itemId: "42" }) },
-                    ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(_p, _fw, snapshot) {
-                return {
-                    html: snapshot.destinations.map((d) => d.intent).join("+"),
-                    head: "",
-                    css: "",
-                };
-            },
-        });
-
-        // both columns resolved, in column order
-        expect(result.snapshot.destinations.map((d) => d.intent)).toEqual(["list", "detail"]);
-        expect(result.html).toBe("list+detail");
-
-        // each destination dispatched its own controller; detail got its params
-        const detail = dataForIntent(result.serverData, "detail") as BasePage & {
-            params: Record<string, unknown>;
-        };
-        expect(detail.params).toEqual({ itemId: "42" });
-
-        // serverData = 2 destinations + sentinel
-        expect(result.serverData).toHaveLength(3);
-        const restored = extractNavigationTree(result.serverData);
-        expect(restored).toMatchObject(
-            treeShape(
-                split([
-                    { id: "list", content: leaf("list") },
-                    { id: "detail", content: leaf("detail", { itemId: "42" }) },
-                ]),
-            ),
-        );
-    });
-
-    test("tabs prefetches only the active branch", async () => {
-        const inactivePerform = vi.fn(() => page("settings"));
-        const result = await ssrRenderNavigation({
-            url: "/home",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    { path: "/home", intentId: "home", controller: makeEchoController("home") },
-                    {
-                        path: "/settings",
-                        intentId: "settings",
-                        controller: { intentId: "settings", perform: inactivePerform },
-                    },
-                ]),
-            },
-            navigation: {
-                codec: createActiveLeafCodec(),
-                initial: () =>
-                    tabs({
-                        active: "home",
-                        branches: {
-                            home: stack(leaf("home")),
-                            settings: stack(leaf("settings")),
-                        },
-                    }),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(_p, _fw, snapshot) {
-                return {
-                    html: snapshot.destinations.map((d) => d.intent).join("+"),
-                    head: "",
-                    css: "",
-                };
-            },
-        });
-
-        expect(result.snapshot.destinations.map((d) => d.intent)).toEqual(["home"]);
-        expect(inactivePerform).not.toHaveBeenCalled();
-        expect(result.html).toBe("home");
-    });
-
-    test("full-state codec deep-links the entire tree from __nav", async () => {
-        const codec: NavigationCodec = createFullStateCodec();
-        const deepTree: NavigationNode = stack([leaf("home"), leaf("detail", { id: "7" })]);
-        const url = codec.encode(deepTree, { getRoutes: () => [] });
-
-        const result = await ssrRenderNavigation({
-            url,
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    { path: "/home", intentId: "home", controller: makeEchoController("home") },
-                    {
-                        path: "/detail/:id",
-                        intentId: "detail",
-                        controller: makeEchoController("detail"),
-                    },
-                ]),
-            },
-            navigation: { codec },
-
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.id, head: "", css: "" };
-            },
-        });
-
-        // tree restored from the URL overlay; stack top (detail) is the primary/visible destination
-        expect(result.snapshot.tree).toMatchObject(deepTree);
-        expect(result.snapshot.destinations.map((d) => d.intent)).toEqual(["detail"]);
-        expect(result.html).toBe("detail");
-        expect(extractNavigationTree(result.serverData)).toMatchObject(deepTree);
-    });
-
-    test("prefetched destinations restore on the browser side via PrefetchedIntents (no refetch)", async () => {
-        const result = await ssrRenderNavigation({
-            url: "/list",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    { path: "/list", intentId: "list", controller: makeEchoController("list") },
-                    {
-                        path: "/detail/:itemId",
-                        intentId: "detail",
-                        controller: makeEchoController("detail"),
-                    },
-                ]),
-            },
-            navigation: {
-                codec: createActiveLeafCodec(),
-                initial: () =>
-                    split([
-                        { id: "list", content: leaf("list") },
-                        { id: "detail", content: leaf("detail", { itemId: "9" }) },
-                    ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp() {
-                return { html: "", head: "", css: "" };
-            },
-        });
-
-        // simulate the browser hydration path: strip the sentinel, rebuild PrefetchedIntents
-        const tree = extractNavigationTree(result.serverData);
-        const destinationEntries = stripNavigationTree(result.serverData);
-        expect(destinationEntries).toHaveLength(2);
-        expect(destinationEntries.every((e) => e.intent.id !== NAVIGATION_TREE_INTENT_ID)).toBe(
-            true,
-        );
-
-        const cache = PrefetchedIntents.fromArray(destinationEntries);
-        // each visible destination is hydrated by (intent id + params) key
-        expect(cache.has({ id: "list", params: {} }, destinationEntries[0].entryId)).toBe(true);
-        expect(
-            cache.has({ id: "detail", params: { itemId: "9" } }, destinationEntries[1].entryId),
-        ).toBe(true);
-        expect(tree).toMatchObject(
-            treeShape(
-                split([
-                    { id: "list", content: leaf("list") },
-                    { id: "detail", content: leaf("detail", { itemId: "9" }) },
-                ]),
-            ),
-        );
-    });
-
-    test("serverData (incl. tree sentinel) serializes safely as JSON for the HTML script", () => {
-        // build a tree sentinel + a destination, then ensure serializeServerData round-trips
-        const tree: NavigationNode = leaf("home", { q: "</script>" });
-        const serverData = [
-            { intent: { id: "home", params: { q: "</script>" } }, data: page("home") },
-            // mirror navigationTreeSentinel shape (marked public is not required for parse-back)
-            {
-                intent: { id: NAVIGATION_TREE_INTENT_ID },
-                data: markPublic(
-                    { __finesoftNavigationTree: true, tree: serializeNavigation(tree) },
-                    {
-                        __finesoftNavigationTree: true,
-                        tree: { kind: "codec", encode: () => serializeNavigation(tree) },
-                    },
-                ),
-            },
-        ];
-        const serialized = serializeServerData(serverData);
-        expect(serialized).not.toContain("</script>");
-        const parsed = JSON.parse(
-            serialized
-                .replaceAll("\\u003C", "<")
-                .replaceAll("\\u003E", ">")
-                .replaceAll("\\u002F", "/"),
-        ).payload as { intent: { id: string }; data: unknown }[];
-        const restored = extractNavigationTree(parsed as never);
-        expect(restored).toEqual(tree);
-    });
-
-    test("beforeLoad redirect short-circuits with an HTTP redirect (no render)", async () => {
-        const renderApp = vi.fn(() => ({ html: "", head: "", css: "" }));
-        const result = await ssrRenderNavigation({
-            url: "/private",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/private",
-                        intentId: "private",
-                        controller: makeController("private", page("private")),
-                    },
-                ]),
-            },
-            navigation: {
-                codec: createActiveLeafCodec(),
-                beforeLoad: [() => ({ kind: "redirect", url: "/login", status: 302 })],
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        expect(result.redirect).toEqual({ url: "/login", status: 302 });
-        expect(result.serverData).toEqual([]);
-        expect(renderApp).not.toHaveBeenCalled();
-    });
-
-    test("beforeLoad deny marks the primary destination with the deny status (no dispatch)", async () => {
-        const perform = vi.fn(() => page("private"));
-        const result = await ssrRenderNavigation({
-            url: "/private",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/private",
-                        intentId: "private",
-                        controller: { intentId: "private", perform },
-                    },
-                ]),
-            },
-            navigation: {
-                codec: createActiveLeafCodec(),
-                beforeLoad: [() => ({ kind: "deny", status: 403, message: "Forbidden" })],
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.title, head: "", css: "" };
-            },
-        });
-
-        expect(result.status).toBe(403);
-        expect(result.html).toBe("Forbidden");
-        expect(perform).not.toHaveBeenCalled();
-        // deny still commits a tree; sentinel rides along
-        expect(extractNavigationTree(result.serverData)).toMatchObject(
-            treeShape(stack(leaf("private"))),
-        );
-    });
-
-    test("dispatch failure falls back to a 500 page on that destination without throwing", async () => {
-        const result = await ssrRenderNavigation({
-            url: "/broken",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/broken",
-                        intentId: "broken",
-                        controller: {
-                            intentId: "broken",
-                            perform() {
-                                throw new Error("boom");
-                            },
-                        },
-                    },
-                ]),
-            },
-            navigation: { codec: createActiveLeafCodec() },
-
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.title, head: "", css: "" };
-            },
-        });
-
-        expect(result.status).toBe(500);
-        expect(result.html).toBe("Execution failed");
-        expect(result.snapshot.destinations[0].status).toBe(500);
-    });
-
-    test("one failing column does not blow up the whole split render", async () => {
-        const result = await ssrRenderNavigation({
-            url: "/list",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    { path: "/list", intentId: "list", controller: makeEchoController("list") },
-                    {
-                        path: "/detail",
-                        intentId: "detail",
-                        controller: {
-                            intentId: "detail",
-                            perform() {
-                                throw new Error("detail boom");
-                            },
-                        },
-                    },
-                ]),
-            },
-            navigation: {
-                codec: createActiveLeafCodec(),
-                initial: () =>
-                    split([
-                        { id: "list", content: leaf("list") },
-                        { id: "detail", content: leaf("detail") },
-                    ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(_p, _fw, snapshot) {
-                return {
-                    html: snapshot.destinations
-                        .map((d) => `${d.intent}:${d.status ?? "ok"}`)
-                        .join("+"),
-                    head: "",
-                    css: "",
-                };
-            },
-        });
-
-        expect(result.html).toBe("list:ok+detail:500");
-        expect(result.snapshot.destinations).toHaveLength(2);
-    });
-
-    test("renders a 404 page when no route matches and no overlay/initial", async () => {
-        const result = await ssrRenderNavigation({
-            url: "/missing",
-            frameworkConfig: { definition: fixtureDefinition([]) },
-            navigation: { codec: createActiveLeafCodec() },
-
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.title, head: "", css: "" };
-            },
-        });
-
-        expect(result.html).toBe("Page not found");
-        expect(result.status).toBe(404);
-        expect(result.snapshot.destinations[0].page.title).toBe("Page not found");
-        expect(result.serverData[0].entryId).toBe(result.snapshot.destinations[0].entryId);
-        expect(extractNavigationTree(result.serverData)).toMatchObject(result.snapshot.tree);
-    });
-
-    test("returns an empty shell for csr routes (single-page fallback)", async () => {
-        const renderApp = vi.fn();
-        const result = await ssrRenderNavigation({
-            url: "/dash",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/dash",
-                        intentId: "dash",
-                        controller: makeController("dash", page("dash")),
-                        renderMode: "csr",
-                    },
-                ]),
-            },
-            navigation: { codec: createActiveLeafCodec() },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        expect(result.html).toBe("");
-        expect(result.renderMode).toBe("csr");
-        expect(result.serverData).toEqual([]);
-        expect(renderApp).not.toHaveBeenCalled();
-    });
-
-    test("preserves single-page renderMode for a single LeafNode fallback", async () => {
-        const result = await ssrRenderNavigation({
-            url: "/static",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/static",
-                        intentId: "static",
-                        controller: makeController("static", page("static")),
-                        renderMode: "prerender",
-                    },
-                ]),
-            },
-            navigation: { codec: createActiveLeafCodec() },
-
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.title, head: "", css: "" };
-            },
-        });
-
-        expect(result.renderMode).toBe("prerender");
-        expect(result.html).toBe("static");
-    });
-
-    test("resolveLocale output flows into the result locale", async () => {
-        const result = await ssrRenderNavigation({
-            url: "/home",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/home",
-                        intentId: "home",
-                        controller: makeController("home", page("home")),
-                    },
-                ]),
-                locale: "en-US",
-            },
-            navigation: { codec: createActiveLeafCodec() },
-            resolveLocale() {
-                return { lang: "zh-Hans", dir: "ltr" };
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.title, head: "", css: "" };
-            },
-        });
-
-        expect(result.locale).toEqual({ lang: "zh-Hans", dir: "ltr" });
-    });
+const errorPage = (status: number, message: string) => ({
+    id: String(status),
+    pageType: "error",
+    title: message,
 });
 
-describe("extractNavigationTree / stripNavigationTree", () => {
-    test("extract returns undefined when no sentinel is present (single-page data)", () => {
-        const data = [{ intent: { id: "home", params: {} }, data: page("home") }];
-        expect(extractNavigationTree(data)).toBeUndefined();
-        // strip is a no-op (content equivalent)
-        expect(stripNavigationTree(data)).toEqual(data);
+test("a single leaf tree renders through the shared app view and serializes its tree", async () => {
+    const home = { id: "home", pageType: "home", title: "Home" };
+    const definition = defineWebApp({
+        id: "single-tree",
+        navigationCodec: createActiveLeafCodec(),
+        pages: routePages([{ id: "home", handler: () => home }], [{ path: "/", intentId: "home" }]),
+        getErrorPage: errorPage,
     });
-
-    test("strip removes only the sentinel and keeps destination order", () => {
-        const data = [
-            { intent: { id: "a", params: {} }, data: page("a") },
-            {
-                intent: { id: NAVIGATION_TREE_INTENT_ID },
-                data: { __finesoftNavigationTree: true, tree: serializeNavigation(leaf("a")) },
-            },
-            { intent: { id: "b", params: {} }, data: page("b") },
-        ];
-        const stripped = stripNavigationTree(data);
-        expect(stripped.map((e) => e.intent.id)).toEqual(["a", "b"]);
+    const render = createSSRRender({
+        definition,
+        render: (app) =>
+            app
+                .getSnapshot()
+                .destinations.map((entry) => entry.page.title)
+                .join("+"),
     });
-
-    test("an entry with the sentinel id but wrong shape is NOT treated as a tree", () => {
-        // a real route accidentally named like the sentinel but without the marker field
-        const data = [
-            { intent: { id: NAVIGATION_TREE_INTENT_ID, params: {} }, data: page("decoy") },
-        ];
-        expect(extractNavigationTree(data)).toBeUndefined();
-        expect(stripNavigationTree(data)).toEqual(data);
+    const result = await render("/?from=test");
+    expect(result.html).toBe("Home");
+    expect(result.serverData.pages).toHaveLength(1);
+    expect(result.serverData.pages[0]).toMatchObject({
+        intent: { id: "home", params: { from: "test" } },
+        data: home,
     });
+    expect(result.serverData.tree).toMatchObject({
+        kind: "stack",
+        entries: [{ kind: "leaf", intent: "home", params: { from: "test" } }],
+    });
+    expect(result.serverData.pages[0]!.data).not.toBe(home);
+    await render.dispose();
 });
 
-describe("createSSRNavigationRender", () => {
-    test("binds config and renders through ssrRenderNavigation", async () => {
-        const render = createSSRNavigationRender({
-            definition: fixtureDefinition([
-                { path: "/", intentId: "home", controller: makeController("home", page("home")) },
-            ]),
-            navigation: { codec: createActiveLeafCodec() },
-
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.title, head: "", css: "" };
-            },
-        });
-
-        const result = await render("/");
-        expect(result.html).toBe("home");
-        expect(extractNavigationTree(result.serverData)).toMatchObject(
-            treeShape(stack(leaf("home"))),
-        );
-    });
-
-    test("defaults frameworkConfig to an empty object", async () => {
-        const render = createSSRNavigationRender({
-            navigation: { codec: createActiveLeafCodec() },
-            definition: fixtureDefinition([
+test("split navigation renders every visible column in order and prefetches each page", async () => {
+    const calls: string[] = [];
+    const definition = defineWebApp({
+        id: "split-tree",
+        navigation: split([
+            { id: "list", content: leaf("list") },
+            { id: "detail", content: leaf("detail", { itemId: "42" }) },
+        ]),
+        pages: routePages(
+            [
                 {
-                    path: "/",
-                    intentId: "home",
-                    controller: makeController("home", page("home")),
+                    id: "list",
+                    handler: () => {
+                        calls.push("list");
+                        return { id: "list", pageType: "list", title: "list" };
+                    },
                 },
-            ]),
-            getErrorPage: makeErrorPage,
-            renderApp(p) {
-                return { html: p.title, head: "", css: "" };
-            },
-        });
-
-        const result = await render("/");
-        expect(result.html).toBe("home");
+                {
+                    id: "detail",
+                    handler: (params) => {
+                        calls.push("detail");
+                        return { id: "detail", pageType: "detail", title: String(params.itemId) };
+                    },
+                },
+            ],
+            [
+                { path: "/list", intentId: "list" },
+                { path: "/detail/:itemId", intentId: "detail" },
+            ],
+        ),
+        getErrorPage: errorPage,
     });
+    const render = createSSRRender({
+        definition,
+        render: (app) =>
+            app
+                .getSnapshot()
+                .entries.filter((entry) => entry.visible)
+                .map((entry) => entry.page.title)
+                .join("+"),
+    });
+    const result = await render("/list");
+    expect(result.html).toBe("list+42");
+    expect(calls).toEqual(["list", "detail"]);
+    expect(result.serverData.pages).toHaveLength(2);
+    expect(result.serverData.pages.map((entry) => entry.intent.id)).toEqual(["list", "detail"]);
+    await render.dispose();
+});
+
+test("tabs navigation resolves only the active branch", async () => {
+    const inactive = vi.fn(() => ({ id: "settings", pageType: "settings", title: "Settings" }));
+    const definition = defineWebApp({
+        id: "tabs-tree",
+        navigation: tabs({
+            active: "home",
+            branches: {
+                home: stack(leaf("home")),
+                settings: stack(leaf("settings")),
+            },
+        }),
+        pages: routePages(
+            [
+                { id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) },
+                { id: "settings", handler: inactive },
+            ],
+            [
+                { path: "/home", intentId: "home" },
+                { path: "/settings", intentId: "settings" },
+            ],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({
+        definition,
+        render: (app) =>
+            app
+                .getSnapshot()
+                .destinations.map((entry) => entry.intent)
+                .join("+"),
+    });
+    await expect(render("/home")).resolves.toMatchObject({ html: "home" });
+    expect(inactive).not.toHaveBeenCalled();
+    await render.dispose();
+});
+
+test("full-state navigation codec restores a deep linked composed tree", async () => {
+    const codec = createFullStateCodec();
+    const deepTree = stack([leaf("home"), leaf("detail", { id: "7" })]);
+    const url = codec.encode(deepTree, { reverse: () => undefined });
+    const definition = defineWebApp({
+        id: "full-state",
+        navigationCodec: codec,
+        pages: routePages(
+            [
+                { id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) },
+                {
+                    id: "detail",
+                    handler: (params) => ({
+                        id: "detail",
+                        pageType: "detail",
+                        title: String(params.id),
+                    }),
+                },
+            ],
+            [
+                { path: "/home", intentId: "home" },
+                { path: "/detail/:id", intentId: "detail" },
+            ],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({
+        definition,
+        render: (app) => app.getSnapshot().destinations[0]!.page.title,
+    });
+    const result = await render(url);
+    expect(result.html).toBe("7");
+    expect(result.serverData.tree).toMatchObject({
+        kind: "stack",
+        entries: [{ intent: "home" }, { intent: "detail", params: { id: "7" } }],
+    });
+    expect(result.serverData.pages.map((entry) => entry.intent.id)).toEqual(["detail"]);
+    await render.dispose();
+});
+
+test("SSR pages hydrate the same composed tree without refetching", async () => {
+    let calls = 0;
+    const definition = defineWebApp({
+        id: "hydrate-tree",
+        navigation: split([
+            { id: "left", content: leaf("left") },
+            { id: "right", content: leaf("right") },
+        ]),
+        pages: routePages(
+            [
+                {
+                    id: "left",
+                    handler: () => ({ id: `left-${++calls}`, pageType: "left", title: "Left" }),
+                },
+                {
+                    id: "right",
+                    handler: () => ({ id: `right-${++calls}`, pageType: "right", title: "Right" }),
+                },
+            ],
+            [
+                { path: "/left", intentId: "left" },
+                { path: "/right", intentId: "right" },
+            ],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({ definition, render: () => "SSR" });
+    const output = await render("/left");
+    expect(calls).toBe(2);
+    const browser = createWebRuntime({
+        definition,
+        prefetchedIntents: PrefetchedIntents.fromArray(output.serverData.pages),
+    });
+    const controller = createNavigationController({
+        web: browser,
+        initial: deserializeNavigation(output.serverData.tree!),
+        isServer: false,
+    });
+    const snapshot = await controller.resolve();
+    expect(snapshot.destinations.map((entry) => entry.page.id)).toEqual(["left-1", "right-2"]);
+    expect(calls).toBe(2);
+    await controller.dispose();
+    await browser.dispose();
+    await render.dispose();
 });

@@ -1,8 +1,10 @@
-import { createReactSSRRender } from "@finesoft/front/renderers/react/server";
-export { serializeServerData } from "@finesoft/front/renderers/react/server";
-import Probe from "./ReactProbe.tsx";
+import { renderToString } from "react-dom/server";
+import { createElement } from "react";
+import { createSSRRender } from "@finesoft/front/ssr";
+export { serializeServerData } from "@finesoft/front/ssr";
+import App from "./ReactApp.tsx";
 import { definition } from "./definition";
-export const render = createReactSSRRender({
-    app: definition(),
-    renderer: { mode: "entries", views: { probe: Probe } },
+export const render = createSSRRender({
+    definition: definition(),
+    render: (app) => renderToString(createElement(App, { app })),
 });

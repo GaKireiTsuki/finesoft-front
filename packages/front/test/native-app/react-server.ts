@@ -1,20 +1,12 @@
-import { createReactSSRRender, serializeServerData } from "@finesoft/front/renderers/react/server";
-import Chrome from "./ReactChrome.tsx";
-import Probe from "./ReactProbe.tsx";
+import { renderToString } from "react-dom/server";
+import { createElement } from "react";
+import { createSSRRender, serializeServerData } from "@finesoft/front/ssr";
+import ReactApp from "./ReactApp.tsx";
 import { definition } from "./definition";
-export async function render(
-    url: string,
-    mode: "root" | "entries",
-    structured = false,
-    chrome = false,
-) {
-    const factory = createReactSSRRender({
-        app: definition("en", "first", { pageType: "probe" }, structured),
-        renderer: {
-            mode,
-            chrome: chrome ? Chrome : undefined,
-            views: { probe: Probe, other: Probe },
-        },
+export async function render(url: string, structured = false) {
+    const factory = createSSRRender({
+        definition: definition("en", "first", { pageType: "probe" }, structured),
+        render: (app) => renderToString(createElement(ReactApp, { app })),
     });
     try {
         const result = await factory(url);

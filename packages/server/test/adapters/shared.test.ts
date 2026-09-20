@@ -17,10 +17,67 @@ import {
     generateSSREntry,
     prerenderRoutes,
 } from "../../src/adapters/shared";
+import { createSSRHandler, type SSRResponseResult } from "../../src/ssr-handler";
 
 afterEach(() => {
     vi.restoreAllMocks();
     dynamicImport.mockReset();
+});
+
+test.each<{ name: string; metadata: Partial<SSRResponseResult>; public: boolean }>([
+    { name: "public HTML", metadata: { cache: "public" }, public: true },
+    { name: "undeclared HTML", metadata: {}, public: false },
+    { name: "denial", metadata: { cache: "public", status: 403 }, public: false },
+    {
+        name: "redirect",
+        metadata: { cache: "public", redirect: { url: "/login", status: 307 } },
+        public: false,
+    },
+    { name: "rewrite", metadata: { cache: "public", rewriteUrl: "/internal" }, public: false },
+    {
+        name: "session cookie",
+        metadata: { cache: "public", headers: { "set-cookie": "session=private" } },
+        public: false,
+    },
+    {
+        name: "custom header",
+        metadata: { cache: "public", headers: [["x-tenant", "private"]] },
+        public: false,
+    },
+    {
+        name: "empty Headers",
+        metadata: { cache: "public", headers: new Headers() },
+        public: true,
+    },
+])("$name has the same eligibility for static output and runtime cache", async (scenario) => {
+    const render = Object.assign(
+        async () => ({
+            html: "page",
+            head: "",
+            css: "",
+            serverData: [],
+            renderMode: "prerender",
+            ...scenario.metadata,
+        }),
+        { routes: [{ path: "/static", renderMode: "prerender" }] },
+    );
+    const module = { render, serializeServerData: JSON.stringify };
+    dynamicImport.mockImplementation(async (specifier: string) =>
+        specifier === "node:url" ? import("node:url") : module,
+    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const statics = await prerenderRoutes(
+        createAdapterContext({
+            fs: { existsSync: () => true },
+            templateHtml: "<!--ssr-body-->",
+        }) as never,
+    );
+    expect(statics).toHaveLength(scenario.public ? 1 : 0);
+    const cache = { get: vi.fn(), set: vi.fn() };
+    const handler = createSSRHandler({ ...module, template: "<!--ssr-body-->", cache });
+    await handler(new Request("https://example.test/static"));
+    expect(cache.get).toHaveBeenCalledTimes(scenario.public ? 1 : 0);
+    expect(cache.set).toHaveBeenCalledTimes(scenario.public ? 1 : 0);
 });
 
 describe("shared adapter helpers", () => {
@@ -44,7 +101,12 @@ describe("shared adapter helpers", () => {
         expect(code).toContain('import { render, serializeServerData } from "./ssr.mjs";');
         expect(code).toContain('const RENDER_MODES = {"/docs":"prerender"};');
         expect(code).toContain('const DEFAULT_LOCALE = "en-US";');
-        expect(code).toContain('app.all("/api/*"');
+        expect(code).toContain(
+            'import { createSSRHost, registerProxyRoutes } from "@finesoft/front/ssr";',
+        );
+        expect(code).toContain(
+            'registerProxyRoutes(app, [{"prefix":"/api","target":"https://example.com"}]);',
+        );
         expect(code).toContain("platformCacheGet(url)");
         expect(code).toContain('publicCacheHeaders: {"x-test":"1"}');
         expect(code).toContain("export default app;");

@@ -3,8 +3,6 @@ import { markPublic } from "@finesoft/front/web";
 import type { AboutPage } from "../models/product";
 
 export class AboutController extends BaseController<Record<string, string>, AboutPage> {
-    readonly intentId = "about";
-
     execute(): AboutPage {
         return markPublic(
             {

@@ -18,13 +18,7 @@
 `src/lib/controllers/product.ts`：
 
 ```ts
-import {
-    BaseController,
-    DEP_KEYS,
-    type Container,
-    type ExecutionContext,
-    type LoggerFactory,
-} from "@finesoft/front";
+import { BaseController, DEP_KEYS, type ExecutionContext } from "@finesoft/front";
 import { markPublic, type BasePage } from "@finesoft/front/web";
 
 export interface ProductPage extends BasePage {
@@ -33,12 +27,10 @@ export interface ProductPage extends BasePage {
 }
 
 export class ProductController extends BaseController<{ id: number }, ProductPage> {
-    readonly intentId = "load-product";
-
-    execute(params: { id: number }, container: Container, context?: ExecutionContext): ProductPage {
-        const logger = container.resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
+    async execute(params: { id: number }, context: ExecutionContext): Promise<ProductPage> {
+        const logger = await context.get(DEP_KEYS.LOGGER_FACTORY);
         logger.loggerFor("ProductController").info(`Loading product ${params.id}`);
-        context?.record("product.load", { productId: params.id });
+        context.record("product.load", { productId: params.id });
 
         return markPublic(
             {
@@ -65,7 +57,7 @@ export class ProductController extends BaseController<{ id: number }, ProductPag
 }
 ```
 
-这个示例使用本地数据；实际业务可以在 `execute` 中调用服务。`container` 是本次执行的依赖容器；`context` 提供当前执行的 `signal`、`fetch`、`get(token)` 和 `execute(operation, input)`。执行异步请求时，将 `context.signal` 传给请求 API，取消才能传递到实际工作。
+这个示例使用本地数据；实际业务可以在 `execute` 中调用服务。`context` 提供当前执行的 `signal`、`fetch`、`get(token)` 和 `execute(operation, input)`。执行异步请求时，将 `context.signal` 传给请求 API，取消才能传递到实际工作。
 
 `fallback` 仅在 `execute` 发生普通异常时调用，返回类型仍是 `ProductPage`；示例选择展示不可用状态。未覆写时默认重新抛出错误，交给页面加载流程的错误处理。取消、`AbortError` 和 `ExecutionError("cancelled")` 会继续抛出，不进入 `fallback`。运行时策略在控制器外执行，策略拒绝也不会由控制器回退处理。
 
@@ -81,19 +73,18 @@ import { ProductController } from "./lib/controllers/product";
 export const product = definePage({
     id: "load-product",
     create: () => new ProductController(),
+    routes: [{ path: "/products/:id", params: { id: int() } }],
 });
-export const productRoute = product.route("/products/:id", { params: { id: int() } });
 export const target = product.leaf({ id: 42 });
 
 export const app = defineWebApp({
     id: "example",
-    controllers: [product],
-    routes: [productRoute],
+    pages: [product],
     getErrorPage: (status, message) => ({ id: String(status), pageType: "error", title: message }),
 });
 ```
 
-控制器的 `intentId` 与 `definePage.id` 使用同一操作标识。URL `/products/42` 经 `int()` 解码后，`execute` 收到 `{ id: 42 }`；代码内的 `product.leaf({ id: 42 })` 保留同样的参数类型。
+页面声明拥有唯一操作标识，控制器不再重复声明 intentId。URL `/products/42` 经 `int()` 解码后，`execute` 收到 `{ id: 42 }`；代码内的 `product.leaf({ id: 42 })` 保留同样的参数类型。
 
 `create` 每次实际执行时返回新控制器。声明、路由发现及引用辅助方法只读取定义；命中已预取或保留的页面结果时也无需创建控制器。请求身份放在执行上下文或有作用域的 provider 中；页面草稿放在页面实例中。
 
@@ -114,7 +105,7 @@ export const home = definePage({
 });
 ```
 
-模板采用控制器类来保持组织方式一致；函数形式适用于简短加载逻辑。继承基类是可选的，实现 `IntentController` 契约也能由 `create` 工厂接入。
+模板采用控制器类来保持组织方式一致；函数形式适用于简短加载逻辑。继承基类是可选的，实现 `perform(input, context)` 契约也能由 `create` 工厂接入。
 
 ## 独立业务操作也可以用控制器
 
@@ -135,8 +126,6 @@ interface TotalResult {
 }
 
 class TotalController extends BaseController<TotalInput, TotalResult> {
-    readonly intentId = "calculate-total";
-
     execute({ unitPrice, quantity }: TotalInput): TotalResult {
         return { total: unitPrice * quantity };
     }

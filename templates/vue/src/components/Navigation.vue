@@ -1,38 +1,23 @@
 <script setup lang="ts">
-import type { Action } from "@finesoft/front/web";
-import { NAV_LINKS } from "../actions";
-
-const { currentPath = "/", onAction } = defineProps<{
+const { currentPath = "/" } = defineProps<{
     currentPath?: string;
-    onAction?: (action: Action) => void;
 }>();
-
-function handleClick(action: Action, event: MouseEvent) {
-    if (
-        !onAction ||
-        event.defaultPrevented ||
-        event.button !== 0 ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        event.altKey
-    ) {
-        return;
-    }
-    event.preventDefault();
-    onAction(action);
-}
+const links = [
+    { label: "Home", href: "/" },
+    { label: "Search", href: "/search" },
+    { label: "About", href: "/about" },
+    { label: "GitHub", href: "https://github.com/nicepkg/finesoft" },
+] as const;
 </script>
 
 <template>
     <nav class="navigation">
         <a
-            v-for="link in NAV_LINKS"
+            v-for="link in links"
             :key="link.label"
-            :href="link.path ?? link.action.url"
+            :href="link.href"
             class="navigation-link"
-            :class="{ active: link.path !== null && currentPath === link.path }"
-            @click="handleClick(link.action, $event)"
+            :class="{ active: currentPath === link.href }"
         >
             {{ link.label }}
         </a>

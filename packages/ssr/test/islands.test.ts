@@ -1,55 +1,55 @@
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
-import { describe, expect, test, vi } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
-import { renderIslandsHtml } from "../src/islands";
-import type { NavigationSnapshot } from "@finesoft/web";
+import { defineWebApp, leaf, split } from "@finesoft/web";
+import { routePages } from "../../web/test/helpers/definition";
+import { createSSRRender } from "../src/create-render";
 
-function snap(
-    destinations: Omit<NavigationSnapshot["destinations"][number], "entryId" | "resourceKey">[],
-): NavigationSnapshot {
-    return {
-        tree: { kind: "leaf", entryId: "fixture-root", intent: "x", params: {} },
-        destinations: destinations.map((d, i) => ({
-            ...d,
-            entryId: `fixture-${i}`,
-            resourceKey: d.intent,
-        })),
-    };
-}
-
-describe("renderIslandsHtml", () => {
-    test("wraps a single destination in a shared-marker container", async () => {
-        const s = snap([{ intent: "detail", params: { id: "1" }, page: { id: "p" } as never }]);
-        const html = await renderIslandsHtml(
-            s,
-            (e) => `<p>${e.intent}:${(e.page as { id: string }).id}</p>`,
-        );
-        expect(html).toContain('<div data-fs-entry data-fs-intent="detail" data-fs-key=');
-        expect(html).toContain("<p>detail:p</p></div>");
+test("composed SSR rendering exposes all visible entries to one native renderer", async () => {
+    const definition = defineWebApp({
+        id: "native-composition",
+        navigation: split([
+            { id: "list", content: leaf("list") },
+            { id: "detail", content: leaf("detail", { id: "2" }) },
+        ]),
+        pages: routePages(
+            [
+                { id: "list", handler: () => ({ id: "list", pageType: "list", title: "List" }) },
+                {
+                    id: "detail",
+                    handler: () => ({ id: "detail", pageType: "detail", title: "Detail" }),
+                },
+            ],
+            [
+                { path: "/list", intentId: "list" },
+                { path: "/detail/:id", intentId: "detail" },
+            ],
+        ),
+        getErrorPage: (status, message) => ({
+            id: String(status),
+            pageType: "error",
+            title: message,
+        }),
     });
-
-    test("renders all visible destinations in order (split multi-column)", async () => {
-        const s = snap([
-            { intent: "list", params: {}, page: { id: "l" } as never },
-            { intent: "detail", params: { id: "2" }, page: { id: "d" } as never },
-        ]);
-        const calls: string[] = [];
-        const html = await renderIslandsHtml(s, (e) => {
-            calls.push(e.intent);
-            return `[${e.intent}]`;
-        });
-        expect(calls).toEqual(["list", "detail"]);
-        expect(html.indexOf("[list]")).toBeLessThan(html.indexOf("[detail]"));
+    const calls: string[] = [];
+    const render = createSSRRender({
+        definition,
+        render: (app) => {
+            const entries = app.getSnapshot().entries.filter((entry) => entry.visible);
+            calls.push(...entries.map((entry) => entry.intent));
+            return entries
+                .map(
+                    (entry) =>
+                        `<section data-intent="${entry.intent}">${entry.page.title}</section>`,
+                )
+                .join("");
+        },
     });
-
-    test("empty destinations → empty string", async () => {
-        expect(await renderIslandsHtml(snap([]), () => "x")).toBe("");
+    await expect(render("/list")).resolves.toMatchObject({
+        html: '<section data-intent="list">List</section><section data-intent="detail">Detail</section>',
     });
-
-    test("awaits async renderEntry (Vue renderToString 形态)", async () => {
-        const s = snap([{ intent: "a", params: {}, page: { id: "a" } as never }]);
-        expect(await renderIslandsHtml(s, async (e) => `async:${e.intent}`)).toContain("async:a");
-    });
+    expect(calls).toEqual(["list", "detail"]);
+    await render.dispose();
 });

@@ -1,12 +1,12 @@
 import type { Token } from "../dependencies/token";
 import { Container } from "../dependencies/container";
-import { IntentDispatcher } from "../intents/dispatcher";
-import { stableStringify } from "../utils/stable-stringify";
-import { generateUuid } from "../utils/uuid";
 import { HttpError } from "../http/errors";
+import { LruMap } from "../utils/lru-map";
+import { generateUuid } from "../utils/uuid";
 import { normalize, configuration } from "./definition";
 import {
     ExecutionError,
+    executionErrorFromHttp,
     type RuntimeOptions,
     type RuntimeHandle,
     type ExecutionHandle,
@@ -20,41 +20,160 @@ interface CacheEntry {
     expires: number;
     tags: readonly string[];
 }
+
+interface InFlightEntry {
+    readonly promise: Promise<unknown>;
+    readonly runtimeGeneration: number;
+    readonly scopeGeneration: number;
+}
+
+const MAX_CACHE_KEY_DEPTH = 50;
+
+/**
+ * Cache identity only accepts JSON data.  A permissive serializer silently
+ * aliases Dates, class instances, cycles, and over-deep values, which makes a
+ * query cache return the wrong business result.  `undefined` is intentional
+ * input data and therefore gets a distinct explicit representation.
+ */
+function encodeCacheIdentity(value: unknown): string {
+    const seen = new Set<object>();
+    const encode = (current: unknown, depth: number): unknown => {
+        if (depth > MAX_CACHE_KEY_DEPTH)
+            throw new ExecutionError("configuration", "Cache input exceeds maximum depth");
+        if (current === undefined) return ["undefined"];
+        if (current === null) return ["null"];
+        if (typeof current === "string" || typeof current === "boolean")
+            return [typeof current, current];
+        if (typeof current === "number") {
+            if (!Number.isFinite(current))
+                throw new ExecutionError(
+                    "configuration",
+                    "Cache input contains a non-finite number",
+                );
+            return ["number", Object.is(current, -0) ? "-0" : current];
+        }
+        if (typeof current !== "object")
+            throw new ExecutionError("configuration", "Cache input must contain JSON values only");
+        if (seen.has(current)) throw new ExecutionError("configuration", "Cache input is cyclic");
+        const prototype = Object.getPrototypeOf(current);
+        if (prototype !== Object.prototype && prototype !== null && !Array.isArray(current))
+            throw new ExecutionError(
+                "configuration",
+                "Cache input must not contain class instances",
+            );
+        seen.add(current);
+        try {
+            if (Object.getOwnPropertySymbols(current).length)
+                throw new ExecutionError(
+                    "configuration",
+                    "Cache input must not contain symbol properties",
+                );
+            if (Array.isArray(current)) {
+                if (
+                    Object.keys(current).length !== current.length ||
+                    Object.keys(current).some((key, index) => key !== String(index))
+                )
+                    throw new ExecutionError(
+                        "configuration",
+                        "Cache input arrays must be dense without extra properties",
+                    );
+                return [
+                    "array",
+                    Array.from({ length: current.length }, (_, index) => {
+                        const descriptor = Object.getOwnPropertyDescriptor(current, String(index))!;
+                        if (!Object.hasOwn(descriptor, "value"))
+                            throw new ExecutionError(
+                                "configuration",
+                                "Cache input must not contain accessor properties",
+                            );
+                        return encode(descriptor.value, depth + 1);
+                    }),
+                ];
+            }
+            const entries: unknown[] = [];
+            for (const key of Object.getOwnPropertyNames(current).sort()) {
+                const descriptor = Object.getOwnPropertyDescriptor(current, key)!;
+                if (!descriptor.enumerable || !Object.hasOwn(descriptor, "value"))
+                    throw new ExecutionError(
+                        "configuration",
+                        "Cache input must contain enumerable data properties only",
+                    );
+                entries.push([key, encode(descriptor.value, depth + 1)]);
+            }
+            return ["object", entries];
+        } finally {
+            seen.delete(current);
+        }
+    };
+    return JSON.stringify(encode(value, 0));
+}
+
 export function createRuntime(options: RuntimeOptions): RuntimeHandle {
-    const plan = normalize(options),
-        container = new Container(),
-        dispatcher = new IntentDispatcher();
-    const applicationId = options.app.id,
-        runtimeId = generateUuid();
-    const active = new Set<ExecutionHandle>(),
-        cache = new Map<string, CacheEntry>();
-    let closed = false,
-        disposal: Promise<void> | undefined,
-        cacheVersion = 0;
+    const plan = normalize(options);
+    const capacity = options.cacheCapacity ?? 100;
+    if (!Number.isSafeInteger(capacity) || capacity < 1)
+        configuration("Runtime cache capacity must be a positive finite integer");
+    const container = new Container();
+    const applicationId = options.app.id;
+    const runtimeId = generateUuid();
+    const active = new Set<ExecutionHandle>();
+    const cache = new LruMap<string, CacheEntry>(capacity);
+    const scopeInvalidators = new Set<(tags: readonly string[]) => void>();
+    const invalidateListeners = new Set<(tags: readonly string[]) => void>();
+    let closed = false;
+    let disposal: Promise<void> | undefined;
+    let runtimeGeneration = 0;
+
     for (const provider of plan.providers.values()) container.registerProvider(provider);
-    for (const { operation, handler } of plan.implementations.values())
-        dispatcher.register({
-            intentId: operation.id,
-            perform: (intent, _container, context) => handler(intent.params?.input, context!),
-        });
-    function invalidate(tags: readonly string[]) {
-        cacheVersion++;
+
+    const record = (type: string, fields: Record<string, unknown> = {}) => {
+        try {
+            const result: unknown = options.recorder?.record(type, {
+                ...fields,
+                applicationId,
+                runtimeId,
+            });
+            if (result && typeof (result as Promise<unknown>).then === "function")
+                void Promise.resolve(result).catch(() => {});
+        } catch {
+            // Event recording is observational and never changes an operation outcome.
+        }
+    };
+
+    const invalidate = (inputTags: readonly string[]) => {
+        const tags = Object.freeze([...inputTags]);
+        if (!tags.length) return;
+        runtimeGeneration++;
         for (const [key, entry] of cache)
             if (entry.tags.some((tag) => tags.includes(tag))) cache.delete(key);
         for (const invalidateScope of scopeInvalidators) invalidateScope(tags);
-    }
-    const scopeInvalidators = new Set<(tags: readonly string[]) => void>();
+        for (const listener of invalidateListeners) {
+            try {
+                const result: unknown = listener(tags);
+                if (result && typeof (result as Promise<unknown>).then === "function")
+                    void Promise.resolve(result).catch(() => {});
+            } catch {
+                // Web observers cannot prevent cache invalidation.
+            }
+        }
+    };
+
     const runtime: RuntimeHandle = {
         applicationId,
         runtimeId,
         invalidate,
+        onInvalidate(listener) {
+            if (closed) configuration("Runtime is closed");
+            invalidateListeners.add(listener);
+            return () => invalidateListeners.delete(listener);
+        },
+        record,
         async execute(operation, input, invocation) {
             const execution = runtime.createExecution(invocation);
             let output;
             try {
                 output = await execution.execute(operation, input);
             } catch (error) {
-                // Preserve the classified business failure if resource cleanup also fails.
                 await execution.dispose().catch(() => {});
                 throw error;
             }
@@ -71,12 +190,15 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                 ...invocation,
                 bindings: Object.freeze({ ...invocation.bindings }),
             });
-            const abort = new AbortController(),
-                scope = container.createScope(invocation.bindings);
-            const executionId = generateUuid(),
-                traceId = invocation.traceId ?? executionId;
-            const scopeCache = new Map<string, CacheEntry>();
+            const abort = new AbortController();
+            const scope = container.createScope(invocation.bindings);
+            const executionId = generateUuid();
+            const traceId = invocation.traceId ?? executionId;
+            const scopeCache = new LruMap<string, CacheEntry>(capacity);
+            const inFlight = new Map<string, InFlightEntry>();
+            let scopeGeneration = 0;
             const invalidateScope = (tags: readonly string[]) => {
+                scopeGeneration++;
                 for (const [key, entry] of scopeCache)
                     if (entry.tags.some((tag) => tags.includes(tag))) scopeCache.delete(key);
             };
@@ -84,30 +206,16 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
             const forwardAbort = () => abort.abort(invocation.signal?.reason);
             if (invocation.signal?.aborted) forwardAbort();
             else invocation.signal?.addEventListener("abort", forwardAbort, { once: true });
-            let disposed = false,
-                disposing: Promise<void> | undefined;
+            let disposed = false;
+            let disposing: Promise<void> | undefined;
             const running = new Set<Promise<unknown>>();
             const assertActive = () => {
                 if (disposed) configuration("Execution is closed");
                 if (abort.signal.aborted) throw new ExecutionError("cancelled");
             };
-            function record(type: string, fields: Record<string, unknown> = {}) {
-                try {
-                    const result: unknown = options.recorder?.record(type, {
-                        ...fields,
-                        applicationId,
-                        runtimeId,
-                        executionId,
-                        traceId,
-                    });
-                    // A recorder implemented with an async function must not leak a rejection.
-                    if (result && typeof (result as Promise<unknown>).then === "function")
-                        void Promise.resolve(result).catch(() => {});
-                } catch {
-                    /* Observers do not own execution outcomes. */
-                }
-            }
-            const context: ExecutionContext = Object.freeze({
+            const executionRecord = (type: string, fields: Record<string, unknown> = {}) =>
+                record(type, { ...fields, executionId, traceId });
+            const context: ExecutionContext = Object.freeze<ExecutionContext>({
                 applicationId,
                 runtimeId,
                 executionId,
@@ -123,15 +231,12 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                 },
                 execute: <I, O>(op: Operation<I, O>, input: I) => execution.execute(op, input),
                 invalidate,
-                record,
-                onDispose: (cleanup: () => void | Promise<void>) => {
+                record: executionRecord,
+                onDispose: (cleanup) => {
                     assertActive();
                     scope.onDispose(cleanup);
                 },
-                fetch: async (
-                    input: Parameters<typeof globalThis.fetch>[0],
-                    init?: RequestInit,
-                ) => {
+                fetch: async (input, init) => {
                     assertActive();
                     const fetch = invocation.fetch ?? options.capabilities?.fetch;
                     if (!fetch) throw new ExecutionError("capability", "Missing capability: fetch");
@@ -149,9 +254,10 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                     return response;
                 },
             });
+
             async function execute<I, O>(operation: Operation<I, O>, input: I): Promise<O> {
                 const start = Date.now();
-                record("operation", { operationId: operation.id, phase: "start" });
+                executionRecord("operation", { operationId: operation.id, phase: "start" });
                 try {
                     assertActive();
                     if (plan.operations.get(operation.id) !== operation)
@@ -175,19 +281,27 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                         await policy(validated, context);
                     }
                     assertActive();
-                    const policy = operation.cache;
-                    const selectedCache = policy?.scope === "execution" ? scopeCache : cache;
-                    const key = policy
-                        ? stableStringify([
-                              operation.id,
-                              invocation.identity ?? null,
-                              invocation.locale ?? null,
-                              policy.key ? policy.key(validated) : validated,
-                          ])
-                        : undefined;
-                    const cached = key ? selectedCache.get(key) : undefined;
+                    const cachePolicy = operation.cache;
+                    if (!cachePolicy) {
+                        const output = await invoke(operation, validated);
+                        executionRecord("operation", {
+                            operationId: operation.id,
+                            phase: "complete",
+                            durationMs: Date.now() - start,
+                        });
+                        return output;
+                    }
+                    const cacheValue = cachePolicy.key ? cachePolicy.key(validated) : validated;
+                    const key = encodeCacheIdentity([
+                        operation.id,
+                        invocation.identity ?? null,
+                        invocation.locale ?? null,
+                        cacheValue,
+                    ]);
+                    const selectedCache = cachePolicy.scope === "execution" ? scopeCache : cache;
+                    const cached = selectedCache.get(key);
                     if (cached && cached.expires > Date.now()) {
-                        record("operation", {
+                        executionRecord("operation", {
                             operationId: operation.id,
                             phase: "complete",
                             cacheHit: true,
@@ -195,27 +309,26 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                         });
                         return cached.value as O;
                     }
-                    if (key) selectedCache.delete(key);
-                    const version = cacheVersion;
-                    let output: O = await dispatcher.dispatch<O>(
-                        { id: operation.id, params: { input: validated } },
-                        scope,
-                        context,
-                    );
-                    assertActive();
-                    if (operation.output) {
-                        const result = await operation.output["~standard"].validate(output);
-                        if (result.issues) throw new ExecutionError("failure");
-                        output = result.value;
-                    }
-                    assertActive();
-                    if (key && policy && version === cacheVersion)
-                        selectedCache.set(key, {
-                            value: output,
-                            expires: Date.now() + policy.ttlMs,
-                            tags: policy.tags ?? [],
-                        });
-                    record("operation", {
+                    if (cached) selectedCache.delete(key);
+                    const currentRuntimeGeneration = runtimeGeneration;
+                    const currentScopeGeneration = scopeGeneration;
+                    const existing = inFlight.get(key);
+                    const promise =
+                        existing &&
+                        existing.runtimeGeneration === currentRuntimeGeneration &&
+                        existing.scopeGeneration === currentScopeGeneration
+                            ? (existing.promise as Promise<O>)
+                            : startCached(
+                                  operation,
+                                  validated,
+                                  key,
+                                  cachePolicy,
+                                  selectedCache,
+                                  currentRuntimeGeneration,
+                                  currentScopeGeneration,
+                              );
+                    const output = await promise;
+                    executionRecord("operation", {
                         operationId: operation.id,
                         phase: "complete",
                         durationMs: Date.now() - start,
@@ -228,18 +341,10 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                             ? new ExecutionError("cancelled", undefined, { cause })
                             : cause instanceof ExecutionError
                               ? cause
-                              : cause instanceof HttpError && [400, 403, 404].includes(cause.status)
-                                ? new ExecutionError(
-                                      cause.status === 404
-                                          ? "not_found"
-                                          : cause.status === 403
-                                            ? "denied"
-                                            : "validation",
-                                      undefined,
-                                      { cause },
-                                  )
+                              : cause instanceof HttpError
+                                ? executionErrorFromHttp(cause)
                                 : new ExecutionError("failure", undefined, { cause });
-                    record("operation", {
+                    executionRecord("operation", {
                         operationId: operation.id,
                         phase: "error",
                         code: error.code,
@@ -248,6 +353,59 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                     throw error;
                 }
             }
+
+            async function invoke<I, O>(operation: Operation<I, O>, input: I): Promise<O> {
+                const implementation = plan.implementations.get(operation);
+                if (!implementation) configuration(`Unbound operation: ${operation.id}`);
+                let output = await implementation.handler(input, context);
+                assertActive();
+                if (operation.output) {
+                    const result = await operation.output["~standard"].validate(output);
+                    if (result.issues) throw new ExecutionError("failure");
+                    output = result.value;
+                }
+                assertActive();
+                return output;
+            }
+
+            function startCached<I, O>(
+                operation: Operation<I, O>,
+                input: I,
+                key: string,
+                policy: NonNullable<Operation<I, O>["cache"]>,
+                selectedCache: LruMap<string, CacheEntry>,
+                expectedRuntimeGeneration: number,
+                expectedScopeGeneration: number,
+            ): Promise<O> {
+                const promise = invoke(operation, input).then((output) => {
+                    if (
+                        runtimeGeneration === expectedRuntimeGeneration &&
+                        scopeGeneration === expectedScopeGeneration
+                    )
+                        selectedCache.set(key, {
+                            value: output,
+                            expires: Date.now() + policy.ttlMs,
+                            tags: policy.tags ?? [],
+                        });
+                    return output;
+                });
+                const entry: InFlightEntry = {
+                    promise,
+                    runtimeGeneration: expectedRuntimeGeneration,
+                    scopeGeneration: expectedScopeGeneration,
+                };
+                inFlight.set(key, entry);
+                void promise.then(
+                    () => {
+                        if (inFlight.get(key) === entry) inFlight.delete(key);
+                    },
+                    () => {
+                        if (inFlight.get(key) === entry) inFlight.delete(key);
+                    },
+                );
+                return promise;
+            }
+
             const execution: ExecutionHandle = {
                 context,
                 cancel(reason) {
@@ -275,6 +433,7 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                             active.delete(execution);
                             scopeInvalidators.delete(invalidateScope);
                             scopeCache.clear();
+                            inFlight.clear();
                         }
                     })();
                     return disposing;
@@ -294,6 +453,8 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                     await container.dispose();
                 } finally {
                     cache.clear();
+                    scopeInvalidators.clear();
+                    invalidateListeners.clear();
                 }
                 const errors = results
                     .filter((result) => result.status === "rejected")

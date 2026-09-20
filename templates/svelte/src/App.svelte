@@ -1,20 +1,12 @@
 <script lang="ts">
-	import type { Action } from "@finesoft/front/web";
-	import Loading from "./components/Loading.svelte";
+    import { untrack } from "svelte";
+	import { Outlet, useSnapshot, type WebAppView } from "@finesoft/front/svelte";
 	import Layout from "./components/Layout.svelte";
-	import PageRenderer from "./components/PageRenderer.svelte";
-	import type { AppPage } from "./lib/models/product";
-
-	type Props = {
-		page?: AppPage | null;
-		loading?: boolean;
-		onAction?: (action: Action) => void;
-	};
-
-	let props: Props = $props();
+	import { views } from "./views";
+	let { app }: { app: WebAppView } = $props();
+	const snapshot = untrack(() => useSnapshot(app));
 </script>
 
-<Layout currentPath={props.page?.url ?? "/"} onAction={props.onAction}>
-	{#if props.loading}<Loading />{/if}
-	{#if props.page}<PageRenderer page={props.page} onAction={props.onAction} />{/if}
+<Layout currentPath={$snapshot.entries.find((entry) => entry.visible)?.page.url ?? "/"}>
+	<Outlet {app} {views} />
 </Layout>

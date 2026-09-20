@@ -21,6 +21,9 @@ await fs.writeFile(
 );
 const scratch = await fs.mkdtemp(path.join(tmpdir(), "front-created-consumers-"));
 const result = [];
+const typescriptVersion = JSON.parse(
+    await fs.readFile(root + "node_modules/typescript/package.json", "utf8"),
+).version;
 try {
     for (const name of [
         "react",
@@ -42,15 +45,43 @@ try {
         await fs.cp(source, cwd, { recursive: true });
         pkg.dependencies["@finesoft/front"] = "file:" + tarball;
         pkg.packageManager = "pnpm@11.20.0";
+        await fs.writeFile(evidence + "/" + name + "-package.json", JSON.stringify(pkg, null, 2));
+        pkg.devDependencies ??= {};
+        // These are temporary validation-only tools. The generated manifest written to
+        // evidence still records its shipped dependencies, while the scratch install
+        // proves framework-specific source checking as well as ordinary TypeScript.
+        // Match the repository compiler instead of accepting an unrelated automatic
+        // peer upgrade (Vue's checker still uses the TypeScript JS compiler API).
+        pkg.devDependencies.typescript = typescriptVersion;
+        if (name.startsWith("vue")) pkg.devDependencies["vue-tsc"] = "^3.1.3";
+        if (name.startsWith("svelte")) pkg.devDependencies["svelte-check"] = "^4.3.4";
         await fs.writeFile(cwd + "/package.json", JSON.stringify(pkg, null, 2));
         await fs.writeFile(evidence + "/" + name + "-install.log", run(["install"], cwd));
+        await fs.writeFile(
+            evidence + "/" + name + "-tsc.log",
+            run(["exec", "tsc", "--noEmit", "--project", "tsconfig.json"], cwd),
+        );
+        if (name.startsWith("vue"))
+            await fs.writeFile(
+                evidence + "/" + name + "-vue-tsc.log",
+                run(["exec", "vue-tsc", "--noEmit", "--project", "tsconfig.json"], cwd),
+            );
+        if (name.startsWith("svelte"))
+            await fs.writeFile(
+                evidence + "/" + name + "-svelte-check.log",
+                run(["exec", "svelte-check", "--tsconfig", "./tsconfig.json"], cwd),
+            );
         await fs.writeFile(evidence + "/" + name + "-build.log", run(["run", "build"], cwd));
         const output = await fs.stat(cwd + "/dist/server/ssr.js");
         assert.ok(output.size > 0);
-        await fs.copyFile(cwd + "/package.json", evidence + "/" + name + "-package.json");
+        await fs.copyFile(
+            cwd + "/package.json",
+            evidence + "/" + name + "-validation-package.json",
+        );
         result.push({
             name,
             independentConfiguration: "passed",
+            typecheck: "TypeScript and native component checker passed",
             build: "installed local tarball and built client/SSR outside workspace",
             ssrBytes: output.size,
         });

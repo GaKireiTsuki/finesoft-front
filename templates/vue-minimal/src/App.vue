@@ -1,28 +1,35 @@
 <script setup lang="ts">
-import type { BrowserAppHandle } from "@finesoft/front/browser";
-import type { NavigationSnapshot } from "@finesoft/front/web";
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import type { NameStore } from "./instance";
-import { getNavigationChrome, TAB_LABELS } from "./lib/navigation";
+import { Outlet, useSnapshot, type WebAppView } from "@finesoft/front/vue";
+import { onMounted, onUnmounted, ref } from "vue";
+import { TAB_LABELS } from "./lib/navigation";
+import { views } from "./views";
 
 defineOptions({ inheritAttrs: false });
-const { initialSnapshot, controller, nameStore } = defineProps<{
-    initialSnapshot?: NavigationSnapshot;
-    controller?: BrowserAppHandle;
-    nameStore?: NameStore;
-}>();
-const chrome = computed(() => getNavigationChrome(initialSnapshot));
+const { app } = defineProps<{ app: WebAppView }>();
+const snapshot = useSnapshot(app);
 // Start empty on both server and client; restore the profile after hydration.
 const name = ref("");
-let unsubscribe: (() => void) | undefined;
+let unregister: (() => void) | undefined;
+onUnmounted(() => unregister?.());
 onMounted(() => {
-    if (!nameStore) return;
-    name.value = nameStore.get();
-    unsubscribe = nameStore.subscribe(() => {
-        name.value = nameStore.get();
+    unregister = app.session?.register({
+        key: "profile",
+        version: 1,
+        decode: (data) => {
+            if (
+                !data ||
+                typeof data !== "object" ||
+                typeof (data as { name?: unknown }).name !== "string"
+            )
+                throw Error("invalid-profile-state");
+            return data as { name: string };
+        },
+        capture: () => ({ name: name.value }),
+        restore: (data) => {
+            name.value = data.name;
+        },
     });
 });
-onUnmounted(() => unsubscribe?.());
 </script>
 
 <template>
@@ -33,22 +40,23 @@ onUnmounted(() => unsubscribe?.());
                 <input
                     :value="name"
                     placeholder="anon"
-                    @input="nameStore?.set(($event.target as HTMLInputElement).value)"
-                    @blur="controller?.session?.save()"
+                    @input="name = ($event.target as HTMLInputElement).value"
+                    @blur="app.session?.save()"
                 />
             </label>
             <span v-if="name">👋 {{ name }}</span>
         </header>
-        <nav v-if="chrome.tabs" class="tabs" aria-label="Pages">
+        <nav v-if="snapshot.navigation.tabs" class="tabs" aria-label="Pages">
             <button
-                v-for="key in chrome.tabs.order"
+                v-for="key in snapshot.navigation.tabs.order"
                 :key="key"
-                :aria-current="key === chrome.tabs.active"
-                @click="controller?.navigation?.selectTab(key)"
+                :aria-current="key === snapshot.navigation.tabs.active"
+                @click="app.navigation.selectTab(key)"
             >
                 {{ TAB_LABELS[key] ?? key }}
             </button>
         </nav>
-        <button v-if="chrome.canGoBack" @click="controller?.navigation?.pop()">← Back</button>
+        <button v-if="snapshot.navigation.canGoBack" @click="app.navigation.pop()">← Back</button>
+        <Outlet :app="app" :views="views" />
     </div>
 </template>

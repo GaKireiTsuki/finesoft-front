@@ -1,104 +1,93 @@
 # Getting started
 
-Use the published portable root and explicit environment entries. Install only the UI peers you select. The six repository templates contain complete React, Vue and Svelte examples; the CLI copies these same declarations. Node must satisfy `^22.18.0 || >=24.11.0`. Use Vite+ commands for development.
+Use portable execution and explicit Web, browser and SSR entries. The application creates one native React, Vue or Svelte root; its layout and providers surround Outlet. All six templates use this same model.
 
-Choose full for products, search and guards; choose minimal for Feed, detail, Notes and session restoration. Each tier is consistent across the three frameworks; see [application structure and template contracts](./engineering/project-structure.md).
+Install dependencies first. Node must satisfy `^22.18.0 || >=24.11.0`; use Vite+ for project tooling. Full demonstrates products, search and guards; minimal demonstrates tabs/stacks, drafts and session restoration.
 
-## Page controller
-
-All six templates organize page loading with `BaseController`. Import it from the portable root for typed input, business execution and optional error recovery. Import `definePage` from `/web` for page declarations and route, navigation and view references.
-
-`src/lib/controllers/home.ts`:
-
-```ts
-import { BaseController } from "@finesoft/front";
-import { markPublic, type BasePage } from "@finesoft/front/web";
-
-interface HomePage extends BasePage {
-    pageType: "home";
-}
-
-export class HomeController extends BaseController<Record<string, string>, HomePage> {
-    readonly intentId = "load-home";
-
-    execute(): HomePage {
-        return markPublic({ id: "home", pageType: "home", title: "Home" }, []);
-    }
-}
+```bash
+vp dlx @finesoft/create-app my-app
+vp install
 ```
 
-## Application declaration / 应用声明
-
-Register a controller factory in `src/app-definition.ts`. Declaration stores the factory; actual page execution creates the controller.
+## Page and route
 
 ```ts
-import { definePage, defineWebApp } from "@finesoft/front/web";
-import { HomeController } from "./lib/controllers/home";
-
+// src/app-definition.ts
+import { definePage, defineWebApp, markPublic } from "@finesoft/front/web";
 export const home = definePage({
-    id: "load-home",
-    create: () => new HomeController(),
+    id: "home",
+    routes: ["/"],
+    handler: () => markPublic({ id: "home", pageType: "home" as const, title: "Home" }, []),
 });
 export const app = defineWebApp({
     id: "example",
-    controllers: [home],
-    routes: [home.route("/")],
-    getErrorPage: (status, message) => ({ id: String(status), pageType: "error", title: message }),
+    pages: [home],
+    getErrorPage: (status, title) => ({ id: String(status), pageType: "error", title }),
 });
 ```
 
-Simple pages can also use `definePage({ id, handler })`. Both forms use the same runtime; `BaseController` additionally supplies the `execute()` → `fallback()` class contract. See [routes, controllers and typed pages](./02-routing-and-controllers.md).
+## Native application root
 
-## View binding / 视图绑定
-
-```ts
-import Home from "./Home";
-import ErrorPage from "./ErrorPage";
-import { home } from "./app-definition";
-export const views = { views: { ...home.bindView("home", Home), error: ErrorPage } };
+```tsx
+// src/App.tsx
+import { Outlet, type WebAppView } from "@finesoft/front/react";
+import Home from "./pages/Home";
+import ErrorPage from "./pages/ErrorPage";
+const views = { home: Home, error: ErrorPage };
+export default function App({ app }: { app: WebAppView }) {
+    return (
+        <div className="layout">
+            <Outlet app={app} views={views} />
+        </div>
+    );
+}
 ```
 
-## Browser entry / 浏览器入口
+Page components receive `{ page, app, entry }` and inherit native context from their layout. Real `<a href>` links use the same navigation flow; composed actions use `app.navigation`. Class-based loaders may use `BaseController.execute(input, context)`.
 
-```ts
-import { startBrowserApp } from "@finesoft/front/browser";
-import { createReactRenderer } from "@finesoft/front/renderers/react/browser";
-import { app } from "./app-definition";
-import { views } from "./views";
-export const handle = await startBrowserApp({
-    app,
-    target: document.getElementById("app")!,
-    renderer: createReactRenderer(views),
+## Browser entry
+
+```tsx
+// src/main.tsx
+import { createBrowserApp } from "@finesoft/front/browser";
+import { createRoot, hydrateRoot } from "react-dom/client";
+import { app as definition } from "./app-definition";
+import App from "./App";
+const target = document.getElementById("app")!;
+const app = await createBrowserApp({ definition, target });
+const root = app.hydrate ? hydrateRoot(target, <App app={app} />) : createRoot(target);
+if (!app.hydrate) root.render(<App app={app} />);
+await app.ready;
+// Cleanup owned by the application:
+// try { await app.dispose(); } finally { root.unmount(); }
+```
+
+`createBrowserApp` returns a session ready to mount. Mount first, then await `ready`. Outlet acknowledges the native commit before session restoration starts. Awaiting ready before mounting would deadlock.
+
+## SSR
+
+```tsx
+// src/ssr.tsx
+import { renderToString } from "react-dom/server";
+import { createSSRRender } from "@finesoft/front/ssr";
+import { app as definition } from "./app-definition";
+import App from "./App";
+export const render = createSSRRender({
+    definition,
+    render: (app) => renderToString(<App app={app} />),
 });
-// When the owning application removes this instance:
-// await handle.dispose();
-```
-
-## SSR entry / SSR 入口
-
-```ts
-import { createReactSSRRender } from "@finesoft/front/renderers/react/server";
-import { app } from "./app-definition";
-import { views } from "./views";
-export const render = createReactSSRRender({ app, renderer: views });
 export { serializeServerData } from "@finesoft/front/ssr";
 ```
 
-## Vite config / 构建配置
+## Vite
 
 ```ts
 import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import { finesoftFrontViteConfig } from "@finesoft/front/vite";
 export default defineConfig({
-    plugins: [
-        react(),
-        finesoftFrontViteConfig({
-            adapter: "node",
-            ssr: { entry: "src/ssr.ts" },
-        }),
-    ],
+    plugins: [react(), finesoftFrontViteConfig({ adapter: "node", ssr: { entry: "src/ssr.tsx" } })],
 });
 ```
 
-`Home` and `ErrorPage` are ordinary application components receiving a `page` prop. Vue uses `createVueRenderer` / `createVueSSRRender`; Svelte uses `createSvelteRenderer` / `createSvelteSSRRender`. Put the SSR body/data placeholders inside the chosen app target. Run `vp install`, `vp run dev`, then `vp run build`. Route discovery reads the built renderer’s `render.routes`. Static builds can use `staticAdapter({ routesExport: "src/app-definition.ts" })` for an explicit route module.
+Vue imports Outlet from `/vue` and uses `createSSRApp` / `createApp` with `renderToString`. Svelte imports Outlet from `/svelte` and uses `hydrate` / `mount` with `render` from `svelte/server`. See the matching templates. Before a fresh Svelte `mount`, clear the target when `hydrate` is false so rejected SSR markup cannot remain beside the new app.

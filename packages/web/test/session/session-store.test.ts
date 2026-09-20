@@ -29,7 +29,12 @@ describe("SessionStore", async () => {
         const store = createSessionStore({
             storage: fakeStorage(),
             now: () => 5,
-            navigation: fakeNav({ entryId: "fixture-flat", url: "/a" }),
+            navigation: fakeNav({
+                kind: "leaf",
+                entryId: "fixture-home",
+                intent: "home",
+                params: {},
+            }),
         });
         store.register({
             key: "theme",
@@ -41,8 +46,8 @@ describe("SessionStore", async () => {
         store.scope.set("home {}", { scroll: 9 });
         const s = store.capture();
         expect(s).toMatchObject({
-            version: 1,
-            navigation: { entryId: "fixture-flat", url: "/a" },
+            version: 2,
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
             slices: { theme: { version: 1, data: "dark" } },
             scoped: { "home {}": { scroll: 9 } },
             capturedAt: 5,
@@ -70,7 +75,12 @@ describe("SessionStore", async () => {
         const store = createSessionStore({
             storage: fakeStorage(),
             now: () => 5,
-            navigation: fakeNav({ entryId: "fixture-flat", url: "/a" }),
+            navigation: fakeNav({
+                kind: "leaf",
+                entryId: "fixture-home",
+                intent: "home",
+                params: {},
+            }),
         });
         expect(store.capture().url).toBeUndefined();
     });
@@ -109,8 +119,8 @@ describe("SessionStore", async () => {
         await storage.set(
             "__finesoft_session__",
             JSON.stringify({
-                version: 1,
-                navigation: { entryId: "fixture-flat", url: "/x" },
+                version: 2,
+                navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
                 slices: { draft: { version: 1, data: "hello" } },
                 scoped: { "k {}": 1 },
                 capturedAt: 1,
@@ -166,6 +176,58 @@ describe("SessionStore", async () => {
         await store.save();
         await store.clear();
         expect(await store.load()).toEqual({ status: "missing" });
+    });
+
+    test("coalesces adjacent queued implicit saves and captures when the slot starts", async () => {
+        let release!: () => void;
+        const writes: string[] = [];
+        const storage: AsyncStorage = {
+            get: async () => undefined,
+            set: async (_key, value) => {
+                writes.push(value);
+                if (writes.length === 1) await new Promise<void>((resolve) => (release = resolve));
+            },
+            delete: async () => {},
+        };
+        let value = "first";
+        let captures = 0;
+        const store = createSessionStore({ storage });
+        store.register({
+            key: "value",
+            version: 1,
+            decode: (input) => input,
+            capture: () => {
+                captures++;
+                return value;
+            },
+            restore: () => {},
+        });
+        const active = store.save();
+        value = "latest";
+        const joined = Array.from({ length: 19 }, () => store.save());
+        for (const pending of joined) expect(pending).toBe(active);
+        await Promise.resolve();
+        release();
+        await active;
+        expect(JSON.parse(writes[0]).slices.value.data).toBe("latest");
+        expect(writes).toHaveLength(1);
+        expect(captures).toBe(1);
+    });
+
+    test("explicit, clear, and load calls delimit implicit save batching", async () => {
+        const storage = fakeStorage();
+        const store = createSessionStore({ storage });
+        const first = store.save();
+        const explicit = store.persist({ version: 2, slices: {}, scoped: {}, capturedAt: 1 });
+        const afterExplicit = store.save();
+        const loaded = store.load();
+        const afterLoad = store.save();
+        const cleared = store.clear();
+        const afterClear = store.save();
+        expect(
+            new Set([first, explicit, afterExplicit, loaded, afterLoad, cleared, afterClear]).size,
+        ).toBe(7);
+        await Promise.all([first, explicit, afterExplicit, loaded, afterLoad, cleared, afterClear]);
     });
 
     test("restore isolates a synchronous adapter.apply throw (onError, no crash)", async () => {
@@ -232,14 +294,14 @@ describe("SessionStore", async () => {
             },
         });
         const snapshot = {
-            version: 1,
-            navigation: { kind: "stack", entries: [] } as never,
+            version: 2,
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
             slices: { draft: { version: 1, data: "hello" } },
             scoped: { "k {}": 1 },
             capturedAt: 1,
         };
 
-        await expect(store.restore(snapshot)).resolves.toMatchObject({ status: "failed" });
+        await expect(store.restore(snapshot as never)).resolves.toMatchObject({ status: "failed" });
         expect(onError).toHaveBeenCalledOnce();
         expect(onError.mock.calls[0]?.[1]).toMatchObject({ phase: "restore" });
         expect(restored).toEqual([]);

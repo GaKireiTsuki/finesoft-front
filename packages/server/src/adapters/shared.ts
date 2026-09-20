@@ -1,5 +1,3 @@
-import { createSSRHandler, type SSRModule } from "../ssr-handler";
-import { nodeDnsLookup } from "../node/dns";
 /**
  * 适配器共享工具函数
  *
@@ -7,6 +5,9 @@ import { nodeDnsLookup } from "../node/dns";
  * 避免各适配器重复实现相同逻辑。
  */
 
+import { createSSRHandler, type SSRModule } from "../ssr-handler";
+import { isPublicSSRResult } from "../ssr-cache";
+import { nodeSafeFetchOptions } from "../node/fetch-policy";
 import { dynamicImport } from "../dynamic-import";
 import { generateProxyCode } from "../proxy";
 import type {
@@ -48,9 +49,9 @@ export const NODE_BUILTINS = [
 export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOptions): string {
     return `
 import { Hono } from "hono";
-import { createSSRHost } from "@finesoft/front/ssr";
+import { createSSRHost, registerProxyRoutes } from "@finesoft/front/ssr";
 ${opts.platformImport}
-${opts.dnsPolicy === "hostname" ? "" : 'import { nodeDnsLookup as _dnsLookup } from "@finesoft/front/node";'}
+${opts.dnsPolicy === "hostname" ? "" : 'import { nodeSafeFetchOptions as _safeFetchOptions } from "@finesoft/front/node";'}
 import { render, serializeServerData } from "./${ctx.ssrEntry}";
 ${ctx.setupPath ? `import _setupDefault from "./${ctx.setupPath}";` : ""}
 const TEMPLATE = ${JSON.stringify(ctx.templateHtml)};
@@ -67,7 +68,7 @@ const ssrHost = createSSRHost({
     serializeServerData,
     renderModes: RENDER_MODES,
     defaultLocale: DEFAULT_LOCALE,
-    safeFetch: ${opts.dnsPolicy === "hostname" ? "{ validateDns: false }" : "{ lookup: _dnsLookup }"},
+    safeFetch: ${opts.dnsPolicy === "hostname" ? "{ validateDns: false }" : "_safeFetchOptions"},
     fetch: (request, bindings) => app.fetch(request, bindings),
     ${opts.platformCache ? "cache: {get: platformCacheGet, set: platformCacheSet}," : ""}
     ${opts.publicCacheHeaders ? `publicCacheHeaders: ${JSON.stringify(opts.publicCacheHeaders)},` : ""}
@@ -184,18 +185,13 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
                     template: ctx.templateHtml,
                     render: async (path, context) => {
                         const result = await (ssrModule as SSRModule).render(path, context);
-                        eligible =
-                            result.cache === "public" &&
-                            !result.redirect &&
-                            !result.rewriteUrl &&
-                            (result.status ?? 200) === 200 &&
-                            [...new Headers(result.headers)].length === 0;
+                        eligible = isPublicSSRResult(result);
                         return result;
                     },
                     serializeServerData: ssrModule!.serializeServerData,
                     defaultLocale: ctx.defaultLocale,
                     renderModes: ctx.renderModes,
-                    safeFetch: { lookup: nodeDnsLookup },
+                    safeFetch: nodeSafeFetchOptions,
                     onError: (error) =>
                         console.warn(`  [prerender] Failed to render ${url}:`, error),
                 });

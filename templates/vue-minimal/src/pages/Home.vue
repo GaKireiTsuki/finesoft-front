@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import type { BrowserAppHandle } from "@finesoft/front/browser";
-import type { Framework } from "@finesoft/front/web";
+import type { ViewProps } from "@finesoft/front/vue";
 import { computed } from "vue";
 import type { HomePage } from "../lib/models/page";
 import { getHomeLocale } from "../lib/locale";
 
 defineOptions({ inheritAttrs: false });
-const { page, controller, framework } = defineProps<{
+const { page, app } = defineProps<{
     page: HomePage;
-    controller?: BrowserAppHandle;
-    framework?: Framework;
+    app: ViewProps["app"];
 }>();
-const locale = computed(() => getHomeLocale(framework));
+const locale = computed(() => getHomeLocale(app));
 </script>
 
 <template>
@@ -20,7 +18,7 @@ const locale = computed(() => getHomeLocale(framework));
         <p>{{ page.description }}</p>
         <ul class="feed">
             <li v-for="item in page.items" :key="item.id">
-                <button @click="controller?.navigation?.push('detail', { id: item.id })">
+                <button @click="app.navigation.navigate(`/item/${item.id}`)">
                     {{ item.title }}
                 </button>
             </li>

@@ -1,4 +1,3 @@
-import { productDetailAction } from "../../actions";
 import type { ProductItem } from "../models/product";
 
 export const PRODUCTS: ProductItem[] = [
@@ -8,7 +7,7 @@ export const PRODUCTS: ProductItem[] = [
         name: "TypeScript Handbook",
         price: 29.99,
         imageUrl: "/img/ts.svg",
-        clickAction: productDetailAction("1"),
+        clickAction: { url: "/products/1" },
     },
     {
         id: "2",
@@ -16,7 +15,7 @@ export const PRODUCTS: ProductItem[] = [
         name: "Vite Starter Kit",
         price: 19.99,
         imageUrl: "/img/vite.svg",
-        clickAction: productDetailAction("2"),
+        clickAction: { url: "/products/2" },
     },
     {
         id: "3",
@@ -24,7 +23,7 @@ export const PRODUCTS: ProductItem[] = [
         name: "Hono Framework Guide",
         price: 24.99,
         imageUrl: "/img/hono.svg",
-        clickAction: productDetailAction("3"),
+        clickAction: { url: "/products/3" },
     },
     {
         id: "4",
@@ -32,6 +31,6 @@ export const PRODUCTS: ProductItem[] = [
         name: "SSR Deep Dive",
         price: 34.99,
         imageUrl: "/img/ssr.svg",
-        clickAction: productDetailAction("4"),
+        clickAction: { url: "/products/4" },
     },
 ];

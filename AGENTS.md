@@ -15,7 +15,7 @@ This is `@finesoft/front`, a TypeScript framework built with Vite+ workspaces. P
 | `/http` | Portable data endpoints and response lifetime |
 | `/node`, `/worker` | Platform hosts and platform capabilities |
 | `/vite` | Vite plugin and thin deployment generators |
-| `/renderers/{react,vue,svelte}/{browser,server}` | Selected native UI adapter; optional peers |
+| `/react`, `/vue`, `/svelte` | Native Outlet and snapshot subscriptions; optional peers |
 
 `create-app` publishes the scaffolder; site, six templates and adversarial apps are private consumers. Consumer code imports only public front entries.
 
@@ -23,11 +23,11 @@ This is `@finesoft/front`, a TypeScript framework built with Vite+ workspaces. P
 
 - **RuntimeHandle** owns portable execution, policy/schema validation, invocation scopes and owned providers.
 - **definePage / defineWebApp** declare reusable page factories, routes and navigation. Reference helpers reuse existing declarations; they never instantiate controllers for discovery.
-- **Framework** is the Web facade; it delegates execution to RuntimeHandle and page loading to the shared guarded loader.
-- **BaseController\<TParams, TResult\>** — abstract intent handler with try/catch → `fallback()` pattern
+- **WebAppView** exposes stable navigation snapshots, native commit acknowledgement and optional session state. `createBrowserApp` prepares it before the application mounts a native root; `createSSRRender` renders the same root from a request-scoped session.
+- **BaseController\<TParams, TResult\>** — optional handler using `execute(input, context)` with try/catch → `fallback()` pattern
 - **Middleware pipeline** — two-phase: `beforeLoad` (navigation guards) → `afterLoad` (post-data guards); first non-`next` result short-circuits
 - **ActionDispatcher** — handles `FlowAction` (SPA nav), `ExternalUrlAction`, `CompoundAction` (recursive)
-- **Container** — DI container with `DEP_KEYS` constant for named registrations; supports `createScope()` for request-level isolation
+- **Container** — typed token/provider container; use `context.get(DEP_KEYS.X)` and explicit provider lifetimes for request isolation
 - **PrefetchedIntents** — SSR → CSR hydration cache with stable stringify
 - **EventRecorder** — structured event recording pipeline (ConsoleEventRecorder, CompositeEventRecorder, WithFieldsRecorder)
 - **HttpClient** — abstract HTTP client with request/response interceptors
@@ -38,12 +38,10 @@ This is `@finesoft/front`, a TypeScript framework built with Vite+ workspaces. P
 
 | Key              | Type               | Description                     |
 | ---------------- | ------------------ | ------------------------------- |
-| `LOGGER`         | `Logger`           | Framework-scoped logger         |
+| `LOGGER`         | `Logger`           | Runtime logger         |
 | `LOGGER_FACTORY` | `LoggerFactory`    | Creates named loggers           |
-| `NET`            | `Net`              | Network request layer           |
 | `STORAGE`        | `Storage`          | Key-value storage               |
 | `FEATURE_FLAGS`  | `FeatureFlags`     | Feature flag lookups            |
-| `METRICS`        | `MetricsRecorder`  | Legacy metrics recorder         |
 | `FETCH`          | `fetch`            | Raw fetch function              |
 | `EVENT_RECORDER` | `EventRecorder`    | Structured event recording      |
 | `LOCALE`         | `LocaleAttributes` | `{ lang, dir }` (if configured) |
@@ -56,7 +54,7 @@ This is `@finesoft/front`, a TypeScript framework built with Vite+ workspaces. P
 3. Web URL, SSR and structured tree navigation share guarded page loading.
 4. Browser admission prevents stale results from committing; structured tree edits serialize.
 5. SSR materializes public data before request cleanup; HTTP streams retain resources through consumption/cancellation/failure.
-6. Hydrate before optional session restore; renderer handles preserve same-entry drafts and dispose native views on replacement.
+6. Hydrate before optional session restore; native keyed components retain hidden entries and reset on page type changes; hosts restore DOM state only after revision acknowledgement.
 
 ### Browser History and Scroll Restoration
 
@@ -111,7 +109,7 @@ Release locally with `vp run changeset` followed by `vp run release`. The automa
 | Factory functions    | `create*`, `make*`     | `createServer`, `makeFlowAction`    |
 | Type predicates      | `is*`                  | `isFlowAction`, `isCompoundAction`  |
 | Constants            | `SCREAMING_SNAKE_CASE` | `ACTION_KINDS`, `DEP_KEYS`          |
-| Classes / interfaces | `PascalCase`           | `Framework`, `Logger`, `RouteMatch` |
+| Classes / interfaces | `PascalCase`           | `WebAppView`, `Logger`, `RouteMatch` |
 
 ### Exports
 

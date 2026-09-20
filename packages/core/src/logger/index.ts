@@ -1,4 +1,3 @@
-export { BaseLogger } from "./base";
 export { CompositeLogger, CompositeLoggerFactory } from "./composite";
 export { ConsoleLogger, ConsoleLoggerFactory } from "./console";
 export {

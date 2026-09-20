@@ -1,19 +1,16 @@
-import type { Action, BasePage } from "@finesoft/front/browser";
+import { Outlet, type WebAppView } from "@finesoft/front/react";
+import type { BasePage } from "@finesoft/front/web";
+import { views } from "./views";
 
 interface AppProps {
-    page?: BasePage | null;
-    loading?: boolean;
-    onAction?: (action: Action) => void;
+    readonly app: WebAppView;
 }
 
-export default function App({ page, loading = false }: AppProps) {
-    if (loading) {
-        return (
-            <main style={{ padding: "2rem", textAlign: "center", color: "#999" }}>Loading…</main>
-        );
-    }
-    if (!page) return null;
+export default function App({ app }: AppProps) {
+    return <Outlet app={app} views={views} />;
+}
 
+export function Page({ page }: { readonly page: BasePage }) {
     const anyPage = page as BasePage & {
         email?: string;
         avatarUrl?: string;

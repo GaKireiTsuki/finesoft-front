@@ -1,14 +1,13 @@
 import type { Logger, LoggerFactory } from "../logger/types";
+import type { EventRecorder } from "../metrics/types";
+import type { LocaleAttributes, Translator } from "../i18n/types";
+import type { PlatformInfo } from "../utils/platform";
+import { createToken } from "./token";
 // ===== 重新导出 Logger 类型 =====
 export type { Logger, LoggerFactory };
 export type { TranslationMessages } from "../i18n/messages";
 
 // ===== 依赖接口 =====
-
-/** 网络请求层 */
-export interface Net {
-    fetch(url: string, options?: RequestInit): Promise<Response>;
-}
 
 /** 存储接口 */
 export interface Storage {
@@ -31,38 +30,22 @@ export interface FeatureFlagsProvider {
     getNumber?(key: string): number | undefined;
 }
 
-/** Metrics 记录器 */
-export interface MetricsRecorder {
-    /** 记录一条事件（通用方法） */
-    record(type: string, fields?: Record<string, unknown>): void;
-    /** 记录页面访问（便捷方法） */
-    recordPageView(page: string, fields?: Record<string, unknown>): void;
-    /** 记录自定义事件（便捷方法） */
-    recordEvent(name: string, fields?: Record<string, unknown>): void;
-    /** 刷新待发送队列 */
-    flush?(): Promise<void>;
-    /** 销毁记录器 */
-    destroy?(): void;
-}
-
-// ===== 依赖 Key 常量 =====
+// ===== Service tokens =====
 
 export const DEP_KEYS = {
-    LOGGER: "logger",
-    LOGGER_FACTORY: "loggerFactory",
-    NET: "net",
-    STORAGE: "storage",
-    FEATURE_FLAGS: "featureFlags",
-    METRICS: "metrics",
-    FETCH: "fetch",
+    LOGGER: createToken<Logger>("logger"),
+    LOGGER_FACTORY: createToken<LoggerFactory>("loggerFactory"),
+    STORAGE: createToken<Storage>("storage"),
+    FEATURE_FLAGS: createToken<FeatureFlags>("featureFlags"),
+    FETCH: createToken<typeof globalThis.fetch>("fetch"),
     /**
      * `fetch` 包了 SSRF 防护（拒绝 private / loopback / 保留 IP + DNS resolve 后逐 IP 校验）。
      * 当 controller 用用户可控的 URL 发起请求（图片代理、链接预览、回调等），
      * 优先 resolve 这个 key 而不是 `FETCH`。要 opt-out 可手动调 `secureFetch(baseFetch, { allowInternalHosts: true })`。
      */
-    SAFE_FETCH: "safeFetch",
-    EVENT_RECORDER: "eventRecorder",
-    LOCALE: "locale",
-    PLATFORM: "platform",
-    TRANSLATOR: "translator",
+    SAFE_FETCH: createToken<typeof globalThis.fetch>("safeFetch"),
+    EVENT_RECORDER: createToken<EventRecorder>("eventRecorder"),
+    LOCALE: createToken<LocaleAttributes>("locale"),
+    PLATFORM: createToken<PlatformInfo>("platform"),
+    TRANSLATOR: createToken<Translator>("translator"),
 } as const;

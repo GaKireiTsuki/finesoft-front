@@ -26,6 +26,7 @@
  */
 
 import { enforceHostGuard, type DnsLookup } from "./target-guard";
+import { fetchWithRedirects } from "./redirect-fetch";
 
 export interface SecureFetchOptions {
     /** Opt out of SSRF defense entirely (default false). */
@@ -34,34 +35,22 @@ export interface SecureFetchOptions {
     validateDns?: boolean;
     /** Required when DNS validation is enabled for a hostname. */
     lookup?: DnsLookup;
+    /** Host transport enforcing policy at connection time; preserves the injected fetch. */
+    wrapFetch?: (baseFetch: typeof globalThis.fetch) => typeof globalThis.fetch;
 }
 
 /**
  * Return a `fetch`-shaped function that refuses requests to private hosts
- * before calling through to `baseFetch`.
+ * before each request. DNS preflight alone cannot pin an arbitrary transport;
+ * select a host connection policy when DNS rebinding protection is required.
  */
 export function secureFetch(
     baseFetch: typeof globalThis.fetch,
     options: SecureFetchOptions = {},
 ): typeof globalThis.fetch {
     const allowInternalHosts = options.allowInternalHosts ?? false;
-    const validateDns = options.validateDns ?? true;
-
-    return async function secureFetchImpl(
-        input: string | Request | URL,
-        init?: RequestInit,
-    ): Promise<Response> {
-        if (!allowInternalHosts) {
-            const url = extractUrl(input);
-            if (url) await enforceHostGuard(url, { validateDns, lookup: options.lookup });
-        }
-        return baseFetch(input, init);
-    };
-}
-
-function extractUrl(input: string | Request | URL): string | null {
-    if (typeof input === "string") return input;
-    if (input instanceof URL) return input.toString();
-    if ("url" in input) return input.url;
-    return null;
+    if (allowInternalHosts) return baseFetch;
+    const fetch = options.wrapFetch?.(baseFetch) ?? baseFetch;
+    return (input, init) =>
+        fetchWithRedirects(fetch, input, init, (url) => enforceHostGuard(url, options));
 }

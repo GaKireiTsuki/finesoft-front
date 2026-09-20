@@ -2,7 +2,7 @@
  * PrefetchedIntents — SSR 数据缓存
  *
  * 服务端渲染时将 Intent→Data 映射序列化嵌入 HTML，
- * 客户端 hydrate 时提取缓存。Framework.dispatch() 优先查缓存，
+ * 客户端 hydrate 时提取缓存。页面 handler 在策略通过后读取缓存，
  * 命中则直接返回，未命中则走 Controller 调度。
  */
 

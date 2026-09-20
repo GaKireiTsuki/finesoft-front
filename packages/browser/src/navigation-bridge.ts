@@ -131,7 +131,7 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
     let popSequence = 0;
 
     // ===== 快照 → history =====
-    const unsubscribe = controller.subscribe((snapshot) => {
+    const unsubscribe = controller.onCommit((snapshot) => {
         if (isApplyingHistory) {
             // 该快照源于 popstate 的 hydrate：地址栏/历史栈已是目标状态，不再回写。
             return;

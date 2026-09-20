@@ -1,3 +1,4 @@
+import { routePages } from "../helpers/definition";
 import { describe, expect, test } from "vite-plus/test";
 import { definePage } from "../../src/application/page";
 import { defineWebApp } from "../../src/application/definition";
@@ -21,9 +22,8 @@ describe("typed page references", () => {
         expect(first.entryId).not.toBe(second.entryId);
         expect(page.bindView("product", "view")).toEqual({ product: "view" });
         const app = defineWebApp({
+            pages: routePages([page], [page.route("/product/:id")]),
             id: "test",
-            controllers: [page],
-            routes: [page.route("/product/:id")],
             getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }),
         });
         const plan = getWebPlan(app),

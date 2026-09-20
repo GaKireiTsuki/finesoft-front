@@ -1,18 +1,14 @@
-import type { BrowserAppHandle } from "@finesoft/front/browser";
-import type { Framework } from "@finesoft/front/web";
+import type { ViewProps } from "@finesoft/front/react";
 import type { HomePage } from "../lib/models/page";
 import { getHomeLocale } from "../lib/locale";
 
 export default function Home({
     page,
-    controller,
-    framework,
+    app,
 }: {
     page: HomePage;
-    controller?: BrowserAppHandle;
-    framework?: Framework;
-}) {
-    const locale = getHomeLocale(framework);
+} & Pick<ViewProps, "app">) {
+    const locale = getHomeLocale(app);
     return (
         <section className="page">
             <h1>{page.title}</h1>
@@ -20,11 +16,7 @@ export default function Home({
             <ul className="feed">
                 {page.items.map((item) => (
                     <li key={item.id}>
-                        <button
-                            onClick={() =>
-                                void controller?.navigation?.push("detail", { id: item.id })
-                            }
-                        >
+                        <button onClick={() => void app.navigation.navigate(`/item/${item.id}`)}>
                             {item.title}
                         </button>
                     </li>

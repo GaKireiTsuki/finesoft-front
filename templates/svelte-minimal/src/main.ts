@@ -1,28 +1,34 @@
-import { startBrowserApp } from "@finesoft/front/browser";
-import { createSvelteRenderer } from "@finesoft/front/renderers/svelte/browser";
+import { createBrowserApp } from "@finesoft/front/browser";
+import { hydrate, mount, unmount } from "svelte";
 import { app } from "./app-definition";
 import { appId } from "./config";
-import { createInstance } from "./instance";
-import { views } from "./views";
+import App from "./App.svelte";
 import "./styles.css";
 
-export function mountApplication(
+export async function mountApplication(
     target: HTMLElement,
     persistenceKey = appId,
     history: "browser" | "memory" = "browser",
     url?: string,
 ) {
-    const { nameStore, profileProvider } = createInstance();
-    return startBrowserApp({
-        app,
+    const handle = await createBrowserApp({
+        definition: app,
         target,
         history,
         url,
         persistenceKey,
         domRestore: true,
-        session: { providers: [profileProvider] },
-        renderer: createSvelteRenderer({ ...views, props: () => ({ nameStore }) }),
+        session: {},
     });
+    if (!handle.hydrate) target.replaceChildren();
+    const root = (handle.hydrate ? hydrate : mount)(App, { target, props: { app: handle } });
+    const originalDispose = handle.dispose.bind(handle);
+    let disposal: Promise<void> | undefined;
+    Object.assign(handle, {
+        dispose: () => (disposal ??= originalDispose().finally(() => unmount(root))),
+    });
+    await handle.ready;
+    return handle;
 }
 
 export const started = mountApplication(document.getElementById("app")!);

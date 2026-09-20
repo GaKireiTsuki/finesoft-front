@@ -1,36 +1,20 @@
-import type { Action } from "@finesoft/front/web";
-import { NAV_LINKS } from "../actions";
-
 interface NavigationProps {
     currentPath?: string;
-    onAction?: (action: Action) => void;
 }
-
-export default function Navigation({ currentPath = "/", onAction }: NavigationProps) {
-    const handleNav = (action: Action) => (event: React.MouseEvent<HTMLAnchorElement>) => {
-        if (
-            !onAction ||
-            event.defaultPrevented ||
-            event.button !== 0 ||
-            event.metaKey ||
-            event.ctrlKey ||
-            event.shiftKey ||
-            event.altKey
-        ) {
-            return;
-        }
-        event.preventDefault();
-        onAction(action);
-    };
-
+const links = [
+    { label: "Home", href: "/" },
+    { label: "Search", href: "/search" },
+    { label: "About", href: "/about" },
+    { label: "GitHub", href: "https://github.com/nicepkg/finesoft" },
+] as const;
+export default function Navigation({ currentPath = "/" }: NavigationProps) {
     return (
         <nav className="navigation">
-            {NAV_LINKS.map((link) => (
+            {links.map((link) => (
                 <a
                     key={link.label}
-                    href={link.path ?? link.action.url}
-                    className={`navigation-link${link.path !== null && currentPath === link.path ? " active" : ""}`}
-                    onClick={handleNav(link.action)}
+                    href={link.href}
+                    className={`navigation-link${currentPath === link.href ? " active" : ""}`}
                 >
                     {link.label}
                 </a>

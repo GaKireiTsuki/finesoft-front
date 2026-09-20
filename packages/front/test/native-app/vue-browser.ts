@@ -1,17 +1,15 @@
-import { startBrowserApp } from "@finesoft/front/browser";
-import { createVueRenderer } from "@finesoft/front/renderers/vue/browser";
-import Other from "./VueOther.vue";
-import Chrome from "./VueChrome.vue";
-import Probe from "./VueProbe.vue";
+import { createBrowserApp } from "@finesoft/front/browser";
+import { createApp, createSSRApp } from "vue";
+import App from "./VueApp.vue";
 import { definition } from "./definition";
-const mode = new URL(location.href).searchParams.get("mode") === "entries" ? "entries" : "root";
-const renderer = createVueRenderer({
-    mode,
-    chrome: new URL(location.href).searchParams.has("chrome") ? Chrome : undefined,
-    views: { probe: Probe, other: Other },
-});
+import type { BeforeLoadGuard } from "@finesoft/front/web";
 const changes = new WeakMap<object, (type: string) => void>();
+const guards = new WeakMap<object, { beforeLoad?: BeforeLoadGuard }>();
 export const setType = (app: object, type: string) => changes.get(app)?.(type);
+export const setGuard = (app: object, guard?: BeforeLoadGuard) => {
+    const state = guards.get(app);
+    if (state) state.beforeLoad = guard;
+};
 export async function mount(
     target: HTMLElement,
     key: string,
@@ -20,9 +18,9 @@ export async function mount(
     history: "memory" | "browser" = "memory",
     pageType = "probe",
 ) {
-    const state = { pageType };
-    const handle = await startBrowserApp({
-        app: definition(
+    const state: { pageType: string; beforeLoad?: BeforeLoadGuard } = { pageType };
+    const handle = await createBrowserApp({
+        definition: definition(
             locale,
             label,
             state,
@@ -35,16 +33,29 @@ export async function mount(
                 : new URL(location.href).searchParams.get("render") === "prerender"
                   ? "/static"
                   : "/"),
-        renderer,
         target,
         history,
         persistenceKey: key,
         session: {},
         domRestore: true,
     });
+    const root = (handle.hydrate ? createSSRApp : createApp)(App, { app: handle });
+    root.mount(target);
+    const dispose = handle.dispose.bind(handle);
+    Object.assign(handle, {
+        dispose: async () => {
+            try {
+                await dispose();
+            } finally {
+                root.unmount();
+            }
+        },
+    });
+    await handle.ready;
     changes.set(handle, (type) => (state.pageType = type));
+    guards.set(handle, state);
     return handle;
 }
 const a = await mount(document.getElementById("a")!, "native-a");
 const b = await mount(document.getElementById("b")!, "native-b", "ar", "second");
-Object.assign(globalThis, { apps: { a, b }, mount, setType, ready: true });
+Object.assign(globalThis, { apps: { a, b }, mount, setType, setGuard, ready: true });

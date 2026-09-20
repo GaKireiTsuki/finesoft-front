@@ -4,7 +4,7 @@ import { SESSION_DEFAULT_VERSION } from "../../src/session/types";
 import type { SessionSnapshot } from "../../src/session/types";
 
 const snap = (over: Partial<SessionSnapshot> = {}): SessionSnapshot => ({
-    version: 1,
+    version: SESSION_DEFAULT_VERSION,
     slices: {},
     scoped: {},
     capturedAt: 1000,
@@ -21,20 +21,23 @@ describe("encode/decode snapshot", () => {
             slices: { theme: "dark" },
             scoped: { "home {}": { scroll: 40 } },
         });
-        expect(decodeSnapshot(encodeSnapshot(s), 1)).toEqual(s);
+        expect(decodeSnapshot(encodeSnapshot(s), SESSION_DEFAULT_VERSION)).toEqual(s);
     });
 
-    test("round-trips a flat url location", () => {
+    test("rejects the version-1 URL-only navigation payload", () => {
         const s = snap({
-            navigation: { entryId: "fixture-flat", url: "/posts/7" },
+            navigation: {
+                entryId: "fixture-flat",
+                url: "/posts/7",
+            } as unknown as import("../../src/session/types").SessionSnapshot["navigation"],
             slices: { q: "x" },
         });
-        expect(decodeSnapshot(encodeSnapshot(s), 1)).toEqual(s);
+        expect(decodeSnapshot(encodeSnapshot(s), SESSION_DEFAULT_VERSION)).toBeUndefined();
     });
 
     test("round-trips a snapshot with no navigation", () => {
         const s = snap({ slices: { theme: "light" }, scoped: { "k {}": 1 } });
-        expect(decodeSnapshot(encodeSnapshot(s), 1)).toEqual(s);
+        expect(decodeSnapshot(encodeSnapshot(s), SESSION_DEFAULT_VERSION)).toEqual(s);
     });
 
     test("undefined raw → undefined", () => {

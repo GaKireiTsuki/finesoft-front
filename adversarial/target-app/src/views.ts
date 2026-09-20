@@ -1,2 +1,2 @@
-import App from "./App";
-export const views = { views: { "*": App } };
+import { Page } from "./App";
+export const views = { "*": Page };

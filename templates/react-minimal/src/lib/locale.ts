@@ -1,10 +1,10 @@
-import type { Framework } from "@finesoft/front/web";
+import type { WebAppView } from "@finesoft/front/react";
 
 /** Both SSR and hydrated views read the translator from their own application. */
-export function getHomeLocale(framework?: Framework) {
-    const translator = framework?.getTranslator();
+export function getHomeLocale(app?: WebAppView) {
+    const translator = app?.translator;
     return {
-        lang: framework?.getLocale()?.lang ?? "unknown",
+        lang: app?.locale?.lang ?? "unknown",
         label: translator?.t("home.localeLabel") ?? "Current locale",
         badge:
             translator?.t("home.runtimeBadge") ??

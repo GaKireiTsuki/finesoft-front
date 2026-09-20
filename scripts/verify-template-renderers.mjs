@@ -249,7 +249,8 @@ try {
             assert.equal(await page.locator("#app").getAttribute("lang"), "zh-Hans");
             await page.evaluate(async () => {
                 const { started, mountApplication } = await import("/src/main.ts");
-                await started;
+                const firstHandle = await started;
+                await firstHandle.ready;
                 const { app } = await import("/src/app-definition.ts");
                 const english = await app.loadMessages("en-US");
                 if (english["home.localeLabel"] !== "Current locale")
@@ -262,6 +263,7 @@ try {
                     "isolated-second-app",
                     "memory",
                 );
+                await window.__secondApp.ready;
             });
             const first = page.locator("#app"),
                 second = page.locator("#second-app");
@@ -290,6 +292,7 @@ try {
                     "memory",
                     "/does-not-exist",
                 );
+                await window.__secondApp.ready;
             });
             await second.getByRole("heading", { name: "Error 404", exact: true }).waitFor();
             await second.getByRole("link", { name: "← Go Home", exact: true }).click();

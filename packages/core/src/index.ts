@@ -1,7 +1,5 @@
-export { IntentDispatcher } from "./intents/dispatcher";
-export type { Intent, IntentController } from "./intents/types";
 export { Container } from "./dependencies/container";
-export { defineRequestScopedKey, type RequestScopedKey } from "./dependencies/request-scoped-key";
+export type { Intent } from "./intents/types";
 export {
     bool,
     int,
@@ -33,7 +31,6 @@ export type {
     StrOptions,
     StripOptional,
 } from "./schema/index";
-export { BaseLogger } from "./logger/base";
 export { CompositeLogger, CompositeLoggerFactory } from "./logger/composite";
 export { ConsoleLogger, ConsoleLoggerFactory } from "./logger/console";
 export {
@@ -53,6 +50,7 @@ export type {
 } from "./http/client";
 export { classifyHost, classifyUrl, type HostCheckResult } from "./http/host-guard";
 export { secureFetch, type SecureFetchOptions } from "./http/secure-fetch";
+export { fetchWithRedirects } from "./http/redirect-fetch";
 export { BaseController } from "./intents/base-controller";
 export { mapEach, pipe, pipeAsync } from "./data/mapper";
 export type { AsyncMapper, Mapper } from "./data/mapper";
@@ -61,6 +59,13 @@ export { isNone, isSome, type None, type Optional } from "./utils/optional";
 export { detectPlatform, type PlatformInfo } from "./utils/platform";
 export { buildUrl, getBaseUrl, removeHost, removeQueryParams, removeScheme } from "./utils/url";
 export { generateUuid } from "./utils/uuid";
+export { compilePath } from "./routing/path";
+export type {
+    CompiledPath,
+    PathDescriptor,
+    PathParameterDescriptor,
+    PathParams,
+} from "./routing/path";
 export { CompositeEventRecorder } from "./metrics/composite-recorder";
 export { ConsoleEventRecorder } from "./metrics/console-recorder";
 export type { EventRecorder, ImpressionEntry, MetricsFieldsProvider } from "./metrics/types";
@@ -88,8 +93,6 @@ export type {
     FeatureFlags,
     FeatureFlagsProvider,
     Logger,
-    MetricsRecorder,
-    Net,
     Storage,
     TranslationMessages,
 } from "./dependencies/make-dependencies";

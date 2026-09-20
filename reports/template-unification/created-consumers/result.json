@@ -1,42 +1,48 @@
 {
-  "tarball": "/Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries/reports/application-boundaries/final-delivery/packed/finesoft-front-0.5.1.tgz",
-  "tarballSha256": "6cc3ee4da2e673d9b2f916ec986acdf1fe6a6d068bc2414d23d0cf179f75adba",
+  "tarball": "/Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries/reports/template-unification/packed/finesoft-front-0.5.1.tgz",
+  "tarballSha256": "65d369f29606dadf824b7653508823c40333d5a360470693cd3195c84e2de100",
   "result": [
     {
       "name": "react",
       "independentConfiguration": "passed",
+      "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 155426
+      "ssrBytes": 143543
     },
     {
       "name": "react-minimal",
       "independentConfiguration": "passed",
+      "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 150980
+      "ssrBytes": 141008
     },
     {
       "name": "vue",
       "independentConfiguration": "passed",
+      "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 163778
+      "ssrBytes": 150969
     },
     {
       "name": "vue-minimal",
       "independentConfiguration": "passed",
+      "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 153720
+      "ssrBytes": 144267
     },
     {
       "name": "svelte",
       "independentConfiguration": "passed",
+      "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 213997
+      "ssrBytes": 205902
     },
     {
       "name": "svelte-minimal",
       "independentConfiguration": "passed",
+      "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 208879
+      "ssrBytes": 202119
     }
   ]
 }

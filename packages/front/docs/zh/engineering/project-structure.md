@@ -9,7 +9,7 @@ React、Vue、Svelte 的六个模板保留 full、minimal 两档。同档位的�
 | Full    | 首页 `/`、商品 `/products/:id`、搜索 `/search?q=...`、关于 `/about` | SSR、关于页 CSR、URL 动作、类型化参数、DI、数据映射与 HTTP 客户端、认证和 SEO 守卫 |
 | Minimal | Feed `/`、详情 `/item/:id`、Notes `/notes`                          | 标签与栈导航、页面草稿、全局资料、会话恢复、JSON 语言文件和 SSR 水合               |
 
-Full 使用整页 renderer；minimal 使用 entries renderer，导航栏与页面实例分别渲染。这是两类业务示例，不代表框架能力的高低。
+两档模板都使用一个原生 App，布局包住 Outlet。这是两类业务示例，不代表框架能力的高低。
 
 ## 文件职责
 
@@ -25,11 +25,10 @@ src/components/        # full 的可复用展示组件
 src/lib/controllers/   # BaseController 页面加载器及显式公开数据
 src/lib/models/        # 页面与数据类型
 src/styles.css         # 同档位一致的样式
-src/instance.ts        # minimal：每次挂载创建独立的资料 store/provider
 src/locales/           # minimal：en-US 与 zh-Hans 语言文件
 ```
 
-Full 的商品数据、mapper、HTTP 客户端和守卫继续放在 `src/lib/`，导航动作集中在 `src/actions.ts`。Minimal 的导航栏直接使用 renderer 传入的已提交快照，仅资料 store 需要按原生组件生命周期订阅。历史记录、页面就绪、实例生存期和会话恢复由框架负责。
+Full 的商品数据、mapper、HTTP 客户端和守卫继续放在 `src/lib/`。Minimal 通过原生 useSnapshot 绑定读取已提交快照。资料状态与组件根归原生应用所有，框架负责导航事务与持久化。
 
 ## 控制器与页面声明
 
@@ -41,7 +40,7 @@ Full 的商品数据、mapper、HTTP 客户端和守卫继续放在 `src/lib/`�
 
 Minimal 的详情输入框和 Notes 文本框标记 `data-restore-root`。切换标签保留草稿，刷新恢复草稿；返回并移除详情实例后，其草稿被销毁。姓名属于当前应用实例的全局资料，可跨标签、跨刷新恢复。嵌入第二个应用时，调用 `mountApplication(target, persistenceKey, "memory", "/notes")` 并使用独立的存储键。
 
-三套 minimal 默认 `zh-Hans`。修改 `src/app-definition.ts` 中的 `frameworkConfig.locale` 为 `en-US` 或 `zh-Hans` 后重新启动或构建。该示例展示语言文件加载及水合后的翻译；导航标签和示例条目保持英文。
+三套 minimal 默认 `zh-Hans`。修改 `src/app-definition.ts` 中的 `configuration.locale` 为 `en-US` 或 `zh-Hans` 后重新启动或构建。该示例展示语言文件加载及水合后的翻译；导航标签和示例条目保持英文。
 
 Full 的 `/admin` 在缺少认证时重定向至 `/login?from=...`；实际登录页和认证服务由应用补充。示例 `auth_token` cookie 用于演示守卫放行。
 

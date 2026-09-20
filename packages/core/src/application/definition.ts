@@ -33,8 +33,7 @@ export function defineApp(app: AppDefinition): AppDefinition {
 export function configuration(message: string): never {
     throw new ExecutionError("configuration", message);
 }
-export function normalize(options: RuntimeOptions) {
-    const { app } = options;
+function analyze(app: AppDefinition) {
     if (!app.id) configuration("Application ID must not be empty");
     const modules = new Map<string, ModuleDefinition>();
     for (const module of app.modules ?? []) {
@@ -93,6 +92,53 @@ export function normalize(options: RuntimeOptions) {
                 configuration(`Duplicate implementation: ${impl.operation.id}`);
             implementations.set(impl.operation, impl);
         }
+    return { operations, implementations, providers, policies };
+}
+
+const structures = new WeakMap<AppDefinition, ReturnType<typeof analyze>>();
+function reusable(app: AppDefinition): boolean {
+    const arraysFrozen = (value: object, keys: readonly string[]) =>
+        keys.every((key) => {
+            const array = (value as Record<string, unknown>)[key];
+            return array === undefined || Object.isFrozen(array);
+        });
+    return [app, ...(app.modules ?? [])].every(
+        (owner) =>
+            Object.isFrozen(owner) &&
+            arraysFrozen(owner, [
+                "modules",
+                "dependsOn",
+                "operations",
+                "implementations",
+                "providers",
+                "policies",
+            ]) &&
+            (owner.operations ?? []).every(
+                (op) =>
+                    Object.isFrozen(op) &&
+                    arraysFrozen(op, ["policies", "capabilities"]) &&
+                    (!op.cache || (Object.isFrozen(op.cache) && arraysFrozen(op.cache, ["tags"]))),
+            ) &&
+            (owner.implementations ?? []).every(Object.isFrozen) &&
+            (owner.providers ?? []).every(
+                (provider) =>
+                    Object.isFrozen(provider) &&
+                    arraysFrozen(provider, ["dependencies", "capabilities"]),
+            ),
+    );
+}
+
+/** Reuse immutable application structure; validate every host override and capability separately. */
+export function normalize(options: RuntimeOptions) {
+    const { app } = options;
+    let base = structures.get(app);
+    if (!base) {
+        base = analyze(app);
+        if (reusable(app)) structures.set(app, base);
+    }
+    const { operations, policies } = base;
+    const implementations = new Map(base.implementations);
+    const providers = new Map(base.providers);
     const overrides = new Set<AnyOperation>();
     for (const impl of options.implementations ?? []) {
         if (operations.get(impl.operation.id) !== impl.operation)

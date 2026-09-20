@@ -83,7 +83,7 @@ test("slice versions migrate or discard independently and duplicate keys reject"
     store.register(broken);
     expect(() => store.register(good)).toThrow(/duplicate/i);
     const result = await store.restore({
-        version: 1,
+        version: 2,
         capturedAt: 1,
         scoped: {},
         slices: {
@@ -124,7 +124,7 @@ test("a delayed read settles before restore, and failed writes/clear are observa
     expect(restore).not.toHaveBeenCalled();
     resolveRead(
         JSON.stringify({
-            version: 1,
+            version: 2,
             capturedAt: 1,
             scoped: {},
             slices: { draft: { version: 2, data: "saved" } },

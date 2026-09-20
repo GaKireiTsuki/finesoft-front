@@ -332,7 +332,6 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             expect.objectContaining({
                 root: "/project",
                 vite: server,
-                isProduction: false,
                 ssrEntryPath: "/src/entry.ts",
                 renderModes: { "/docs": "csr" },
                 defaultLocale: "en-US",

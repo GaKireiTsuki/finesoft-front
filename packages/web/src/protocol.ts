@@ -1,21 +1,24 @@
 import { deserializeNavigation } from "./navigation/serialization";
+import type { SerializedNavigation } from "./navigation/serialization";
 import { collectAllLeaves } from "./navigation/operations";
 import type { PrefetchedIntent } from "./prefetched-intents/prefetched-intents";
 
-export const FRAMEWORK_PROTOCOL_VERSION = 1;
-export const NAVIGATION_WIRE_INTENT = "@finesoft/navigation-tree";
+export const FRAMEWORK_PROTOCOL_VERSION = 2;
 declare const __FINESOFT_BUILD_ID__: string | undefined;
-/** Injected by finesoftFrontViteConfig in both bundles. Custom bundlers supply buildId explicitly. */
 export function getFrameworkBuildId(): string {
     return typeof __FINESOFT_BUILD_ID__ === "string" ? __FINESOFT_BUILD_ID__ : "unbundled";
+}
+export interface WebHydration {
+    readonly tree?: SerializedNavigation;
+    readonly pages: PrefetchedIntent[];
 }
 export interface WireEnvelope {
     readonly protocolVersion: number;
     readonly buildId: string;
-    readonly payload: PrefetchedIntent[];
+    readonly payload: WebHydration;
 }
 export type WireDecodeResult =
-    | { readonly status: "ready"; readonly data: PrefetchedIntent[] }
+    | { readonly status: "ready"; readonly data: WebHydration }
     | {
           readonly status: "fresh-load";
           readonly code:
@@ -37,44 +40,34 @@ export function decodeWireEnvelope(
     if (value.protocolVersion !== FRAMEWORK_PROTOCOL_VERSION)
         return { status: "fresh-load", code: "protocol-mismatch" };
     if (value.buildId !== buildId) return { status: "fresh-load", code: "build-mismatch" };
-    if (!Array.isArray(value.payload)) return invalid;
-    const ids = new Set<string>();
-    let treeEntries: Map<string, string> | undefined;
-    for (const item of value.payload) {
+    if (!record(value.payload) || !Array.isArray(value.payload.pages) || !value.payload.tree)
+        return invalid;
+    let leaves;
+    try {
+        leaves = collectAllLeaves(deserializeNavigation(value.payload.tree));
+    } catch {
+        return invalid;
+    }
+    const entries = new Map(leaves.map((leaf) => [leaf.entryId, leaf]));
+    const seen = new Set<string>();
+    for (const page of value.payload.pages) {
         if (
-            !record(item) ||
-            !record(item.intent) ||
-            typeof item.intent.id !== "string" ||
-            !item.intent.id ||
-            !record(item.data)
+            !record(page) ||
+            typeof page.entryId !== "string" ||
+            seen.has(page.entryId) ||
+            !record(page.intent) ||
+            !record(page.data)
         )
             return invalid;
-        if (item.intent.params !== undefined && !record(item.intent.params)) return invalid;
-        if (item.intent.id === NAVIGATION_WIRE_INTENT) {
-            if (treeEntries || item.data.__finesoftNavigationTree !== true) return invalid;
-            try {
-                treeEntries = new Map(
-                    collectAllLeaves(deserializeNavigation(item.data.tree)).map((leaf) => [
-                        leaf.entryId,
-                        leaf.intent,
-                    ]),
-                );
-            } catch {
-                return invalid;
-            }
-        } else {
-            if (typeof item.entryId !== "string" || !item.entryId.trim() || ids.has(item.entryId))
-                return invalid;
-            ids.add(item.entryId);
-        }
+        const leaf = entries.get(page.entryId);
+        if (
+            !leaf ||
+            leaf.intent !== page.intent.id ||
+            (page.intent.params !== undefined && !record(page.intent.params))
+        )
+            return invalid;
+        if (typeof page.data.pageType !== "string" || !page.data.pageType) return invalid;
+        seen.add(page.entryId);
     }
-    if (treeEntries)
-        for (const item of value.payload) {
-            if (
-                item.intent.id !== NAVIGATION_WIRE_INTENT &&
-                treeEntries.get(item.entryId) !== item.intent.id
-            )
-                return invalid;
-        }
-    return { status: "ready", data: value.payload as PrefetchedIntent[] };
+    return { status: "ready", data: value.payload as unknown as WebHydration };
 }

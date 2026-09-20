@@ -1,4 +1,3 @@
-import { Framework, defineWebApp } from "@finesoft/web";
 import { leaf } from "../../web/test/helpers/navigation";
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import type { Logger } from "@finesoft/core";
@@ -60,7 +59,6 @@ vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 import {
     createActiveLeafCodec,
     createFullStateCodec,
-    createNavigationController,
     deserializeNavigation,
     serializeNavigation,
     stack,
@@ -176,11 +174,7 @@ describe("createNavigationBridge", () => {
         // 关键不变量：popstate 触发的 hydrate 不回写 history。
         expect(history.pushState).not.toHaveBeenCalled();
         // settings 是新可见目标，被 dispatch。
-        expect(dispatch).toHaveBeenCalledWith(
-            expect.objectContaining({ id: "settings" }),
-            expect.anything(),
-            expect.objectContaining({ signal: expect.any(AbortSignal) }),
-        );
+        expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ id: "settings" }));
     });
 
     test("popstate falls back to codec.decode when no cached state is present", async () => {
@@ -339,45 +333,65 @@ describe("createNavigationBridge", () => {
 // 测试辅助
 // =====================================================================
 
-/** 用真实 controller + codec 做集成；intentDispatcher/router 用最小 fake。 */
+/** A native host owns admission and page commits.  The bridge only needs this boundary. */
 function makeController(initial: NavigationNode): {
-    controller: NavigationController;
+    controller: NavigationController & { resolve(): Promise<unknown> };
     dispatch: ReturnType<typeof vi.fn>;
 } {
-    const dispatch = vi.fn(
-        async (intent: Intent<BasePage>, _container: unknown, _context: unknown) =>
-            makePage(intent.id),
-    );
-    const framework = Framework.create({
-        definition: defineWebApp({
-            id: "bridge-test",
-            controllers: ["home", "settings", "dashboard", "reports", "z", "product", "about"].map(
-                (id) => ({
-                    id,
-                    handler: (params, context) =>
-                        dispatch({ id, params }, context.container, context),
-                }),
-            ),
-            routes: ["home", "settings", "dashboard", "reports", "z", "product", "about"].map(
-                (id) => ({
-                    path: id === "product" ? "/products/:id" : "/" + id,
-                    intentId: id,
-                }),
-            ),
-            getErrorPage: (_status, title) => ({ id: "error", pageType: "error", title }),
-        }),
-    });
-    const controller = createNavigationController({
-        framework,
-        initial,
-        createContext: ({ intent, params }) => ({
-            container: {} as never,
-            url: "/",
-            navigation: makeNavContext(intent, params),
-        }),
-    });
-
-    return { controller, dispatch };
+    const dispatch = vi.fn(async (intent: Intent<BasePage>) => makePage(intent.id));
+    let tree = initial;
+    let historyMode: "push" | "replace" = "push";
+    const listeners = new Set<(snapshot: unknown) => void>();
+    const snapshot = () =>
+        ({
+            tree,
+            destinations: [{ entryId: activeLeaf(tree).entryId }],
+            historyMode,
+        }) as never;
+    let current = snapshot();
+    const commit = async () => {
+        await dispatch({ id: activeLeaf(tree).intent, params: activeLeaf(tree).params });
+        current = snapshot();
+        for (const listener of listeners) listener(current);
+        return current;
+    };
+    const controller = {
+        getTree: () => tree,
+        getSnapshot: () => current,
+        onCommit: (listener: (value: unknown) => void) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+        subscribe: (listener: (value: unknown) => void) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+        resolve: commit,
+        refresh: commit,
+        push: async (intent: string, params: RouteParams = {}) => {
+            tree = stack([tree, leaf(intent, params)]);
+            return commit();
+        },
+        replaceTop: async (intent: string, params: RouteParams = {}) => {
+            tree = stack([leaf(intent, params)]);
+            historyMode = "replace";
+            return commit();
+        },
+        pop: commit,
+        popToRoot: commit,
+        selectTab: commit,
+        selectColumn: commit,
+        reuseEntry: commit,
+        hydrate: async (next: NavigationNode) => {
+            tree = next;
+            return commit();
+        },
+        cancel: vi.fn(),
+    };
+    return {
+        controller: controller as unknown as NavigationController & { resolve(): Promise<unknown> },
+        dispatch,
+    };
 }
 
 /**
@@ -400,26 +414,34 @@ function makeFakeController() {
         selectTab: vi.fn(async () => snapshot),
         selectColumn: vi.fn(async () => snapshot),
         hydrate: vi.fn(async () => snapshot),
+        onCommit: vi.fn(() => () => undefined),
         subscribe: vi.fn(() => () => undefined),
         resolve: vi.fn(async () => snapshot),
     };
 }
 
-function makeNavContext(intent: string, params: RouteParams) {
+function makeRouter(routes: string[]): NavigationRouterLike {
+    const definitions = routes.map((route) => {
+        const [path, intentId] = route.split(" → ");
+        return { path, intentId };
+    });
     return {
-        url: "/",
-        path: "/",
-        params,
-        intent: { id: intent, params },
-        isServer: false,
-        container: {} as never,
-        getCookie: () => undefined,
-        getHeader: () => undefined,
-    };
+        getRoutes: () => routes,
+        reverse(intentId: string, params: RouteParams = {}) {
+            const route = definitions.find((definition) => definition.intentId === intentId);
+            if (!route) return undefined;
+            return route.path.replace(/:([A-Za-z][A-Za-z0-9_]*)/g, (_all, key: string) =>
+                encodeURIComponent(String(params[key])),
+            );
+        },
+    } as NavigationRouterLike;
 }
 
-function makeRouter(routes: string[]): NavigationRouterLike {
-    return { getRoutes: () => routes };
+function activeLeaf(node: NavigationNode) {
+    if (node.kind === "leaf") return node;
+    if (node.kind === "stack") return activeLeaf(node.entries.at(-1)!);
+    if (node.kind === "tabs") return activeLeaf(node.branches[node.active]!);
+    return activeLeaf(node.columns.at(-1)!.content!);
 }
 
 function makePage(id: string): BasePage {

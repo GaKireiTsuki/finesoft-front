@@ -20,11 +20,12 @@ Earlier versions of the proxy forwarded responses via `response.text()`. `text()
 
 A PNG file starts with `0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A` — the leading `0x89` is not valid UTF-8, so it becomes `0xEF 0xBF 0xBD`. The browser's image decoder sees garbage starting at byte 0 and bails.
 
-The current implementation uses `response.arrayBuffer()` and forwards bytes verbatim:
+The current implementation counts streamed bytes against a 10 MiB limit, then combines the bounded chunks into an `ArrayBuffer`:
 
 ```ts
 // packages/server/src/proxy.ts
-const body = await resp.arrayBuffer();
+const body = await readProxyBody(resp);
+if (!body) return c.text("Proxy response too large", 502);
 return c.newResponse(body, resp.status, respHeaders);
 ```
 
@@ -61,7 +62,7 @@ Different hash = corruption. Same hash = the proxy is fine, look elsewhere.
 
 ## When you'd hit this
 
-If you're on the current version (which uses `arrayBuffer`), you won't. This pitfall exists primarily as historical context for:
+If you're on the current version (which preserves raw bytes), you won't. This pitfall exists primarily as historical context for:
 
 - **Upgrading from an older version** — verify your binary endpoints after upgrade
 - **Building your own custom proxy logic** — if you copy from older examples, you'll reintroduce the bug
@@ -69,7 +70,7 @@ If you're on the current version (which uses `arrayBuffer`), you won't. This pit
 
 ## Custom proxies — get this right
 
-If you write your own proxy code (outside the framework's `registerProxyRoutes`), use `arrayBuffer`:
+Custom proxies must also preserve bytes. The `arrayBuffer` example below requires an independent response-size limit; prefer the framework's bounded reader for untrusted upstreams:
 
 ```ts
 // GOOD
@@ -108,14 +109,9 @@ app.all("/api/*", async (c) => {
 
 `resp.body` is a `ReadableStream`. Returning it directly streams bytes without buffering. But you lose the size-limit guard — only do this if you trust the upstream.
 
-## The size limit lives in two places
+## One implementation enforces both size checks
 
-The framework enforces `MAX_RESPONSE_SIZE = 10 * 1024 * 1024` (10 MB) in two paths:
-
-1. **Runtime** (`registerProxyRoutes`): checks `Content-Length` header first, then `body.byteLength` after fetch
-2. **Generated code** (`generateProxyCode`): the inlined version for serverless emits the same two checks
-
-If you change the limit in one place, change both. The test `generated proxy code embeds the same response size limit as runtime (parity)` enforces this.
+The framework enforces `MAX_RESPONSE_SIZE = 10 * 1024 * 1024` (10 MB) in `registerProxyRoutes`: it checks the `Content-Length` header first, then counts each received chunk and cancels immediately when the limit is exceeded. `generateProxyCode` emits a registration call to this same implementation, so development and deployment cannot drift into different limits. Tests execute generated registration and a built deployment entry, including binary payloads and oversize rejection.
 
 ## Why `Content-Length` and `byteLength` both
 
@@ -124,7 +120,7 @@ If you change the limit in one place, change both. The test `generated proxy cod
 The double check covers both:
 
 - Fast-reject on declared `Content-Length` to avoid downloading 100MB just to reject it
-- Final reject on actual bytes received in case `Content-Length` was missing or lying
+- Immediate rejection when actual received bytes exceed the budget in case `Content-Length` was missing or lying
 
 ## Related
 

@@ -5,7 +5,7 @@
  * 框架统一执行路径校验（SSRF 防护）、Host 限制、错误处理、响应头控制。
  */
 
-import type { Hono } from "hono";
+import { fetchWithRedirects } from "@finesoft/core";
 
 /** 代理路由认证配置 */
 export interface ProxyAuthConfig {
@@ -29,8 +29,19 @@ export interface ProxyRouteConfig {
     auth?: ProxyAuthConfig;
     /** Cache-Control 响应头 */
     cache?: string;
-    /** 是否跟随重定向（默认 false） */
+    /** 是否跟随同源重定向（默认 false）；跨源重定向始终拒绝。 */
     followRedirects?: boolean;
+}
+
+type ProxyRouteRegistrar = (path: string, handler: (context: any) => Promise<Response>) => unknown;
+/** The registration surface used by Hono; portable SSR declarations need no Hono peer. */
+export interface ProxyRouter {
+    all: ProxyRouteRegistrar;
+    get: ProxyRouteRegistrar;
+    post: ProxyRouteRegistrar;
+    put: ProxyRouteRegistrar;
+    delete: ProxyRouteRegistrar;
+    patch: ProxyRouteRegistrar;
 }
 
 /** 代理路径最大长度 */
@@ -85,85 +96,122 @@ function validateConfig(config: ProxyRouteConfig): void {
 }
 
 /**
- * 注册声明式代理路由到 Hono app（运行时使用：dev / preview / createServer）
+ * 注册声明式代理路由到 Hono app（运行时使用：Vite dev / preview / generated hosts）
  */
-export function registerProxyRoutes(app: Hono, configs: ProxyRouteConfig[]): void {
+export function registerProxyRoutes(app: ProxyRouter, configs: ProxyRouteConfig[]): void {
     for (const config of configs) {
         validateConfig(config);
 
         const methods = config.methods ?? ["all"];
         const pattern = `${config.prefix}/*`;
-
-        const handler = async (c: any) => {
-            const subPath = sanitizeProxyPath(c.req.path.replace(config.prefix, ""));
-            if (!subPath) return c.text("Invalid path", 400);
-
-            const targetUrl = new URL(subPath, config.target);
-
-            // 防止开放重定向：校验构建后的 URL origin 不变
-            const expectedOrigin = new URL(config.target).origin;
-            if (targetUrl.origin !== expectedOrigin) {
-                return c.text("Invalid proxy target", 400);
-            }
-
-            // 转发 query 参数
-            const reqUrl = new URL(c.req.url);
-            reqUrl.searchParams.forEach((v, k) => targetUrl.searchParams.set(k, v));
-
-            // 构建请求头
-            const headers: Record<string, string> = { ...config.headers };
-            if (config.auth) {
-                const token = process.env[config.auth.envKey];
-                if (!token) {
-                    console.warn(
-                        `[Proxy ${config.prefix}] Auth env var "${config.auth.envKey}" is not set`,
-                    );
-                } else {
-                    headers.Authorization =
-                        config.auth.type === "bearer" ? `Bearer ${token}` : `Basic ${token}`;
-                }
-            }
-
-            try {
-                const resp = await fetch(targetUrl.toString(), {
-                    headers,
-                    redirect: config.followRedirects ? "follow" : "manual",
-                });
-
-                // 响应大小限制（先检查 Content-Length 头快速拒绝）
-                const contentLength = resp.headers.get("Content-Length");
-                if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
-                    return c.text("Proxy response too large", 502);
-                }
-
-                // 用 arrayBuffer 保留二进制完整性（图片/PDF/protobuf 等）。
-                // text() 会按 UTF-8 强制解码，破坏非文本载荷。
-                const body = await resp.arrayBuffer();
-                if (body.byteLength > MAX_RESPONSE_SIZE) {
-                    return c.text("Proxy response too large", 502);
-                }
-
-                const respHeaders: Record<string, string> = {
-                    "Content-Type": resp.headers.get("Content-Type") ?? "application/json",
-                };
-                if (config.cache) {
-                    respHeaders["Cache-Control"] = config.cache;
-                }
-                return c.newResponse(body, resp.status as any, respHeaders);
-            } catch (e) {
-                console.error(`[Proxy ${config.prefix}]`, e);
-                return c.json({ error: "Proxy request failed" }, 502);
-            }
-        };
+        const handler = createProxyHandler(config);
 
         for (const method of methods) {
-            (app as any)[method](pattern, handler);
+            app[method](pattern, handler);
         }
     }
 }
 
+function createProxyHandler(config: ProxyRouteConfig) {
+    return async (c: any) => {
+        const subPath = sanitizeProxyPath(c.req.path.replace(config.prefix, ""));
+        if (!subPath) return c.text("Invalid path", 400);
+
+        const targetUrl = new URL(subPath, config.target);
+
+        // 防止开放重定向：校验构建后的 URL origin 不变
+        const expectedOrigin = new URL(config.target).origin;
+        if (targetUrl.origin !== expectedOrigin) return c.text("Invalid proxy target", 400);
+
+        // 转发 query 参数
+        const reqUrl = new URL(c.req.url);
+        reqUrl.searchParams.forEach((v, k) => targetUrl.searchParams.set(k, v));
+
+        const headers: Record<string, string> = { ...config.headers };
+        if (config.auth) {
+            // Edge runtimes need not expose a Node process object. Authentication remains
+            // unset there unless the host supplies its own proxy registration config.
+            const token =
+                typeof process !== "undefined" && process.env
+                    ? process.env[config.auth.envKey]
+                    : undefined;
+            if (!token) {
+                console.warn(
+                    `[Proxy ${config.prefix}] Auth env var "${config.auth.envKey}" is not set`,
+                );
+            } else {
+                headers.Authorization =
+                    config.auth.type === "bearer" ? `Bearer ${token}` : `Basic ${token}`;
+            }
+        }
+
+        try {
+            const resp = await fetchWithRedirects(
+                fetch,
+                targetUrl.toString(),
+                { headers, redirect: config.followRedirects ? "follow" : "manual" },
+                (url) => {
+                    if (new URL(url).origin !== expectedOrigin)
+                        throw new TypeError("Invalid proxy redirect target");
+                },
+            );
+
+            // 响应大小限制（先检查 Content-Length 头快速拒绝）
+            const contentLength = resp.headers.get("Content-Length");
+            if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
+                void resp.body?.cancel().catch(() => {});
+                return c.text("Proxy response too large", 502);
+            }
+
+            const body = await readProxyBody(resp);
+            if (!body) {
+                return c.text("Proxy response too large", 502);
+            }
+
+            const respHeaders: Record<string, string> = {
+                "Content-Type": resp.headers.get("Content-Type") ?? "application/json",
+            };
+            if (config.cache) respHeaders["Cache-Control"] = config.cache;
+            return c.newResponse(body, resp.status as any, respHeaders);
+        } catch (e) {
+            console.error(`[Proxy ${config.prefix}]`, e);
+            return c.json({ error: "Proxy request failed" }, 502);
+        }
+    };
+}
+
+/** Bound allocation while preserving binary bytes, even without Content-Length. */
+async function readProxyBody(response: Response): Promise<ArrayBuffer | undefined> {
+    if (!response.body) return new ArrayBuffer(0);
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            size += value.byteLength;
+            if (size > MAX_RESPONSE_SIZE) {
+                void reader.cancel().catch(() => {});
+                return undefined;
+            }
+            chunks.push(value);
+        }
+    } finally {
+        reader.releaseLock();
+    }
+    const body = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+        body.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return body.buffer;
+}
+
 /**
- * 生成代理路由的内联代码（用于 serverless/edge 入口，避免运行时依赖）
+ * 生成代理路由注册代码（用于 serverless/edge 入口）。
+ * 生成的入口从公开 SSR 边界导入 registerProxyRoutes，因此安全策略只有一个运行时实现。
  */
 export function generateProxyCode(configs: ProxyRouteConfig[]): string {
     if (!configs || configs.length === 0) return "";
@@ -173,70 +221,5 @@ export function generateProxyCode(configs: ProxyRouteConfig[]): string {
         validateConfig(config);
     }
 
-    const blocks: string[] = [];
-
-    blocks.push(`
-// ─── 框架声明式代理路由 ───
-function _sanitizeProxyPath(raw) {
-  if (raw.length > 2048) return null;
-  try { if (decodeURIComponent(raw) !== raw) return null; } catch { return null; }
-  if (raw.startsWith("//")) return null;
-  if (!/^[/\\w.\\-~%:@!$&'()*+,;=]*$/.test(raw)) return null;
-  return raw.startsWith("/") ? raw : "/" + raw;
-}
-`);
-
-    for (const config of configs) {
-        const methods = config.methods ?? ["all"];
-        const pattern = `"${config.prefix}/*"`;
-        const headersJson = JSON.stringify(config.headers ?? {});
-        const cacheStr = config.cache ? JSON.stringify(config.cache) : "null";
-        const redirect = config.followRedirects ? '"follow"' : '"manual"';
-
-        let authCode = "";
-        if (config.auth) {
-            const envKey = JSON.stringify(config.auth.envKey);
-            const prefix = config.auth.type === "bearer" ? "Bearer " : "Basic ";
-            authCode = `
-  const _token = (typeof process !== "undefined" && process.env && process.env[${envKey}]) || "";
-  if (_token) _headers.Authorization = "${prefix}" + _token;`;
-        }
-
-        const handlerCode = `async (c) => {
-  const _sub = _sanitizeProxyPath(c.req.path.replace(${JSON.stringify(config.prefix)}, ""));
-  if (!_sub) return c.text("Invalid path", 400);
-  const _target = new URL(_sub, ${JSON.stringify(config.target)});
-  if (_target.origin !== ${JSON.stringify(
-      new URL(config.target).origin,
-  )}) return c.text("Invalid proxy target", 400);
-  const _reqUrl = new URL(c.req.url);
-  _reqUrl.searchParams.forEach((v, k) => _target.searchParams.set(k, v));
-  const _headers = ${headersJson};${authCode}
-  try {
-    const _resp = await fetch(_target.toString(), { headers: _headers, redirect: ${redirect} });
-    // Content-Length 快速拒绝，防止 serverless/edge 加载超大响应到内存
-    const _cl = _resp.headers.get("Content-Length");
-    if (_cl && parseInt(_cl, 10) > ${MAX_RESPONSE_SIZE}) {
-      return c.text("Proxy response too large", 502);
-    }
-    // arrayBuffer 保留二进制完整性
-    const _body = await _resp.arrayBuffer();
-    if (_body.byteLength > ${MAX_RESPONSE_SIZE}) {
-      return c.text("Proxy response too large", 502);
-    }
-    const _rh = { "Content-Type": _resp.headers.get("Content-Type") || "application/json" };
-    if (${cacheStr}) _rh["Cache-Control"] = ${cacheStr};
-    return c.newResponse(_body, _resp.status, _rh);
-  } catch (_e) {
-    console.error("[Proxy ${config.prefix}]", _e);
-    return c.json({ error: "Proxy request failed" }, 502);
-  }
-}`;
-
-        for (const method of methods) {
-            blocks.push(`app.${method}(${pattern}, ${handlerCode});`);
-        }
-    }
-
-    return blocks.join("\n");
+    return `// ─── 框架声明式代理路由 ───\nregisterProxyRoutes(app, ${JSON.stringify(configs)});`;
 }

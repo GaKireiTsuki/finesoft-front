@@ -1,14 +1,12 @@
-import type { BrowserAppHandle } from "@finesoft/front/browser";
-import { createNavigation } from "../app-definition";
+import type { ViewProps } from "@finesoft/front/react";
 import type { ErrorPage } from "../lib/models/page";
 
 export default function NotFound({
     page,
-    controller,
+    app,
 }: {
     page: ErrorPage;
-    controller?: BrowserAppHandle;
-}) {
+} & Pick<ViewProps, "app">) {
     return (
         <section className="page">
             <h1>{page.title}</h1>
@@ -17,7 +15,6 @@ export default function NotFound({
                 href="/"
                 onClick={(event) => {
                     if (
-                        !controller?.navigation ||
                         event.button !== 0 ||
                         event.metaKey ||
                         event.ctrlKey ||
@@ -26,7 +23,7 @@ export default function NotFound({
                     )
                         return;
                     event.preventDefault();
-                    void controller.navigation.hydrate(createNavigation("/")!);
+                    void app.navigation.navigate("/");
                 }}
             >
                 ← Go Home

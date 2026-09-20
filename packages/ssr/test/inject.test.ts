@@ -2,6 +2,32 @@ import { describe, expect, test } from "vite-plus/test";
 import { SSR_PLACEHOLDERS, injectCSRShell, injectSSRContent } from "../src/inject";
 
 describe("SSR injection helpers", () => {
+    test.each(["lang", "dir"] as const)("escapes hostile %s in SSR and CSR attributes", (field) => {
+        const locale = {
+            lang: "en",
+            dir: "ltr",
+            [field]: "\"><script>globalThis.injected=true</script>&'",
+        };
+        const template = '<html lang="old" dir="rtl"><body><!--ssr-body--></body></html>';
+        const pages = [
+            injectSSRContent({
+                template,
+                locale,
+                head: "",
+                css: "",
+                html: "safe",
+                serializedData: "{}",
+            }),
+            injectCSRShell(template, locale),
+        ];
+        for (const html of pages) {
+            expect(html).not.toContain("<script>globalThis.injected");
+            expect(html).toContain(
+                "&quot;&gt;&lt;script&gt;globalThis.injected=true&lt;/script&gt;&amp;&#39;",
+            );
+            expect(html).not.toContain('lang="old"');
+        }
+    });
     test("injects SSR placeholders, custom slots, CSS, and locale attributes", () => {
         const template = [
             '<html lang="en" dir="ltr">',

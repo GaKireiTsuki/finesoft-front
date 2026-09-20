@@ -4,7 +4,6 @@
 
 // ===== Types =====
 export {
-    isUrlLocation,
     StorageUnavailableError,
     type AsyncStorage,
     type SessionSlice,
@@ -22,7 +21,6 @@ export {
     type SessionStateProvider,
     type SessionStore,
     type SessionStoreOptions,
-    type SessionUrlLocation,
 } from "./types";
 
 // ===== Snapshot（编解码）=====
@@ -34,9 +32,5 @@ export { collectLeafKeys, createNavigationScopedState } from "./scoped-state";
 // ===== Store（会话编排器）=====
 export { createSessionStore } from "./session-store";
 
-// ===== Navigation adapters（结构化 + 扁平）=====
-export {
-    createNavigationSessionAdapter,
-    createUrlSessionAdapter,
-    type UrlAdapterOptions,
-} from "./navigation-adapter";
+// ===== Navigation adapter =====
+export { createNavigationSessionAdapter } from "./navigation-adapter";

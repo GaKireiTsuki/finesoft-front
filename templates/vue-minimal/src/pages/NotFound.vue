@@ -1,21 +1,11 @@
 <script setup lang="ts">
-import type { BrowserAppHandle } from "@finesoft/front/browser";
-import { createNavigation } from "../app-definition";
+import type { ViewProps } from "@finesoft/front/vue";
 import type { ErrorPage } from "../lib/models/page";
 defineOptions({ inheritAttrs: false });
-const { page, controller } = defineProps<{ page: ErrorPage; controller?: BrowserAppHandle }>();
+const { page, app } = defineProps<{ page: ErrorPage; app: ViewProps["app"] }>();
 function goHome(event: MouseEvent) {
-    if (
-        !controller?.navigation ||
-        event.button !== 0 ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        event.altKey
-    )
-        return;
     event.preventDefault();
-    void controller.navigation.hydrate(createNavigation("/")!);
+    void app.navigation.navigate("/");
 }
 </script>
 

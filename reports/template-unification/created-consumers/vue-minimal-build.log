@@ -1,23 +1,23 @@
 $ vp build ⊘ cache disabled
-[2Ktransforming...✓ 46 modules transformed.
+[2Ktransforming...✓ 44 modules transformed.
 rendering chunks...
 computing gzip size...
 dist/client/index.html                    0.44 kB │ gzip:  0.27 kB
 dist/client/assets/index-BIpawk8n.css     0.75 kB │ gzip:  0.39 kB
 dist/client/assets/zh-Hans-G5f0fMu2.js    0.25 kB │ gzip:  0.26 kB
 dist/client/assets/en-US-xnXOlHIk.js      0.27 kB │ gzip:  0.21 kB
-dist/client/assets/index-CkHvolHb.js    156.86 kB │ gzip: 54.79 kB
+dist/client/assets/index-CrjqND3k.js    156.42 kB │ gzip: 54.67 kB
 
-✓ built in 77ms
+✓ built in 155ms
 
   Building SSR bundle...
 
-[2Ktransforming...✓ 39 modules transformed.
+[2Ktransforming...✓ 36 modules transformed.
 rendering chunks...
 computing gzip size...
 dist/server/assets/zh-Hans-BCL4COUh.js    0.34 kB │ gzip:  0.30 kB
 dist/server/assets/en-US-DJEdCQIQ.js      0.35 kB │ gzip:  0.25 kB
-dist/server/ssr.js                      153.72 kB │ gzip: 45.76 kB
+dist/server/ssr.js                      144.26 kB │ gzip: 41.21 kB
 
-✓ built in 22ms
+✓ built in 20ms
 

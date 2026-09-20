@@ -14,28 +14,20 @@ export {
     createWebStorage,
     defaultShouldRestore,
     deserializeServerData,
-    registerExternalUrlHandler,
-    resolveIslandsShell,
-    startBrowserApp,
+    createBrowserApp,
     tryScroll,
 } from "@finesoft/browser";
 export type {
     BrowserAppConfig,
     BrowserAppHandle,
-    BrowserRenderer,
-    RenderContext,
-    ViewHandle,
     BrowserSessionConfig,
     DomRestore,
     DomRestoreOptions,
-    ExternalUrlDependencies,
-    IslandsShell,
     NavigationBridgeDependencies,
     NavigationHandle,
     SessionBridgeOptions,
     SessionHandle,
 } from "@finesoft/browser";
-// ResolvedEntry is owned by Web and exported below.
 
 export * from "@finesoft/web";
 

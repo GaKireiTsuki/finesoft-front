@@ -4,6 +4,9 @@ import {
     FRAMEWORK_PROTOCOL_VERSION,
     getFrameworkBuildId,
     type PrefetchedIntent,
+    type WebHydration,
+    serializeNavigation,
+    deserializeNavigation,
     type PublicProjection,
     type PublicValueCodec,
 } from "@finesoft/web";
@@ -15,9 +18,9 @@ export interface SerializeServerDataOptions {
 const MATERIALIZED = Symbol("materialized-public-data");
 /** Copy declared public data now; never keep request-backed objects/getters in a response. */
 export function materializeServerData(
-    data: PrefetchedIntent[],
+    data: WebHydration,
     options: SerializeServerDataOptions = {},
-): PrefetchedIntent[] {
+): WebHydration {
     const materialized = (data as unknown as Record<symbol, unknown>)[MATERIALIZED];
     if (materialized) {
         if (options.onUnmarkedPage === "strict" && materialized === "unmarked")
@@ -25,7 +28,7 @@ export function materializeServerData(
         return data;
     }
     let allMarked = true;
-    const result = data.map((entry) => {
+    const pages = data.pages.map((entry) => {
         const marked = getPublicFields(entry.data) !== null;
         allMarked &&= marked;
         if (options.onUnmarkedPage === "strict" && !marked) throw Error("markPublic-required");
@@ -46,12 +49,16 @@ export function materializeServerData(
             throw Error("public-materialization-failed");
         }
     });
+    const result: WebHydration = {
+        tree: data.tree && serializeNavigation(deserializeNavigation(data.tree)),
+        pages,
+    };
     Object.defineProperty(result, MATERIALIZED, { value: allMarked ? "marked" : "unmarked" });
     return result;
 }
 /** The shared response assembler remains the single HTML-safe wire serializer owner. */
 export function serializeServerData(
-    data: PrefetchedIntent[],
+    data: WebHydration,
     options: SerializeServerDataOptions = {},
 ): string {
     const json = JSON.stringify({

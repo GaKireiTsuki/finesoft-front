@@ -11,9 +11,9 @@ export default defineConfig({
             "src/http.ts",
             "src/worker.ts",
             "src/node.ts",
-            ...["react", "vue", "svelte"].flatMap((ui) =>
-                ["browser", "server"].map((side) => "src/renderers/" + ui + "/" + side + ".ts"),
-            ),
+            "src/react.ts",
+            "src/vue.ts",
+            "src/svelte.ts",
         ],
         format: "esm",
         dts: true,
@@ -44,8 +44,9 @@ export default defineConfig({
                 /^react(?:-dom)?(?:\/|$)/,
                 /^vue(?:\/|$)/,
                 /^svelte(?:\/|$)/,
+                /\.svelte$/,
             ],
-            alwaysBundle: internal.map((name) => `@finesoft/${name}`),
+            alwaysBundle: [...internal.map((name) => `@finesoft/${name}`), "undici"],
         },
     },
 });

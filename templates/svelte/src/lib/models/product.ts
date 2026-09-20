@@ -1,15 +1,25 @@
-import type { BaseItem, BasePage, BaseShelf } from "@finesoft/front/web";
+import type { BasePage } from "@finesoft/front/web";
+interface BaseItem {
+    readonly id: string;
+}
+interface BaseShelf {
+    readonly id: string;
+    readonly title: string;
+}
 
 export interface ProductItem extends BaseItem {
     itemType: "product";
     name: string;
     price: number;
     imageUrl: string;
+    clickAction?: { readonly url: string };
 }
 
 export interface ProductShelf extends BaseShelf {
     shelfType: "products";
     items: ProductItem[];
+    isHorizontal?: boolean;
+    seeAllAction?: { readonly url: string };
 }
 
 export interface HomePage extends BasePage {

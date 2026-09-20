@@ -87,19 +87,10 @@ export function decodeSnapshot(
     if (parsed.navigation !== undefined) {
         const nav = parsed.navigation;
         if (!isPlainObject(nav)) return undefined;
-        if (nav.kind === undefined) {
-            if (
-                typeof nav.url !== "string" ||
-                typeof nav.entryId !== "string" ||
-                !nav.entryId.trim()
-            )
-                return undefined;
-        } else {
-            try {
-                deserializeNavigation(nav);
-            } catch {
-                return undefined;
-            }
+        try {
+            deserializeNavigation(nav);
+        } catch {
+            return undefined;
         }
     }
     return parsed as unknown as SessionSnapshot;

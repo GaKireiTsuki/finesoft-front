@@ -26,6 +26,10 @@ export function consumePage(
 interface WebPlan {
     readonly app: AppDefinition;
     readonly router: Router;
+    readonly routes: readonly Omit<
+        import("../bootstrap/define-routes").RouteDefinition,
+        "controller"
+    >[];
     readonly operations: ReadonlyMap<string, Operation<RouteParams, BasePage>>;
 }
 const plans = new WeakMap<WebAppDefinition, WebPlan>();
@@ -47,30 +51,34 @@ function freezeSnapshot<T>(value: T): T {
 }
 export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
     const routes = Object.freeze(
-        input.routes.map((route) => {
-            if ("controller" in route)
-                throw new ExecutionError(
-                    "configuration",
-                    "Web routes reference controller factories by intentId",
-                );
-            return Object.freeze({
-                ...route,
-                beforeLoad:
-                    route.beforeLoad &&
-                    (Object.freeze([...route.beforeLoad]) as typeof route.beforeLoad),
-                afterLoad:
-                    route.afterLoad &&
-                    (Object.freeze([...route.afterLoad]) as typeof route.afterLoad),
-            });
-        }),
+        input.pages
+            .flatMap((page) =>
+                (page.routes ?? []).map((route) => ({
+                    ...(typeof route === "string" ? { path: route } : route),
+                    intentId: page.id,
+                })),
+            )
+            .map((route) => {
+                if ("controller" in route)
+                    throw new ExecutionError(
+                        "configuration",
+                        "Web routes reference controller factories by intentId",
+                    );
+                return Object.freeze({
+                    ...route,
+                    beforeLoad:
+                        route.beforeLoad &&
+                        (Object.freeze([...route.beforeLoad]) as typeof route.beforeLoad),
+                    afterLoad:
+                        route.afterLoad &&
+                        (Object.freeze([...route.afterLoad]) as typeof route.afterLoad),
+                });
+            }),
     );
-    const controllers = Object.freeze(
-        (input.controllers ?? []).map((controller) => Object.freeze({ ...controller })),
-    );
+    const pages = Object.freeze(input.pages.map((controller) => Object.freeze({ ...controller })));
     const definition = Object.freeze({
         ...input,
-        routes,
-        controllers,
+        pages,
         navigation:
             typeof input.navigation === "function"
                 ? input.navigation
@@ -79,10 +87,10 @@ export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
         beforeCommit: input.beforeCommit && Object.freeze([...input.beforeCommit]),
         beforeLoad: input.beforeLoad && Object.freeze([...input.beforeLoad]),
         afterLoad: input.afterLoad && Object.freeze([...input.afterLoad]),
-        frameworkConfig: input.frameworkConfig && Object.freeze({ ...input.frameworkConfig }),
+        configuration: input.configuration && Object.freeze({ ...input.configuration }),
     });
     const operations = new Map<string, Operation<RouteParams, BasePage>>();
-    for (const controller of controllers) {
+    for (const controller of pages) {
         if (operations.has(controller.id) || !!controller.create === !!controller.handler)
             throw new ExecutionError("configuration", `Invalid page controller: ${controller.id}`);
         operations.set(
@@ -96,11 +104,7 @@ export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
                     if (cached !== undefined) return cached;
                     return controller.handler
                         ? controller.handler(params, context)
-                        : controller.create!().perform(
-                              { id: controller.id, params },
-                              context.container,
-                              context,
-                          );
+                        : controller.create!().perform(params, context);
                 },
             }),
         );
@@ -127,6 +131,6 @@ export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
         id: input.id,
         operations: [...(input.app?.operations ?? []), ...operations.values()],
     });
-    plans.set(definition, { app, router: router.seal(), operations });
+    plans.set(definition, { app, router: router.seal(), operations, routes });
     return definition;
 }

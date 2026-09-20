@@ -6,14 +6,12 @@
  */
 
 import { ExecutionError, type ExecutionContext } from "../application/types";
-import type { Container } from "../dependencies/container";
-import type { Intent, IntentController } from "./types";
 
 /**
  * 抽象 Controller 基类
  *
  * 统一处理:
- * - 类型安全的参数提取 (TParams)
+ * - 类型安全的输入 (TParams)
  * - 返回类型约束 (TResult)
  * - try/catch 错误处理 + 可选 fallback
  *
@@ -36,22 +34,15 @@ import type { Intent, IntentController } from "./types";
 export abstract class BaseController<
     TParams extends Record<string, unknown> = Record<string, unknown>,
     TResult = unknown,
-> implements IntentController<TResult> {
-    /** Controller 对应的 Intent ID */
-    abstract readonly intentId: string;
-
+> {
     /**
      * 执行业务逻辑 — 子类必须实现
      *
-     * @param params - Intent 参数（已类型化）
-     * @param container - DI 容器
+     * @param input - 已类型化的操作输入
+     * @param context - 当前执行上下文
      * @returns 页面数据
      */
-    abstract execute(
-        params: TParams,
-        container: Container,
-        context?: ExecutionContext,
-    ): Promise<TResult> | TResult;
+    abstract execute(input: TParams, context: ExecutionContext): Promise<TResult> | TResult;
 
     /**
      * 错误回退 — 子类可选覆写
@@ -59,38 +50,31 @@ export abstract class BaseController<
      * 当 execute() 抛出异常时调用。
      * 默认行为: 重新抛出原始错误。
      *
-     * @param params - Intent 参数
+     * @param input - 操作输入
      * @param error - execute() 抛出的错误
      * @returns 回退数据
      */
-    fallback(params: TParams, error: Error): Promise<TResult> | TResult {
+    fallback(input: TParams, error: Error, _context: ExecutionContext): Promise<TResult> | TResult {
         throw error;
     }
 
     /**
-     * IntentController.perform() 实现
-     *
      * 自动 try/catch → fallback 模式。
      */
-    async perform(
-        intent: Intent<TResult>,
-        container: Container,
-        context?: ExecutionContext,
-    ): Promise<TResult> {
-        const params = (intent.params ?? {}) as TParams;
+    async perform(input: TParams, context: ExecutionContext): Promise<TResult> {
         try {
-            context?.signal.throwIfAborted();
-            const result = await this.execute(params, container, context);
-            context?.signal.throwIfAborted();
+            context.signal.throwIfAborted();
+            const result = await this.execute(input, context);
+            context.signal.throwIfAborted();
             return result;
         } catch (e) {
             if (
-                context?.signal.aborted ||
+                context.signal.aborted ||
                 (e instanceof Error && e.name === "AbortError") ||
                 (e instanceof ExecutionError && e.code === "cancelled")
             )
                 throw e;
-            return this.fallback(params, e instanceof Error ? e : new Error(String(e)));
+            return this.fallback(input, e instanceof Error ? e : new Error(String(e)), context);
         }
     }
 }

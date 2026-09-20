@@ -20,11 +20,12 @@
 
 PNG 以 `0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A` 开头 —— 开头的 `0x89` 不是合法 UTF-8，变成 `0xEF 0xBF 0xBD`。浏览器的图片解码从第 0 字节起看到垃圾，直接放弃。
 
-当前实现用 `response.arrayBuffer()`，字节原样转发：
+当前实现按块读取并执行 10 MiB 上限，最终合并为 `ArrayBuffer`，字节原样转发：
 
 ```ts
 // packages/server/src/proxy.ts
-const body = await resp.arrayBuffer();
+const body = await readProxyBody(resp);
+if (!body) return c.text("Proxy response too large", 502);
 return c.newResponse(body, resp.status, respHeaders);
 ```
 
@@ -61,7 +62,7 @@ curl -s http://localhost:3000/api/image.png | sha256sum
 
 ## 什么情况下会撞到
 
-当前版本（用 `arrayBuffer`）不会撞到。这条陷阱主要作为以下场景的历史参照：
+当前版本（按原始字节读取）不会撞到。这条陷阱主要作为以下场景的历史参照：
 
 - **从旧版本升级** —— 升级后验证二进制端点
 - **写自己的自定义 proxy 逻辑** —— 抄旧示例会把 bug 引回来
@@ -69,7 +70,7 @@ curl -s http://localhost:3000/api/image.png | sha256sum
 
 ## 自定义 proxy —— 写对
 
-你自己写 proxy 代码（在框架的 `registerProxyRoutes` 之外），用 `arrayBuffer`：
+自定义代理也必须保留原始字节；以下 `arrayBuffer` 示例仅适用于已有独立体积限制的响应。对不可信上游优先使用框架的有界读取实现：
 
 ```ts
 // 好
@@ -108,14 +109,9 @@ app.all("/api/*", async (c) => {
 
 `resp.body` 是 `ReadableStream`。直接返回它流式转字节不缓冲。但你失去大小守卫 —— 只在信任上游时这么干。
 
-## 大小限制在两处
+## 一套实现执行两次大小检查
 
-框架强制 `MAX_RESPONSE_SIZE = 10 * 1024 * 1024`（10 MB）在两条路径：
-
-1. **运行时**（`registerProxyRoutes`）：先查 `Content-Length` 头，再查 fetch 后的 `body.byteLength`
-2. **生成代码**（`generateProxyCode`）：serverless 内联版本发同样两条检查
-
-改一处大小限制，两处都改。测试 `generated proxy code embeds the same response size limit as runtime (parity)` 强制这点。
+框架在 `registerProxyRoutes` 中执行 `MAX_RESPONSE_SIZE = 10 * 1024 * 1024`（10 MB）限制：先查 `Content-Length` 头，再按块累计实际字节；超过限制立即取消读取。`generateProxyCode` 只生成对同一实现的注册调用，开发环境和部署产物不会各自维护不同的限制。测试实际执行生成的注册代码与构建后的部署入口，覆盖二进制载荷及超限拒绝。
 
 ## 为什么 `Content-Length` 和 `byteLength` 都要
 
@@ -124,7 +120,7 @@ app.all("/api/*", async (c) => {
 两次检查覆盖两种：
 
 - 声明的 `Content-Length` 触发快速拒绝，避免下载 100MB 再拒
-- 实际收到的字节数最终拒绝，防 `Content-Length` 缺失或撒谎
+- 实际收到的字节数超限时立即拒绝，防 `Content-Length` 缺失或撒谎
 
 ## 参考
 

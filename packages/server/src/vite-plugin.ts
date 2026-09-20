@@ -9,7 +9,7 @@ import { createSSRHost } from "./ssr-host";
  * 或自定义 Adapter 对象。
  */
 
-import { nodeDnsLookup } from "./node/dns";
+import { nodeSafeFetchOptions } from "./node/fetch-policy";
 import type { Hono } from "hono";
 import { resolveAdapter } from "./adapters/resolve";
 import { buildBundle, copyStaticAssets, generateSSREntry, NODE_BUILTINS } from "./adapters/shared";
@@ -334,7 +334,6 @@ export async function loadMessages(locale) {
                 const ssrApp = createSSRApp({
                     root,
                     vite: server,
-                    isProduction: false,
                     ssrEntryPath: "/" + ssrEntry,
                     parentFetch: app.fetch.bind(app),
                     renderModes: options.renderModes,
@@ -402,7 +401,7 @@ export async function loadMessages(locale) {
                     template,
                     ...ssrModule,
                     fetch: (request, bindings) => app.fetch(request, bindings),
-                    safeFetch: { lookup: nodeDnsLookup },
+                    safeFetch: nodeSafeFetchOptions,
                     renderModes: options.renderModes,
                     defaultLocale: options.defaultLocale,
                     onError: (error) => console.error("[SSR Preview Error]", error),

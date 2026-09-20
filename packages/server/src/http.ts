@@ -1,43 +1,69 @@
 import {
     ExecutionError,
+    compilePath,
+    runStandard,
+    type CompiledPath,
     type ExecutionContext,
     type ExecutionHandle,
     type Invocation,
     type Operation,
     type RuntimeHandle,
+    type ParamSchema,
 } from "@finesoft/core";
 
 export interface HttpEndpoint {
     readonly method: string;
     readonly path: string;
-    readonly respond: (request: Request, execution: ExecutionHandle) => Promise<Response>;
+    readonly compiledPath: CompiledPath;
+    readonly paramCodecs?: Record<string, ParamSchema>;
+    readonly respond: (
+        request: Request,
+        execution: ExecutionHandle,
+        params: Readonly<Record<string, unknown>>,
+    ) => Promise<Response>;
 }
 export interface EndpointOptions<I, O> {
     readonly method: string;
-    /** Exact URL pathname. Query/body validation belongs in decode. */
+    /** Segment pathname pattern. Supports `:param` and optional `:param?`. */
     readonly path: string;
     readonly operation: Operation<I, O>;
-    readonly decode: (request: Request, context: ExecutionContext) => I | Promise<I>;
+    readonly paramCodecs?: Record<string, ParamSchema>;
+    readonly decode: (
+        request: Request,
+        context: ExecutionContext,
+        params: Readonly<Record<string, unknown>>,
+    ) => I | Promise<I>;
     /** Explicit public projection. No automatic serialization of operation results. */
     readonly encode: (output: O, context: ExecutionContext) => Response | Promise<Response>;
 }
 export function defineEndpoint<I, O>(options: EndpointOptions<I, O>): HttpEndpoint {
-    const { method, path, operation, decode, encode } = options;
+    const { method, path, operation, decode, encode, paramCodecs } = options;
     if (
         !/^[A-Za-z]+$/.test(method) ||
         !path.startsWith("/") ||
-        path.includes("?") ||
         typeof decode !== "function" ||
         typeof encode !== "function"
     )
         throw new ExecutionError("configuration");
+    let compiledPath: CompiledPath;
+    try {
+        compiledPath = compilePath(path);
+    } catch (cause) {
+        throw new ExecutionError("configuration", undefined, { cause });
+    }
     return Object.freeze({
         method: method.toUpperCase(),
         path,
-        async respond(request: Request, execution: ExecutionHandle) {
+        compiledPath,
+        paramCodecs,
+        async respond(
+            request: Request,
+            execution: ExecutionHandle,
+            params: Readonly<Record<string, unknown>>,
+        ) {
             let input: I;
             try {
-                input = await decode(request, execution.context);
+                input = await decode(request, execution.context, params);
             } catch (error) {
                 throw error instanceof ExecutionError
                     ? error
@@ -91,22 +117,71 @@ function publicError(error: unknown): Response {
     );
 }
 export function createHttpHandler(options: HttpHandlerOptions): HttpHandler {
-    const routes = new Map<string, Map<string, HttpEndpoint>>();
+    const routes = [...options.endpoints];
     for (const endpoint of options.endpoints) {
-        const methods = routes.get(endpoint.path) ?? new Map<string, HttpEndpoint>();
-        if (methods.has(endpoint.method)) throw new ExecutionError("configuration");
-        methods.set(endpoint.method, endpoint);
-        routes.set(endpoint.path, methods);
+        if (
+            routes.some(
+                (other) =>
+                    other !== endpoint &&
+                    other.method === endpoint.method &&
+                    other.compiledPath.descriptor.shape === endpoint.compiledPath.descriptor.shape,
+            )
+        )
+            throw new ExecutionError("configuration");
     }
     return async (request, bindings = {}, host) => {
-        const methods = routes.get(new URL(request.url).pathname);
-        if (!methods) return publicError(new ExecutionError("not_found"));
-        const endpoint = methods.get(request.method);
-        if (!endpoint)
+        const pathname = new URL(request.url).pathname;
+        const shaped = routes
+            .map((endpoint) => ({ endpoint, params: endpoint.compiledPath.match(pathname) }))
+            .filter(
+                (
+                    candidate,
+                ): candidate is {
+                    endpoint: HttpEndpoint;
+                    params: Record<string, string | undefined>;
+                } => candidate.params !== null,
+            );
+        if (shaped.length === 0) return publicError(new ExecutionError("not_found"));
+        const sameMethod = shaped.filter(
+            (candidate) => candidate.endpoint.method === request.method,
+        );
+        if (sameMethod.length === 0) {
+            const allow = [...new Set(shaped.map((candidate) => candidate.endpoint.method))];
             return Response.json(
                 { error: { code: "method_not_allowed", message: "Method not allowed" } },
-                { status: 405, headers: { Allow: [...methods.keys()].join(", ") } },
+                { status: 405, headers: { Allow: allow.join(", ") } },
             );
+        }
+        let selected: { endpoint: HttpEndpoint; params: Record<string, unknown> } | undefined;
+        for (const candidate of sameMethod) {
+            const params = Object.assign(Object.create(null), candidate.params) as Record<
+                string,
+                unknown
+            >;
+            let valid = true;
+            for (const parameter of candidate.endpoint.compiledPath.descriptor.parameters) {
+                const codec = candidate.endpoint.paramCodecs?.[parameter.name];
+                if (!codec) continue;
+                let result: Awaited<ReturnType<typeof runStandard>>;
+                try {
+                    result = await runStandard(codec, candidate.params[parameter.name]);
+                } catch {
+                    valid = false;
+                    break;
+                }
+                if (!result.ok) {
+                    valid = false;
+                    break;
+                }
+                params[parameter.name] = result.value;
+            }
+            if (valid) {
+                selected = { endpoint: candidate.endpoint, params };
+                break;
+            }
+        }
+        if (!selected) return publicError(new ExecutionError("validation"));
+        const { endpoint, params } = selected;
         const abort = new AbortController();
         const signal = AbortSignal.any([request.signal, abort.signal]);
         let execution: ExecutionHandle | undefined;
@@ -165,7 +240,7 @@ export function createHttpHandler(options: HttpHandlerOptions): HttpHandler {
                 signal,
                 bindings: { ...requestBindings, [TASK_BINDING]: schedule },
             });
-            const response = await endpoint.respond(request, execution);
+            const response = await endpoint.respond(request, execution, params);
             if (signal.aborted) {
                 await response.body?.cancel(signal.reason);
                 throw new ExecutionError("cancelled");

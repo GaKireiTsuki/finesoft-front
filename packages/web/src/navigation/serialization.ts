@@ -92,7 +92,7 @@ export function serializeNavigation(tree: NavigationNode): SerializedNavigation 
                 entries: tree.entries.map(serializeNavigation),
             };
         case NAVIGATION_NODE_KINDS.TABS: {
-            const branches: Record<string, SerializedNavigation> = {};
+            const branches: Record<string, SerializedNavigation> = Object.create(null);
             for (const key of Object.keys(tree.branches)) {
                 branches[key] = serializeNavigation(tree.branches[key]);
             }
@@ -207,20 +207,20 @@ function parseTabs(data: Record<string, unknown>, path: string): NavigationNode 
     if (!isPlainObject(data.branches)) {
         throw new NavigationError(`反序列化失败：${path}.branches 必须是对象`);
     }
-    const branches: Record<string, NavigationNode> = {};
+    const branches: Record<string, NavigationNode> = Object.create(null);
     for (const key of Object.keys(data.branches)) {
         branches[key] = parseNode(data.branches[key], `${path}.branches.${key}`);
     }
     // order 不得含 branches 之外的「幽灵键」：否则 app 按 order 渲染 tab 栏时
     // branches[key] === undefined，导致空白 tab 或崩溃。逐键校验。
     for (const key of data.order as readonly string[]) {
-        if (!(key in branches)) {
+        if (!Object.hasOwn(branches, key)) {
             throw new NavigationError(
                 `反序列化失败：${path}.order 包含不在 branches 中的键 "${key}"`,
             );
         }
     }
-    if (!(data.active in branches)) {
+    if (!Object.hasOwn(branches, data.active)) {
         throw new NavigationError(`反序列化失败：${path}.active "${data.active}" 不在 branches 中`);
     }
     return {

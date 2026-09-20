@@ -1,6 +1,7 @@
 import { getLocaleAttributes, LruMap, type SecureFetchOptions } from "@finesoft/core";
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr/inject";
 import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal-fetch";
+import { isPublicSSRResult } from "./ssr-cache";
 
 export interface SSRRequestContext {
     readonly request: Request;
@@ -136,12 +137,7 @@ export function createSSRHandler<TData = unknown>(options: SSRHandlerOptions<TDa
             // Render (including request policies) always runs before shared HTML cache access.
             // The cache saves assembly only; operation caches own data-loading performance.
             const eligible =
-                mode === "prerender" &&
-                publicRequest &&
-                result.cache === "public" &&
-                (result.status ?? 200) === 200 &&
-                !result.rewriteUrl &&
-                [...headers].length === 0;
+                mode === "prerender" && publicRequest && isPublicSSRResult(result, headers);
             const cacheKey = JSON.stringify([parsed.href, locale?.lang, locale?.dir]);
             const cached = eligible ? await cache.get(cacheKey) : undefined;
             if (cached !== undefined && cached !== null)

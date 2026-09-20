@@ -65,6 +65,7 @@ describe("HttpClient", () => {
         ).resolves.toEqual({ intercepted: true });
 
         expect(fetchFn).toHaveBeenCalledWith("/api/products?page=2", {
+            redirect: "manual",
             method: "POST",
             headers: {
                 "X-App": "finesoft",
@@ -95,10 +96,12 @@ describe("HttpClient", () => {
         await client.requestDelete("/items/1");
 
         expect(fetchFn).toHaveBeenNthCalledWith(1, "/api/items?q=hat", {
+            redirect: "manual",
             method: "GET",
             headers: { "X-Request": "added" },
         });
         expect(fetchFn).toHaveBeenNthCalledWith(2, "/api/items/1", {
+            redirect: "manual",
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
@@ -107,6 +110,7 @@ describe("HttpClient", () => {
             body: JSON.stringify({ title: "Updated" }),
         });
         expect(fetchFn).toHaveBeenNthCalledWith(3, "/api/items/1", {
+            redirect: "manual",
             method: "DELETE",
             headers: { "X-Request": "added" },
         });

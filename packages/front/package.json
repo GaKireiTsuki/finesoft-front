@@ -25,6 +25,19 @@
             "types": "./dist/web.d.mts",
             "import": "./dist/web.mjs"
         },
+        "./react": {
+            "types": "./dist/react.d.mts",
+            "import": "./dist/react.mjs"
+        },
+        "./vue": {
+            "types": "./dist/vue.d.mts",
+            "import": "./dist/vue.mjs"
+        },
+        "./svelte": {
+            "types": "./dist/svelte.d.mts",
+            "svelte": "./dist/svelte.mjs",
+            "import": "./dist/svelte.mjs"
+        },
         "./node": {
             "types": "./dist/node.d.mts",
             "import": "./dist/node.mjs"
@@ -37,30 +50,6 @@
             "types": "./dist/worker.d.mts",
             "import": "./dist/worker.mjs"
         },
-        "./renderers/react/browser": {
-            "types": "./dist/renderers/react/browser.d.mts",
-            "import": "./dist/renderers/react/browser.mjs"
-        },
-        "./renderers/react/server": {
-            "types": "./dist/renderers/react/server.d.mts",
-            "import": "./dist/renderers/react/server.mjs"
-        },
-        "./renderers/vue/browser": {
-            "types": "./dist/renderers/vue/browser.d.mts",
-            "import": "./dist/renderers/vue/browser.mjs"
-        },
-        "./renderers/vue/server": {
-            "types": "./dist/renderers/vue/server.d.mts",
-            "import": "./dist/renderers/vue/server.mjs"
-        },
-        "./renderers/svelte/browser": {
-            "types": "./dist/renderers/svelte/browser.d.mts",
-            "import": "./dist/renderers/svelte/browser.mjs"
-        },
-        "./renderers/svelte/server": {
-            "types": "./dist/renderers/svelte/server.d.mts",
-            "import": "./dist/renderers/svelte/server.mjs"
-        },
         "./ssr": {
             "types": "./dist/ssr.d.mts",
             "import": "./dist/ssr.mjs"
@@ -71,7 +60,7 @@
         }
     },
     "scripts": {
-        "build": "vp pack",
+        "build": "vp pack && node ../../scripts/prepare-svelte-entry.mjs",
         "dev": "vp pack --watch",
         "prepack": "node ../../scripts/prepare-front-publish.mjs",
         "postpack": "node ../../scripts/restore-front-publish.mjs"
@@ -91,6 +80,7 @@
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
         "svelte": "^5.55.1",
+        "undici": "7.29.0",
         "vite": "catalog:",
         "vite-plus": "catalog:",
         "vue": "^3.5.41"

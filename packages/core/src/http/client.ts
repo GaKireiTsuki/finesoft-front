@@ -10,7 +10,8 @@
 
 export { HostGuardError, HttpError } from "./errors";
 import { HttpError } from "./errors";
-import { enforceHostGuard, type DnsLookup } from "./target-guard";
+import type { ExecutionContext } from "../application/types";
+import { secureFetch, type SecureFetchOptions } from "./secure-fetch";
 /** 请求拦截器 — 在发送前修改请求 */
 export interface RequestInterceptor {
     (url: string, init: RequestInit): RequestInit | Promise<RequestInit>;
@@ -27,34 +28,19 @@ export interface HttpRequestOptions {
 }
 
 /** HttpClient 构造配置 */
-export interface HttpClientConfig {
+export interface HttpClientConfig extends SecureFetchOptions {
     /** API base URL（如 "/api" 或 "https://example.com/api"） */
     baseUrl: string;
     /** 默认请求头 */
     defaultHeaders?: Record<string, string>;
-    /** 自定义 fetch 实现（便于测试或 SSR） */
-    fetch: typeof globalThis.fetch;
+    /** 自定义 fetch 实现（便于测试或 SSR）。可由 execution context 提供。 */
+    fetch?: typeof globalThis.fetch;
+    /** Binds this client to an execution's portable fetch and cancellation signal. */
+    context?: Pick<ExecutionContext, "fetch" | "signal">;
     /** 请求拦截器（按注册顺序执行） */
     requestInterceptors?: RequestInterceptor[];
     /** 响应拦截器（按注册顺序执行） */
     responseInterceptors?: ResponseInterceptor[];
-    /**
-     * 是否允许向私有 / loopback / 保留 IP 段发请求。
-     *
-     * **默认 false** —— 阻止内网穿透（SSRF）。如果你的服务正常需要打内网（如
-     * 微服务对内 API、127.0.0.1 上的开发依赖），把它设为 true 显式 opt-out，并
-     * 自己做来源校验。
-     */
-    allowInternalHosts?: boolean;
-    /**
-     * 是否在请求前 DNS 解析 hostname 并对解析结果做 IP 段校验。
-     *
-     * **默认 true**（须显式提供 lookup；浏览器可显式选择 false）。配合 `allowInternalHosts`
-     * 防御 DNS rebinding：如果 hostname 不是 IP 字面量，框架会 resolve 它的 A/AAAA
-     * 记录并按 IP 段校验。`false` 关闭只剩 IP 字面量同步校验。
-     */
-    validateDns?: boolean;
-    lookup?: DnsLookup;
 }
 
 /**
@@ -77,19 +63,17 @@ export abstract class HttpClient {
     protected readonly fetchFn: typeof globalThis.fetch;
     private readonly requestInterceptors: RequestInterceptor[];
     private readonly responseInterceptors: ResponseInterceptor[];
-    private readonly allowInternalHosts: boolean;
-    private readonly validateDns: boolean;
-    private readonly lookup?: DnsLookup;
+    private readonly contextSignal?: AbortSignal;
 
     constructor(config: HttpClientConfig) {
         this.baseUrl = config.baseUrl;
         this.defaultHeaders = config.defaultHeaders ?? {};
-        this.fetchFn = config.fetch;
+        if (!config.fetch && !config.context)
+            throw new TypeError("HttpClient requires fetch or an execution context");
+        this.fetchFn = secureFetch(config.fetch ?? config.context!.fetch, config);
+        this.contextSignal = config.context?.signal;
         this.requestInterceptors = [...(config.requestInterceptors ?? [])];
         this.responseInterceptors = [...(config.responseInterceptors ?? [])];
-        this.allowInternalHosts = config.allowInternalHosts ?? false;
-        this.validateDns = config.validateDns ?? true;
-        this.lookup = config.lookup;
     }
 
     /** 动态添加请求拦截器 */
@@ -166,10 +150,6 @@ export abstract class HttpClient {
         options?.signal?.throwIfAborted();
         const url = this.buildUrl(path, options?.params);
 
-        if (!this.allowInternalHosts) {
-            await enforceHostGuard(url, { validateDns: this.validateDns, lookup: this.lookup });
-        }
-
         const headers: Record<string, string> = {
             ...this.defaultHeaders,
             ...options?.headers,
@@ -193,10 +173,10 @@ export abstract class HttpClient {
             init = await interceptor(url, init);
         }
 
-        const signal =
-            options?.signal && init.signal && init.signal !== options.signal
-                ? AbortSignal.any([options.signal, init.signal])
-                : (options?.signal ?? init.signal);
+        const signals = [options?.signal, init.signal, this.contextSignal].filter(
+            (signal): signal is AbortSignal => !!signal,
+        );
+        const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
         signal?.throwIfAborted();
         init = { ...init, signal };
         let response = await this.fetchFn(url, init);

@@ -155,13 +155,12 @@ test("controller bindings instantiate per invocation and cancellation bypasses f
     let instances = 0;
     const fallback = vi.fn(() => 99);
     class Controller extends BaseController<{ n: number }, number> {
-        intentId = "controller";
         constructor() {
             super();
             instances++;
         }
-        execute(params: { n: number }, _container: unknown, context?: ExecutionContext) {
-            context!.signal.throwIfAborted();
+        execute(params: { n: number }, context: ExecutionContext) {
+            context.signal.throwIfAborted();
             return params.n;
         }
         override fallback = fallback;

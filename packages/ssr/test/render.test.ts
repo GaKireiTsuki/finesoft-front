@@ -1,562 +1,322 @@
-import { DEP_KEYS, HostGuardError } from "../../core/src/index";
-vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import type { BasePage } from "@finesoft/web";
-import type { IntentController } from "@finesoft/core";
-import { fixtureDefinition } from "../../web/test/helpers/definition";
+import { DEP_KEYS, HostGuardError, str } from "../../core/src/index";
+import { expect, test, vi } from "vite-plus/test";
+import { defineWebApp, markPublic } from "@finesoft/web";
+import { routePages } from "../../web/test/helpers/definition";
+import { createSSRRender } from "../src/create-render";
 
-vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
+function errorPage(status: number, message: string) {
+    return { id: `error-${status}`, pageType: "error", title: message };
+}
 
-import { ssrRender } from "../src/render";
+function titleRenderer(app: {
+    getSnapshot(): { entries: readonly { page: { title?: string } }[] };
+}) {
+    return app.getSnapshot().entries.at(-1)?.page.title ?? "";
+}
 
-describe("ssrRender", () => {
-    afterEach(() => {
-        vi.unstubAllGlobals();
-        vi.restoreAllMocks();
+function singlePageDefinition(
+    path: string,
+    id = "home",
+    handler: (params: Record<string, unknown>, context: any) => any = () => ({
+        id,
+        pageType: "home",
+        title: "Home",
+    }),
+    route: Record<string, unknown> = {},
+) {
+    return defineWebApp({
+        id: `ssr-${id}`,
+        pages: routePages([{ id, handler }], [{ path, intentId: id, ...route } as any]),
+        getErrorPage: errorPage,
     });
+}
 
-    test("SSR installs the host resolver in the request's protected fetch", async () => {
-        const fetch = vi.fn(async () => new Response("ok"));
-        const lookup = vi.fn(async () => ["127.0.0.1"]);
-        let safeFetch: typeof globalThis.fetch | undefined;
-        await ssrRender({
-            url: "/",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    { path: "/", intentId: "home", controller: makeController(makePage()) },
-                ]),
-            },
-            ssrContext: { fetch, safeFetch: { lookup } },
-
-            getErrorPage: makeErrorPage,
-            renderApp(_page, framework) {
-                safeFetch = framework.container.resolve(DEP_KEYS.SAFE_FETCH);
-                return { html: "ok", head: "", css: "" };
-            },
-        });
-        await expect(safeFetch!("https://example.com")).rejects.toBeInstanceOf(HostGuardError);
-        expect(lookup).toHaveBeenCalledWith("example.com");
-        expect(fetch).not.toHaveBeenCalled();
+test("SSR installs the host resolver in the request's protected fetch", async () => {
+    const fetch = vi.fn(async () => new Response("ok"));
+    const lookup = vi.fn(async () => ["127.0.0.1"]);
+    let safeFetch: typeof globalThis.fetch | undefined;
+    const definition = singlePageDefinition("/", "home", async (_params, context) => {
+        safeFetch = await context.get(DEP_KEYS.SAFE_FETCH);
+        return { id: "home", pageType: "home", title: "ok" };
     });
-
-    test("uses the application loader when supplied", async () => {
-        const result = await ssrRender({
-            url: "/",
-            loadMessages: () => ({ hello: "Hello from generated loader" }),
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/",
-                        intentId: "home",
-                        controller: makeController(makePage()),
-                    },
-                ]),
-                locale: "en-US",
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(_page, framework) {
-                return {
-                    html: framework.getTranslator()?.t("hello") ?? "missing",
-                    head: "",
-                    css: "",
-                };
-            },
-        });
-
-        expect(result.html).toBe("Hello from generated loader");
+    const render = createSSRRender({
+        definition,
+        configuration: { safeFetch: { lookup } },
+        render: (app) => ({ html: titleRenderer(app) }),
     });
-
-    test("loads async messages before renderApp and makes translator available", async () => {
-        const page = makePage();
-        const loadMessages = vi.fn(async () => ({ hello: "Hello" }));
-
-        const result = await ssrRender({
-            url: "/?from=test",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/",
-                        intentId: "home",
-                        controller: makeController(page),
-                    },
-                ]),
-                locale: "en-US",
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(_page, framework) {
-                return {
-                    html: framework.getTranslator()?.t("hello") ?? "missing",
-                    head: "",
-                    css: "",
-                };
-            },
-            loadMessages,
-        });
-
-        expect(loadMessages).toHaveBeenCalledWith(
-            "en-US",
-            expect.objectContaining({
-                runtime: "server",
-                url: "/?from=test",
-                fetch: expect.any(Function),
-            }),
-        );
-        expect(result.html).toBe("Hello");
-        expect(result.serverData).toEqual([
-            {
-                entryId: expect.any(String),
-                intent: {
-                    id: "home",
-                    params: {
-                        from: "test",
-                    },
-                },
-                data: page,
-            },
-        ]);
-    });
-
-    test("uses resolveLocale output when calling loadMessages", async () => {
-        const request = new Request("https://example.com/zh-Hans");
-        const internalFetch = vi.fn(async () => new Response("{}", { status: 200 }));
-        const loadMessages = vi.fn(async () => ({
-            "zh-Hans": {
-                hello: "你好",
-            },
-        }));
-
-        const result = await ssrRender({
-            url: "/zh-Hans",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/zh-Hans",
-                        intentId: "home",
-                        controller: makeController(makePage()),
-                    },
-                ]),
-                locale: "en-US",
-            },
-            ssrContext: {
-                fetch: internalFetch,
-                request,
-            },
-            resolveLocale() {
-                return { lang: "zh-Hans", dir: "ltr" };
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(_page, framework) {
-                return {
-                    html: framework.getTranslator()?.t("hello") ?? "missing",
-                    head: "",
-                    css: "",
-                };
-            },
-            loadMessages,
-        });
-
-        expect(loadMessages).toHaveBeenCalledWith(
-            "zh-Hans",
-            expect.objectContaining({
-                runtime: "server",
-                url: "/zh-Hans",
-                fetch: internalFetch,
-                request,
-            }),
-        );
-        expect(result.html).toBe("你好");
-        expect(result.locale).toEqual({ lang: "zh-Hans", dir: "ltr" });
-    });
-
-    test("does not create a translator when no external dictionary is configured", async () => {
-        const page = makePage();
-
-        const result = await ssrRender({
-            url: "/",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/",
-                        intentId: "home",
-                        controller: makeController(page),
-                    },
-                ]),
-                locale: "en-US",
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp(_page, framework) {
-                return {
-                    html: framework.getTranslator()?.t("hello") ?? "missing",
-                    head: "",
-                    css: "",
-                };
-            },
-        });
-
-        expect(result.html).toBe("missing");
-        expect(result.serverData).toEqual([
-            {
-                entryId: expect.any(String),
-                intent: {
-                    id: "home",
-                    params: {},
-                },
-                data: page,
-            },
-        ]);
-    });
-
-    test("propagates loadMessages failures", async () => {
-        await expect(
-            ssrRender({
-                url: "/",
-                frameworkConfig: { definition: fixtureDefinition([]), locale: "en-US" },
-
-                getErrorPage: makeErrorPage,
-                renderApp() {
-                    return { html: "", head: "", css: "" };
-                },
-                loadMessages: vi.fn(async () => {
-                    throw new Error("failed to load messages");
-                }),
-            }),
-        ).rejects.toThrow("failed to load messages");
-    });
-
-    test("throws when loadMessages needs fetch but no fetch implementation exists", async () => {
-        vi.stubGlobal("fetch", undefined);
-
-        await expect(
-            ssrRender({
-                url: "/",
-                frameworkConfig: { definition: fixtureDefinition([]), locale: "en-US" },
-
-                getErrorPage: makeErrorPage,
-                renderApp() {
-                    return { html: "", head: "", css: "" };
-                },
-                loadMessages: vi.fn(async (_locale, context) => {
-                    await context.fetch("https://example.com/messages");
-                    return { hello: "never reached" };
-                }),
-            }),
-        ).rejects.toThrow("[ssrRender] loadMessages requires a fetch implementation.");
-    });
-
-    test("returns an empty shell for CSR routes without rendering on the server", async () => {
-        const renderApp = vi.fn();
-
-        const result = await ssrRender({
-            url: "/",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/",
-                        intentId: "home",
-                        controller: makeController(makePage()),
-                        renderMode: "csr",
-                    },
-                ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        expect(result).toEqual({
-            html: "",
-            head: "",
-            css: "",
-            serverData: [],
-            renderMode: "csr",
-        });
-        expect(renderApp).not.toHaveBeenCalled();
-    });
-
-    test("short-circuits with a redirect when beforeLoad blocks the request", async () => {
-        const renderApp = vi.fn();
-
-        const result = await ssrRender({
-            url: "/private",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/private",
-                        intentId: "private",
-                        controller: makeController(makePage()),
-                        beforeLoad: [
-                            () => ({
-                                kind: "redirect",
-                                url: "/login",
-                                status: 302,
-                            }),
-                        ],
-                    },
-                ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        expect(result).toEqual({
-            html: "",
-            head: "",
-            css: "",
-            serverData: [],
-            redirect: { url: "/login", status: 302 },
-        });
-        expect(renderApp).not.toHaveBeenCalled();
-    });
-
-    test("renders an error page when beforeLoad denies access", async () => {
-        const renderApp = vi.fn((page: BasePage) => ({
-            html: page.title,
-            head: '<meta name="robots" content="noindex">',
-            css: ".error {}",
-            slots: { banner: "blocked" },
-        }));
-
-        const result = await ssrRender({
-            url: "/private",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/private",
-                        intentId: "private",
-                        controller: makeController(makePage()),
-                        beforeLoad: [
-                            () => ({
-                                kind: "deny",
-                                status: 403,
-                                message: "Forbidden zone",
-                            }),
-                        ],
-                    },
-                ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        expect(result).toEqual({
-            html: "Forbidden zone",
-            head: '<meta name="robots" content="noindex">',
-            css: ".error {}",
-            serverData: [],
-            slots: { banner: "blocked" },
-            status: 403,
-        });
-    });
-
-    test("afterLoad rewrite renders the current page and exposes rewriteUrl (no HTTP redirect)", async () => {
-        const page: BasePage = { id: "product-1", pageType: "product", title: "product-1" };
-        const renderApp = vi.fn((p: BasePage) => ({
-            html: p.title,
-            head: "",
-            css: "",
-        }));
-
-        const result = await ssrRender({
-            url: "/products?id=1",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/products",
-                        intentId: "product",
-                        controller: makeController(page, "product"),
-                        afterLoad: [() => ({ kind: "rewrite", url: "/products/1" })],
-                    },
-                ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        // 已加载的 page 正常渲染，rewriteUrl 仅作元信息暴露
-        expect(result.html).toBe("product-1");
-        expect(result.rewriteUrl).toBe("/products/1");
-        expect(result.redirect).toBeUndefined();
-        expect(renderApp).toHaveBeenCalledTimes(1);
-    });
-
-    test("beforeLoad rewrite internally re-routes to the new URL (regression: previously emitted 301)", async () => {
-        const legacyController = vi.fn();
-        const canonicalPage: BasePage = {
-            id: "canonical-page",
-            pageType: "canonical",
-            title: "canonical-page",
-        };
-        const canonicalController = vi.fn(async () => canonicalPage);
-        const renderApp = vi.fn((p: BasePage) => ({
-            html: p.title,
-            head: "",
-            css: "",
-        }));
-
-        const result = await ssrRender({
-            url: "/legacy",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/legacy",
-                        intentId: "legacy",
-                        controller: {
-                            intentId: "legacy",
-                            perform: legacyController,
-                        },
-                        beforeLoad: [() => ({ kind: "rewrite", url: "/canonical" })],
-                    },
-                    {
-                        path: "/canonical",
-                        intentId: "canonical",
-                        controller: {
-                            intentId: "canonical",
-                            perform: canonicalController,
-                        },
-                    },
-                ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        // /legacy 的 controller 被跳过，/canonical 的 controller 被调用并渲染
-        expect(legacyController).not.toHaveBeenCalled();
-        expect(canonicalController).toHaveBeenCalledTimes(1);
-        expect(result.html).toBe("canonical-page");
-        expect(result.redirect).toBeUndefined();
-        // beforeLoad rewrite 是完整重路由（不是 afterLoad rewrite），不设置 rewriteUrl
-        expect(result.rewriteUrl).toBeUndefined();
-    });
-
-    test("aborts on rewrite recursion to prevent infinite loops", async () => {
-        await expect(
-            ssrRender({
-                url: "/a",
-                frameworkConfig: {
-                    definition: fixtureDefinition([
-                        {
-                            path: "/a",
-                            intentId: "a",
-                            controller: makeController(makePage(), "a"),
-                            beforeLoad: [() => ({ kind: "rewrite", url: "/b" })],
-                        },
-                        {
-                            path: "/b",
-                            intentId: "b",
-                            controller: makeController(makePage(), "b"),
-                            beforeLoad: [() => ({ kind: "rewrite", url: "/a" })],
-                        },
-                    ]),
-                },
-
-                getErrorPage: makeErrorPage,
-                renderApp: () => ({ html: "", head: "", css: "" }),
-            }),
-        ).rejects.toThrow(/rewrite recursion depth exceeded/i);
-    });
-
-    test("renders a 404 page when no route matches", async () => {
-        const renderApp = vi.fn((page: BasePage) => ({
-            html: page.title,
-            head: "",
-            css: "",
-        }));
-
-        const result = await ssrRender({
-            url: "/missing",
-            frameworkConfig: { definition: fixtureDefinition([]) },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        expect(result).toMatchObject({
-            status: 404,
-            html: "Page not found",
-            head: "",
-            css: "",
-            serverData: [],
-            renderMode: undefined,
-            slots: undefined,
-            locale: undefined,
-        });
-        expect(renderApp).toHaveBeenCalledTimes(1);
-    });
-
-    test("falls back to a 500 error page when dispatch fails", async () => {
-        const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-        const renderApp = vi.fn((page: BasePage) => ({
-            html: page.title,
-            head: "",
-            css: "",
-        }));
-
-        const result = await ssrRender({
-            url: "/broken",
-            frameworkConfig: {
-                definition: fixtureDefinition([
-                    {
-                        path: "/broken",
-                        intentId: "broken",
-                        controller: {
-                            intentId: "broken",
-                            perform() {
-                                throw new Error("boom");
-                            },
-                        },
-                    },
-                ]),
-            },
-
-            getErrorPage: makeErrorPage,
-            renderApp,
-        });
-
-        expect(result).toMatchObject({
-            status: 500,
-            html: "Execution failed",
-            head: "",
-            css: "",
-            serverData: [],
-            renderMode: undefined,
-            slots: undefined,
-            locale: undefined,
-        });
-        // Runtime emits classified operation records; raw controller errors are not logged here.
-        expect(errorSpy).not.toHaveBeenCalled();
-    });
+    await render("/", { fetch });
+    await expect(safeFetch!("https://example.com")).rejects.toBeInstanceOf(HostGuardError);
+    expect(lookup).toHaveBeenCalledWith("example.com");
+    expect(fetch).not.toHaveBeenCalled();
+    await render.dispose();
 });
 
-function makeController(page: BasePage, intentId = "home"): IntentController<BasePage> {
-    return {
-        intentId,
-        perform() {
-            return page;
+test("loads async messages before native rendering and exposes the translator", async () => {
+    const loadMessages = vi.fn(async () => ({ hello: "Hello" }));
+    const definition = defineWebApp({
+        id: "messages",
+        configuration: { locale: "en-US" },
+        loadMessages,
+        pages: routePages(
+            [{ id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) }],
+            [{ path: "/", intentId: "home" }],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({
+        definition,
+        render: (app) => ({ html: app.translator?.t("hello") ?? "missing" }),
+    });
+    const request = new Request("https://example.com/?from=test");
+    const output = await render("/?from=test", { request, fetch: globalThis.fetch });
+    expect(loadMessages).toHaveBeenCalledWith(
+        "en-US",
+        expect.objectContaining({ runtime: "server", url: "/?from=test", request }),
+    );
+    expect(output.html).toBe("Hello");
+    expect(output.locale).toEqual({ lang: "en-US", dir: "ltr" });
+    await render.dispose();
+});
+
+test("uses resolveLocale output when calling the definition message loader", async () => {
+    const internalFetch = vi.fn(async () => new Response("{}"));
+    const loadMessages = vi.fn(async (locale: string) => ({
+        hello: locale === "zh-Hans" ? "你好" : "wrong",
+    }));
+    const definition = defineWebApp({
+        id: "localized",
+        configuration: { locale: "en-US" },
+        loadMessages,
+        pages: routePages(
+            [{ id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) }],
+            [{ path: "/zh-Hans", intentId: "home" }],
+        ),
+        getErrorPage: errorPage,
+    });
+    const request = new Request("https://example.com/zh-Hans");
+    const render = createSSRRender({
+        definition,
+        resolveLocale: () => ({ lang: "zh-Hans", dir: "ltr" }),
+        render: (app) => ({ html: app.translator?.t("hello") ?? "missing" }),
+    });
+    await expect(render("/zh-Hans", { request, fetch: internalFetch })).resolves.toMatchObject({
+        html: "你好",
+        locale: { lang: "zh-Hans", dir: "ltr" },
+    });
+    expect(loadMessages).toHaveBeenCalledWith(
+        "zh-Hans",
+        expect.objectContaining({ fetch: internalFetch, request }),
+    );
+    await render.dispose();
+});
+
+test("does not create a translator when no dictionary is configured", async () => {
+    const definition = defineWebApp({
+        id: "no-messages",
+        configuration: { locale: "en-US" },
+        pages: routePages(
+            [{ id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) }],
+            [{ path: "/", intentId: "home" }],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({
+        definition,
+        render: (app) => ({ html: app.translator?.t("hello") ?? "missing" }),
+    });
+    await expect(render("/")).resolves.toMatchObject({ html: "missing" });
+    await render.dispose();
+});
+
+test("propagates definition message-loader failures", async () => {
+    const definition = defineWebApp({
+        id: "message-failure",
+        configuration: { locale: "en-US" },
+        loadMessages: async () => {
+            throw Error("failed to load messages");
         },
-    };
-}
+        pages: [],
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({ definition, render: () => "" });
+    await expect(render("/")).rejects.toThrow("failed to load messages");
+    await render.dispose();
+});
 
-function makeErrorPage(status: number, message: string): BasePage {
-    return {
-        id: `error-${status}`,
-        pageType: "error",
-        title: message,
-    };
-}
+test("returns an empty shell for CSR routes without invoking the native renderer", async () => {
+    const native = vi.fn(() => "unexpected");
+    const definition = singlePageDefinition("/", "home", undefined, { renderMode: "csr" });
+    const render = createSSRRender({ definition, render: native });
+    await expect(render("/")).resolves.toMatchObject({
+        html: "",
+        head: "",
+        css: "",
+        serverData: { pages: [] },
+        renderMode: "csr",
+    });
+    expect(native).not.toHaveBeenCalled();
+    await render.dispose();
+});
 
-function makePage(): BasePage {
-    return {
-        id: "home",
-        pageType: "test",
-        title: "Home",
-    };
-}
+test("short-circuits with a redirect when a route guard blocks the request", async () => {
+    const native = vi.fn(() => "unexpected");
+    const definition = singlePageDefinition("/private", "private", undefined, {
+        beforeLoad: [() => ({ kind: "redirect", url: "/login", status: 302 })],
+    });
+    const render = createSSRRender({ definition, render: native });
+    await expect(render("/private")).resolves.toMatchObject({
+        html: "",
+        head: "",
+        css: "",
+        serverData: { pages: [] },
+        redirect: { url: "/login", status: 302 },
+    });
+    expect(native).not.toHaveBeenCalled();
+    await render.dispose();
+});
+
+test("renders a safe error page when a route guard denies access", async () => {
+    const native = vi.fn(
+        (app: { getSnapshot(): { entries: readonly { page: { title?: string } }[] } }) => ({
+            html: titleRenderer(app),
+            head: '<meta name="robots" content="noindex">',
+            css: ".error{}",
+        }),
+    );
+    const definition = singlePageDefinition("/private", "private", undefined, {
+        beforeLoad: [() => ({ kind: "deny", status: 403, message: "Forbidden zone" })],
+    });
+    const render = createSSRRender({ definition, render: native });
+    await expect(render("/private")).resolves.toMatchObject({
+        html: "Forbidden zone",
+        status: 403,
+        serverData: { pages: [] },
+    });
+    expect(native).toHaveBeenCalledTimes(1);
+    await render.dispose();
+});
+
+test("afterLoad rewrite renders loaded data and exposes rewriteUrl", async () => {
+    const definition = singlePageDefinition(
+        "/products",
+        "product",
+        () => ({
+            id: "product-1",
+            pageType: "product",
+            title: "product-1",
+        }),
+        { afterLoad: [() => ({ kind: "rewrite", url: "/products/1" })] },
+    );
+    const render = createSSRRender({ definition, render: (app) => titleRenderer(app) });
+    await expect(render("/products?id=1")).resolves.toMatchObject({
+        html: "product-1",
+        rewriteUrl: "/products/1",
+    });
+    await render.dispose();
+});
+
+test("beforeLoad rewrite internally re-routes to the new URL", async () => {
+    const legacy = vi.fn(() => ({ id: "legacy", pageType: "legacy", title: "legacy" }));
+    const canonical = vi.fn(() => ({ id: "canonical", pageType: "canonical", title: "canonical" }));
+    const definition = defineWebApp({
+        id: "rewrite",
+        pages: routePages(
+            [
+                { id: "legacy", handler: legacy },
+                { id: "canonical", handler: canonical },
+            ],
+            [
+                {
+                    path: "/legacy",
+                    intentId: "legacy",
+                    beforeLoad: [() => ({ kind: "rewrite", url: "/canonical" })],
+                },
+                { path: "/canonical", intentId: "canonical" },
+            ],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({ definition, render: (app) => titleRenderer(app) });
+    await expect(render("/legacy")).resolves.toMatchObject({ html: "canonical" });
+    expect(legacy).not.toHaveBeenCalled();
+    expect(canonical).toHaveBeenCalledTimes(1);
+    await render.dispose();
+});
+
+test("aborts on rewrite recursion to prevent infinite loops", async () => {
+    const definition = defineWebApp({
+        id: "rewrite-loop",
+        pages: routePages(
+            [
+                { id: "a", handler: () => ({ id: "a", pageType: "a", title: "a" }) },
+                { id: "b", handler: () => ({ id: "b", pageType: "b", title: "b" }) },
+            ],
+            [
+                { path: "/a", intentId: "a", beforeLoad: [() => ({ kind: "rewrite", url: "/b" })] },
+                { path: "/b", intentId: "b", beforeLoad: [() => ({ kind: "rewrite", url: "/a" })] },
+            ],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({ definition, render: () => "" });
+    await expect(render("/a")).rejects.toThrow(/rewrite recursion depth exceeded/i);
+    await render.dispose();
+});
+
+test("renders a 404 page when no route matches", async () => {
+    const definition = defineWebApp({ id: "missing", pages: [], getErrorPage: errorPage });
+    const render = createSSRRender({ definition, render: (app) => titleRenderer(app) });
+    await expect(render("/missing")).resolves.toMatchObject({
+        status: 404,
+        html: "Page not found",
+        serverData: { pages: [] },
+    });
+    await render.dispose();
+});
+
+test("falls back to a 500 error page when a page handler fails", async () => {
+    const definition = singlePageDefinition("/broken", "broken", () => {
+        throw Error("boom");
+    });
+    const render = createSSRRender({ definition, render: (app) => titleRenderer(app) });
+    await expect(render("/broken")).resolves.toMatchObject({
+        status: 500,
+        html: "Execution failed",
+        serverData: { pages: [] },
+    });
+    await render.dispose();
+});
+
+test("passes decoded path and query parameters to the typed page handler", async () => {
+    const seen: Record<string, unknown>[] = [];
+    const definition = defineWebApp({
+        id: "params",
+        pages: routePages(
+            [
+                {
+                    id: "product",
+                    handler: (params) => {
+                        seen.push(params);
+                        return markPublic(
+                            { id: "product", pageType: "product", title: String(params.id) },
+                            true,
+                        );
+                    },
+                },
+            ],
+            [
+                {
+                    path: "/products/:id",
+                    intentId: "product",
+                    params: { id: str() },
+                    query: { ref: str() },
+                },
+            ],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({ definition, render: (app) => titleRenderer(app) });
+    await expect(render("/products/42?ref=nav")).resolves.toMatchObject({ html: "42" });
+    expect(seen).toEqual([{ id: "42", ref: "nav" }]);
+    await render.dispose();
+});

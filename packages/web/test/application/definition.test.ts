@@ -1,7 +1,16 @@
+import { routePages } from "../helpers/definition";
 import { fixtureDefinition } from "../helpers/definition";
 import { expect, test } from "vite-plus/test";
 import { defineApp, ExecutionError } from "@finesoft/core";
-import { Framework, defineWebApp, loadPage, next, leaf, PrefetchedIntents } from "../../src/index";
+import {
+    createWebRuntime,
+    getWebPlan,
+    defineWebApp,
+    loadPage,
+    next,
+    leaf,
+    PrefetchedIntents,
+} from "../../src/index";
 
 const errorPage = (status: number, message: string) => ({
     id: String(status),
@@ -16,34 +25,36 @@ test("reusable Web definition loads equivalent URL and leaf through all guards a
         return next();
     };
     const web = defineWebApp({
-        id: "web",
-        controllers: [
-            {
-                id: "home",
-                handler: () => {
-                    order.push("controller");
-                    return { id: "home", pageType: "home", title: "Home" };
+        pages: routePages(
+            [
+                {
+                    id: "home",
+                    handler: () => {
+                        order.push("controller");
+                        return { id: "home", pageType: "home", title: "Home" };
+                    },
                 },
-            },
-        ],
-        routes: [
-            {
-                path: "/",
-                intentId: "home",
-                beforeLoad: [guard("route-before")],
-                afterLoad: [guard("route-after")],
-            },
-        ],
+            ],
+            [
+                {
+                    path: "/",
+                    intentId: "home",
+                    beforeLoad: [guard("route-before")],
+                    afterLoad: [guard("route-after")],
+                },
+            ],
+        ),
+        id: "web",
         beforeLoad: [guard("global-before")],
         afterLoad: [guard("global-after")],
         getErrorPage: errorPage,
     });
     expect(Object.isFrozen(web)).toBe(true);
-    const fw = Framework.create({ definition: web });
+    const fw = createWebRuntime({ definition: web });
     for (const target of ["/", leaf("home")]) {
         order.length = 0;
         const result = await loadPage({
-            framework: fw,
+            web: fw,
             target,
             beforeLoad: [guard("navigation-before")],
             afterLoad: [guard("navigation-after")],
@@ -64,6 +75,10 @@ test("reusable Web definition loads equivalent URL and leaf through all guards a
 
 test("prefetch is consumed inside operation after app policies", async () => {
     const web = defineWebApp({
+        pages: routePages(
+            [{ id: "home", handler: () => ({ id: "actual", pageType: "home", title: "Home" }) }],
+            [{ path: "/", intentId: "home" }],
+        ),
         id: "web",
         app: defineApp({
             id: "data",
@@ -73,47 +88,45 @@ test("prefetch is consumed inside operation after app policies", async () => {
                 },
             ],
         }),
-        controllers: [
-            { id: "home", handler: () => ({ id: "actual", pageType: "home", title: "Home" }) },
-        ],
-        routes: [{ path: "/", intentId: "home" }],
         getErrorPage: errorPage,
     });
     const cached = { id: "cached", pageType: "home", title: "Cached" };
     const prefetch = PrefetchedIntents.fromArray([
         { entryId: "cached-entry", intent: { id: "home", params: {} }, data: cached },
     ]);
-    const fw = Framework.create({
+    const fw = createWebRuntime({
         definition: web,
         prefetchedIntents: prefetch,
         invocation: { bindings: { denied: true } },
     });
-    await expect(fw.dispatch({ id: "home", params: {} })).rejects.toMatchObject({ code: "denied" });
+    await expect(
+        fw.createExecution().execute(getWebPlan(web).operations.get("home")!, {}),
+    ).rejects.toMatchObject({ code: "denied" });
     expect(prefetch.get({ id: "home", params: {} }, "cached-entry")).toBe(cached);
     await fw.dispose();
 });
 
 test("two URLs for one operation retain actual route policy and ambiguous intent requires URL", async () => {
     const web = defineWebApp({
+        pages: routePages(
+            [{ id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) }],
+            [
+                { path: "/public", intentId: "home" },
+                {
+                    path: "/private",
+                    intentId: "home",
+                    beforeLoad: [() => ({ kind: "deny", status: 403, message: "Denied" })],
+                },
+            ],
+        ),
         id: "web",
-        controllers: [
-            { id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) },
-        ],
-        routes: [
-            { path: "/public", intentId: "home" },
-            {
-                path: "/private",
-                intentId: "home",
-                beforeLoad: [() => ({ kind: "deny", status: 403, message: "Denied" })],
-            },
-        ],
         getErrorPage: errorPage,
     });
-    const fw = Framework.create({ definition: web });
-    expect(
-        (await loadPage({ framework: fw, target: leaf("home", {}, { url: "/private" }) })).kind,
-    ).toBe("deny");
-    await expect(loadPage({ framework: fw, target: leaf("home") })).rejects.toThrow(/ambiguous/i);
+    const fw = createWebRuntime({ definition: web });
+    expect((await loadPage({ web: fw, target: leaf("home", {}, { url: "/private" }) })).kind).toBe(
+        "deny",
+    );
+    await expect(loadPage({ web: fw, target: leaf("home") })).rejects.toThrow(/ambiguous/i);
     await fw.dispose();
 });
 
@@ -122,26 +135,28 @@ test("Split secondary guards block transaction commits and same target pushes re
     let calls = 0;
     let denied = false;
     const web = defineWebApp({
+        pages: routePages(
+            [
+                {
+                    id: "edit",
+                    handler: () => ({ id: String(++calls), pageType: "edit", title: "Edit" }),
+                },
+            ],
+            [
+                {
+                    path: "/edit",
+                    intentId: "edit",
+                    afterLoad: [
+                        () => (denied ? { kind: "deny", status: 403, message: "Denied" } : next()),
+                    ],
+                },
+            ],
+        ),
         id: "nav",
-        controllers: [
-            {
-                id: "edit",
-                handler: () => ({ id: String(++calls), pageType: "edit", title: "Edit" }),
-            },
-        ],
-        routes: [
-            {
-                path: "/edit",
-                intentId: "edit",
-                afterLoad: [
-                    () => (denied ? { kind: "deny", status: 403, message: "Denied" } : next()),
-                ],
-            },
-        ],
         getErrorPage: errorPage,
     });
-    const fw = Framework.create({ definition: web });
-    const controller = createNavigationController({ framework: fw, initial: stack(leaf("edit")) });
+    const fw = createWebRuntime({ definition: web });
+    const controller = createNavigationController({ web: fw, initial: stack(leaf("edit")) });
     const first = await controller.resolve();
     const second = await controller.push("edit");
     expect(second.destinations[0].entryId).not.toBe(first.destinations[0].entryId);
@@ -166,17 +181,19 @@ test("Split secondary guards block transaction commits and same target pushes re
 test("route-free leaf runs globals and navigation guards while unmatched URL remains 404", async () => {
     const calls: string[] = [];
     const web = defineWebApp({
-        id: "embedded",
-        controllers: [
-            {
-                id: "panel",
-                handler: () => {
-                    calls.push("controller");
-                    return { id: "p", pageType: "panel", title: "Panel" };
+        pages: routePages(
+            [
+                {
+                    id: "panel",
+                    handler: () => {
+                        calls.push("controller");
+                        return { id: "p", pageType: "panel", title: "Panel" };
+                    },
                 },
-            },
-        ],
-        routes: [],
+            ],
+            [],
+        ),
+        id: "embedded",
         beforeLoad: [
             () => {
                 calls.push("global");
@@ -185,11 +202,11 @@ test("route-free leaf runs globals and navigation guards while unmatched URL rem
         ],
         getErrorPage: errorPage,
     });
-    const fw = Framework.create({ definition: web });
+    const fw = createWebRuntime({ definition: web });
     expect(
         (
             await loadPage({
-                framework: fw,
+                web: fw,
                 target: leaf("panel"),
                 beforeLoad: [
                     () => {
@@ -201,12 +218,12 @@ test("route-free leaf runs globals and navigation guards while unmatched URL rem
         ).kind,
     ).toBe("page");
     expect(calls).toEqual(["global", "navigation", "controller"]);
-    expect(await loadPage({ framework: fw, target: "/panel" })).toMatchObject({
+    expect(await loadPage({ web: fw, target: "/panel" })).toMatchObject({
         kind: "deny",
         status: 404,
     });
     expect(
-        await loadPage({ framework: fw, target: leaf("panel", {}, { url: "/missing" }) }),
+        await loadPage({ web: fw, target: leaf("panel", {}, { url: "/missing" }) }),
     ).toMatchObject({ kind: "deny", status: 404 });
     await fw.dispose();
 });
@@ -223,17 +240,19 @@ test("cancelling a transaction during guards prevents later guards, controllers 
     });
     const calls: string[] = [];
     const web = defineWebApp({
-        id: "cancel",
-        controllers: [
-            {
-                id: "home",
-                handler: () => {
-                    calls.push("controller");
-                    return { id: "home", pageType: "home", title: "Home" };
+        pages: routePages(
+            [
+                {
+                    id: "home",
+                    handler: () => {
+                        calls.push("controller");
+                        return { id: "home", pageType: "home", title: "Home" };
+                    },
                 },
-            },
-        ],
-        routes: [],
+            ],
+            [],
+        ),
+        id: "cancel",
         beforeLoad: [
             async () => {
                 entered();
@@ -247,8 +266,8 @@ test("cancelling a transaction during guards prevents later guards, controllers 
         ],
         getErrorPage: errorPage,
     });
-    const fw = Framework.create({ definition: web });
-    const nav = createNavigationController({ framework: fw, initial: stack(leaf("home")) });
+    const fw = createWebRuntime({ definition: web });
+    const nav = createNavigationController({ web: fw, initial: stack(leaf("home")) });
     nav.subscribe(() => {
         calls.push("commit");
     });
@@ -264,37 +283,32 @@ test("cancelling a transaction during guards prevents later guards, controllers 
 
 test("assembled route indexes cannot be mutated through a request facade", async () => {
     const web = defineWebApp({
+        pages: routePages(
+            [{ id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) }],
+            [{ path: "/", intentId: "home" }],
+        ),
         id: "sealed",
-        controllers: [
-            { id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) },
-        ],
-        routes: [{ path: "/", intentId: "home" }],
         getErrorPage: errorPage,
     });
-    const fw = Framework.create({ definition: web });
+    const fw = createWebRuntime({ definition: web });
     expect(() => fw.router.add("/injected", "home")).toThrow(/sealed/i);
     await fw.dispose();
 });
 
 test("facade disposal finishes environment and owned Runtime even if execution cleanup fails", async () => {
-    const fw = Framework.create({ definition: fixtureDefinition() });
+    const fw = createWebRuntime({ definition: fixtureDefinition() });
     const execution = fw.createExecution();
     execution.context.onDispose(() => {
         throw new Error("cleanup failed");
     });
-    let environmentClosed = false;
-    fw.container.onDispose(() => {
-        environmentClosed = true;
-    });
     await expect(fw.dispose()).rejects.toThrow();
-    expect(environmentClosed).toBe(true);
     expect(() => fw.runtime.createExecution()).toThrow();
 });
 
 test("disposed navigation rejects new work even when its shared facade is still alive", async () => {
     const { createNavigationController, stack } = await import("../../src/navigation");
-    const fw = Framework.create({ definition: fixtureDefinition() });
-    const nav = createNavigationController({ framework: fw, initial: stack(leaf("home")) });
+    const fw = createWebRuntime({ definition: fixtureDefinition() });
+    const nav = createNavigationController({ web: fw, initial: stack(leaf("home")) });
     await nav.dispose();
     await expect(nav.resolve()).rejects.toMatchObject({
         code: "configuration",
@@ -308,8 +322,8 @@ test("Web definitions own an immutable navigation declaration snapshot", async (
     const params = { draft: "initial" };
     const initial = stack(leaf("home", params));
     const web = defineWebApp({
+        pages: routePages([], []),
         id: "immutable",
-        routes: [],
         navigation: initial,
         getErrorPage: errorPage,
     });
@@ -322,23 +336,23 @@ test("before-load rewrite preserves the destination EntryId across tree, data an
     const { createNavigationController, stack, serializeNavigation } =
         await import("../../src/navigation");
     const web = defineWebApp({
+        pages: routePages(
+            [{ id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) }],
+            [
+                {
+                    path: "/old",
+                    intentId: "home",
+                    beforeLoad: [() => ({ kind: "rewrite", url: "/new" })],
+                },
+                { path: "/new", intentId: "home" },
+            ],
+        ),
         id: "rewrite-entry",
-        controllers: [
-            { id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) },
-        ],
-        routes: [
-            {
-                path: "/old",
-                intentId: "home",
-                beforeLoad: [() => ({ kind: "rewrite", url: "/new" })],
-            },
-            { path: "/new", intentId: "home" },
-        ],
         getErrorPage: errorPage,
     });
-    const fw = Framework.create({ definition: web });
+    const fw = createWebRuntime({ definition: web });
     const initial = leaf("home", {}, { url: "/old" });
-    const nav = createNavigationController({ framework: fw, initial: stack(initial) });
+    const nav = createNavigationController({ web: fw, initial: stack(initial) });
     const snapshot = await nav.resolve();
     expect(snapshot.destinations[0].entryId).toBe(initial.entryId);
     expect(serializeNavigation(snapshot.tree)).toMatchObject({
@@ -374,24 +388,26 @@ test.each(["loader", "tree"] as const)(
                 return await (await ctx.fetch("https://example.com/data")).text();
             },
         });
-        const framework = Framework.create({
+        const framework = createWebRuntime({
             definition: defineWebApp({
+                pages: routePages(
+                    [
+                        {
+                            id: "home",
+                            handler: async (_params, ctx) => {
+                                controllerSignal = ctx.signal;
+                                return {
+                                    id: "home",
+                                    pageType: "home",
+                                    title: await ctx.execute(query, undefined),
+                                };
+                            },
+                        },
+                    ],
+                    [],
+                ),
                 id: "supplied-cancel",
                 app: defineApp({ id: "data", operations: [query] }),
-                controllers: [
-                    {
-                        id: "home",
-                        handler: async (_params, ctx) => {
-                            controllerSignal = ctx.signal;
-                            return {
-                                id: "home",
-                                pageType: "home",
-                                title: await ctx.execute(query, undefined),
-                            };
-                        },
-                    },
-                ],
-                routes: [],
                 getErrorPage: errorPage,
             }),
             fetch: async (_input, init) => {
@@ -402,11 +418,20 @@ test.each(["loader", "tree"] as const)(
             },
         });
         const execution = framework.createExecution();
-        const nav = createNavigationController({ framework, execution, initial: leaf("home") });
+        const nav = createNavigationController({
+            web: framework,
+            execution,
+            initial: leaf("home"),
+        });
         const abort = new AbortController();
         const pending =
             producer === "loader"
-                ? loadPage({ framework, target: leaf("home"), execution, signal: abort.signal })
+                ? loadPage({
+                      web: framework,
+                      target: leaf("home"),
+                      execution,
+                      signal: abort.signal,
+                  })
                 : nav.resolve();
         const outcome = pending.then(
             () => "fulfilled",
@@ -445,28 +470,30 @@ test.each(["loader", "tree"] as const)(
     async (producer) => {
         const { createNavigationController } = await import("../../src/navigation");
         let calls = 0;
-        const framework = Framework.create({
+        const framework = createWebRuntime({
             definition: defineWebApp({
-                id: "signal-boundary",
-                routes: [],
-                controllers: [
-                    {
-                        id: "home",
-                        handler: () => {
-                            calls++;
-                            return { id: "home", pageType: "home", title: "Home" };
+                pages: routePages(
+                    [
+                        {
+                            id: "home",
+                            handler: () => {
+                                calls++;
+                                return { id: "home", pageType: "home", title: "Home" };
+                            },
                         },
-                    },
-                ],
+                    ],
+                    [],
+                ),
+                id: "signal-boundary",
                 getErrorPage: errorPage,
             }),
         });
         const execution = framework.createExecution();
         const target = leaf("home");
-        const nav = createNavigationController({ framework, execution, initial: target });
+        const nav = createNavigationController({ web: framework, execution, initial: target });
         const run = (signal: AbortSignal) =>
             producer === "loader"
-                ? loadPage({ framework, execution, target, signal })
+                ? loadPage({ web: framework, execution, target, signal })
                 : nav.apply({ kind: "hydrate", tree: target }, { signal });
         const completed = new AbortController();
         await run(completed.signal);

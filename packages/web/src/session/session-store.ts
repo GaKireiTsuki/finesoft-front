@@ -35,6 +35,9 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
     let scope: NavigationScopedState = createNavigationScopedState();
     let queue = Promise.resolve();
     let closed = false;
+    let queuedImplicit:
+        | { readonly result: Promise<SessionWriteResult>; started: boolean }
+        | undefined;
     function report(ctx: SessionErrorContext): void {
         // Never forward arbitrary decoder/storage exceptions into default diagnostics.
         try {
@@ -48,13 +51,28 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
         report({ phase, code: unavailable ? "storage-unavailable" : "storage-failed" });
         return unavailable ? { status: "unavailable" } : { status: "failed", cause };
     }
-    function enqueue<T>(work: () => Promise<T>): Promise<T | { status: "closed" }> {
+    function enqueue<T>(
+        work: () => Promise<T>,
+        implicit = false,
+    ): Promise<T | { status: "closed" }> {
         if (closed) return Promise.resolve({ status: "closed" });
-        const result = queue.then(work);
+        if (!implicit) queuedImplicit = undefined;
+        let slot: { result: Promise<SessionWriteResult>; started: boolean } | undefined;
+        const result = queue.then(async () => {
+            if (slot) {
+                slot.started = true;
+                if (queuedImplicit === slot) queuedImplicit = undefined;
+            }
+            return work();
+        });
         queue = result.then(
             () => {},
             () => {},
         );
+        if (implicit) {
+            slot = { result: result as Promise<SessionWriteResult>, started: false };
+            queuedImplicit = slot;
+        }
         return result;
     }
     function capture(): SessionSnapshot {
@@ -96,21 +114,35 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
     }
     function persist(snapshot?: SessionSnapshot): Promise<SessionWriteResult> {
         if (closed) return Promise.resolve({ status: "closed" });
-        // Explicit snapshots belong to the caller. Take independent bytes before yielding to the queue.
+        if (snapshot === undefined) {
+            // Coalesce only the final queued, not-yet-started implicit write. Capture happens in that slot.
+            if (queuedImplicit && !queuedImplicit.started) return queuedImplicit.result;
+            return enqueue(async () => {
+                try {
+                    await storage.set(key, encodeSnapshot(capture()));
+                    return { status: "saved" as const };
+                } catch (cause) {
+                    return failure(cause, "persist");
+                }
+            }, true) as Promise<SessionWriteResult>;
+        }
+        // Explicit values are admitted at call time and always form a queue boundary, even on encode failure.
         let admitted: string | undefined;
+        let rejected: SessionFailure | undefined;
         try {
-            if (snapshot !== undefined) admitted = encodeSnapshot(cloneSnapshotValue(snapshot));
+            admitted = encodeSnapshot(cloneSnapshotValue(snapshot));
         } catch (cause) {
-            return Promise.resolve(failure(cause, "persist"));
+            rejected = failure(cause, "persist");
         }
         return enqueue(async () => {
+            if (rejected) return rejected;
             try {
-                await storage.set(key, admitted ?? encodeSnapshot(capture()));
+                await storage.set(key, admitted!);
                 return { status: "saved" as const };
             } catch (cause) {
                 return failure(cause, "persist");
             }
-        });
+        }) as Promise<SessionWriteResult>;
     }
     return {
         register(provider): () => void {

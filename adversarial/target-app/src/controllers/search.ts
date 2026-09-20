@@ -1,4 +1,5 @@
-import { BaseController, type BasePage, safeErrorPage } from "@finesoft/front/browser";
+import { BaseController } from "@finesoft/front";
+import { safeErrorPage, type BasePage } from "@finesoft/front/web";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -13,10 +14,9 @@ interface SearchPage extends BasePage {
 const QUERIES_DIR = resolve(process.cwd(), "data", "queries");
 
 export class SearchController extends BaseController<SearchParams, SearchPage> {
-    readonly intentId = "search";
-
     execute(params: SearchParams): SearchPage {
         const q = params.q ?? "default";
+        if (!/^[\w-]{1,128}$/.test(q)) throw new Error("Invalid query fixture");
         const fixturePath = join(QUERIES_DIR, `${q}.json`);
         const raw = readFileSync(fixturePath, "utf-8");
         const parsed = JSON.parse(raw);

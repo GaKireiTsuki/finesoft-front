@@ -4,13 +4,13 @@ export type Level = "debug" | "info" | "warn" | "error";
 /**
  * Logger 接口
  *
- * 所有方法返回空字符串，允许在模板中内联使用而不渲染文本。
+ * Logging is observational and does not produce presentation output.
  */
 export interface Logger {
-    debug(...args: unknown[]): string;
-    info(...args: unknown[]): string;
-    warn(...args: unknown[]): string;
-    error(...args: unknown[]): string;
+    debug(...args: unknown[]): void;
+    info(...args: unknown[]): void;
+    warn(...args: unknown[]): void;
+    error(...args: unknown[]): void;
 }
 
 export interface LoggerFactory {

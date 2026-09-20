@@ -3,8 +3,13 @@ vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 import { createPrefetchedIntentsFromDom, deserializeServerData } from "../src/server-data";
 const payload = [
-    { entryId: "home-1", intent: { id: "home", params: {} }, data: { title: "Home" } },
+    {
+        entryId: "home-1",
+        intent: { id: "home", params: {} },
+        data: { pageType: "home", title: "Home" },
+    },
 ];
+const tree = { kind: "leaf", entryId: "home-1", intent: "home", params: {} };
 function source(value: unknown) {
     const removeChild = vi.fn();
     return {
@@ -17,18 +22,27 @@ function source(value: unknown) {
     };
 }
 test("explicit per-instance sources never query global document; each consumes only its own script", () => {
-    const a = source({ protocolVersion: 1, buildId: "build-a", payload });
+    const a = source({ protocolVersion: 2, buildId: "build-a", payload: { tree, pages: payload } });
     const b = source({
-        protocolVersion: 1,
+        protocolVersion: 2,
         buildId: "build-a",
-        payload: [{ ...payload[0], entryId: "home-2" }],
+        payload: {
+            tree: { ...tree, entryId: "home-2" },
+            pages: [{ ...payload[0], entryId: "home-2" }],
+        },
     });
     const cache = createPrefetchedIntentsFromDom(a);
-    expect(cache.get({ id: "home", params: {} }, "home-1")).toEqual({ title: "Home" });
+    expect(cache.get({ id: "home", params: {} }, "home-1")).toEqual({
+        pageType: "home",
+        title: "Home",
+    });
     expect(b.removeChild).not.toHaveBeenCalled();
     expect(deserializeServerData(b)).toEqual({
         status: "ready",
-        data: [{ ...payload[0], entryId: "home-2" }],
+        data: {
+            tree: { ...tree, entryId: "home-2" },
+            pages: [{ ...payload[0], entryId: "home-2" }],
+        },
     });
 });
 test("missing, invalid JSON and mismatches explicitly fall back to fresh load", () => {
@@ -41,7 +55,7 @@ test("missing, invalid JSON and mismatches explicitly fall back to fresh load", 
     expect(deserializeServerData(invalid)).toEqual({ status: "fresh-load", code: "invalid-json" });
     const onFallback = vi.fn();
     const cache = createPrefetchedIntentsFromDom({
-        ...source({ protocolVersion: 1, buildId: "old", payload }),
+        ...source({ protocolVersion: 2, buildId: "old", payload: { tree, pages: payload } }),
         onFallback,
     });
     expect(cache.size).toBe(0);
@@ -52,7 +66,7 @@ test("a changed build rejects hydration while preserving independently versioned
     const { createSessionStore } = await import("@finesoft/web");
     const restore = vi.fn();
     const stored = JSON.stringify({
-        version: 1,
+        version: 2,
         capturedAt: 1,
         scoped: {},
         slices: { draft: { version: 3, data: "kept" } },
@@ -72,7 +86,7 @@ test("a changed build rejects hydration while preserving independently versioned
     });
     expect(
         createPrefetchedIntentsFromDom(
-            source({ protocolVersion: 1, buildId: "old-build", payload }),
+            source({ protocolVersion: 2, buildId: "old-build", payload: { tree, pages: payload } }),
         ).size,
     ).toBe(0);
     expect(await store.restore()).toEqual({ status: "restored" });

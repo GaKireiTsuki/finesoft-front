@@ -1,13 +1,17 @@
-import { startBrowserApp } from "@finesoft/front/browser";
-import { createReactRenderer } from "@finesoft/front/renderers/react/browser";
+import { createBrowserApp } from "@finesoft/front/browser";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import { app } from "./app-definition";
-import { views } from "./views";
-export const started = startBrowserApp({
-    app,
-    renderer: createReactRenderer(views),
-    target: document.getElementById("app")!,
-});
+import App from "./App";
+const target = document.getElementById("app")!;
+export const started = createBrowserApp({ definition: app, target });
+const handle = await started;
+const root = handle.hydrate ? hydrateRoot(target, <App app={handle} />) : createRoot(target);
+if (!handle.hydrate) root.render(<App app={handle} />);
 if (import.meta.hot)
     import.meta.hot.dispose(async () => {
-        await (await started).dispose();
+        try {
+            await handle.dispose();
+        } finally {
+            root.unmount();
+        }
     });

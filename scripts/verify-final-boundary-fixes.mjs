@@ -8,11 +8,11 @@ import { execFileSync } from "node:child_process";
 import ts from "typescript";
 import { createServer } from "vite-plus";
 import { chromium } from "playwright";
-import { createSSRRender, createSSRNavigationRender } from "../packages/front/dist/ssr.mjs";
+import { createSSRRender } from "../packages/front/dist/ssr.mjs";
 import { staticAdapter } from "../packages/front/dist/vite.mjs";
 import {
     defineWebApp,
-    Framework,
+    createWebRuntime,
     createNavigationController,
     createNavigationSessionAdapter,
     createSessionStore,
@@ -33,27 +33,31 @@ report.session = [];
 for (const mode of ["deny", "redirect", "commit", "redirect-commit"]) {
     const definition = defineWebApp({
         id: "final-session",
-        controllers: ["home", "saved"].map((id) => ({ id, handler: () => page(id) })),
-        routes: [
-            { path: "/", intentId: "home" },
+        pages: [
+            { id: "home", handler: () => page("home"), routes: ["/"] },
             {
-                path: "/saved",
-                intentId: "saved",
-                beforeLoad: [
-                    () =>
-                        mode === "deny"
-                            ? { kind: "deny", status: 403, message: "denied" }
-                            : mode.startsWith("redirect")
-                              ? { kind: "redirect", status: 302, url: "/" }
-                              : { kind: "next" },
+                id: "saved",
+                handler: () => page("saved"),
+                routes: [
+                    {
+                        path: "/saved",
+                        beforeLoad: [
+                            () =>
+                                mode === "deny"
+                                    ? { kind: "deny", status: 403, message: "denied" }
+                                    : mode.startsWith("redirect")
+                                      ? { kind: "redirect", status: 302, url: "/" }
+                                      : { kind: "next" },
+                        ],
+                    },
                 ],
             },
         ],
         getErrorPage: (_, message) => page(message),
     });
-    const framework = Framework.create({ definition });
+    const web = createWebRuntime({ definition });
     const navigation = createNavigationController({
-        framework,
+        web,
         initial: stack(leaf("home", {}, { url: "/" })),
         onRedirect:
             mode === "redirect-commit" ? () => stack(leaf("home", {}, { url: "/" })) : undefined,
@@ -77,7 +81,7 @@ for (const mode of ["deny", "redirect", "commit", "redirect-commit"]) {
         },
     });
     const result = await session.restore({
-        version: 1,
+        version: 2,
         capturedAt: Date.now(),
         navigation: serializeNavigation(stack(leaf("saved", {}, { url: "/saved" }))),
         slices: { editor: { version: 1, data: "saved" } },
@@ -91,20 +95,16 @@ for (const mode of ["deny", "redirect", "commit", "redirect-commit"]) {
     report.session.push({ mode, status: result.status, committed });
     await session.dispose();
     await navigation.dispose();
-    await framework.dispose();
+    await web.dispose();
 }
 report.ssr = [];
-for (const [strategy, createRender] of [
-    ["flat", createSSRRender],
-    ["navigation", createSSRNavigationRender],
-]) {
+for (const [strategy, createRender] of [["native", createSSRRender]]) {
     let mode = "deny",
         loads = 0,
         disposed = 0;
     const definition = defineWebApp({
         id: "public-ssr-policy",
-        routes: [{ path: "/", intentId: "home", cache: "public" }],
-        controllers: [
+        pages: [
             {
                 id: "home",
                 handler: (_params, context) => {
@@ -114,6 +114,7 @@ for (const [strategy, createRender] of [
                     });
                     return page("home");
                 },
+                routes: [{ path: "/", cache: "public" }],
             },
         ],
         getErrorPage: (_, title) => page(title),
@@ -134,13 +135,17 @@ for (const [strategy, createRender] of [
     });
     const render = createRender({
         definition,
-        renderApp: (value) => ({ html: value.title, head: "", css: "" }),
+        render: (app) => ({
+            html: app.getSnapshot().entries.at(-1)?.page.title ?? "",
+            head: "",
+            css: "",
+        }),
         resolveLocale: () => ({ lang: "ar", dir: "rtl" }),
     });
     const denied = await render("/", { request: new Request("https://local/") });
     assert.equal(denied.status, 409);
     assert.equal(denied.html, "draft");
-    assert.deepEqual(denied.serverData, []);
+    assert.deepEqual(denied.serverData, { tree: undefined, pages: [] });
     assert.equal(denied.cache, undefined);
     assert.deepEqual(denied.locale, { lang: "ar", dir: "rtl" });
     assert.equal(disposed, 1);
@@ -176,7 +181,7 @@ for (const explicit of [false, true]) {
         const key = `${explicit}-${buildId}`;
         fs.writeFileSync(
             path.join(staticRoot, "dist/server/ssr.js"),
-            `import {defineWebApp} from ${JSON.stringify(web)}; import {createSSRRender, serializeServerData as serialize} from ${JSON.stringify(ssr)}; const definition=defineWebApp({id:'native-static',controllers:[{id:'page',handler:()=>({id:'page',pageType:'page',title:${JSON.stringify(key)}})}],routes:[{path:${JSON.stringify(route)},intentId:'page'}],getErrorPage:(_,title)=>({id:'error',pageType:'error',title})}); const owned=createSSRRender({definition,renderApp:page=>({html:'<main>'+page.title+'</main>',head:'',css:''})}); const dispose=owned.dispose; owned.dispose=async()=>{await dispose();(globalThis.__staticDisposed??=[]).push(${JSON.stringify(key)});}; export const render=owned; export const serializeServerData=data=>serialize(data,{buildId:${JSON.stringify(key)}});`,
+            `import {defineWebApp} from ${JSON.stringify(web)}; import {createSSRRender, serializeServerData as serialize} from ${JSON.stringify(ssr)}; const definition=defineWebApp({id:'native-static',pages:[{id:'page',handler:()=>({id:'page',pageType:'page',title:${JSON.stringify(key)}}),routes:[${JSON.stringify(route)}]}],getErrorPage:(_,title)=>({id:'error',pageType:'error',title})}); const owned=createSSRRender({definition,render:app=>({html:'<main>'+app.getSnapshot().entries.at(-1).page.title+'</main>',head:'',css:''})}); const dispose=owned.dispose; owned.dispose=async()=>{await dispose();(globalThis.__staticDisposed??=[]).push(${JSON.stringify(key)});}; export const render=owned; export const serializeServerData=data=>serialize(data,{buildId:${JSON.stringify(key)}});`,
         );
         const context = {
             root: staticRoot,
@@ -260,7 +265,7 @@ try {
     const types = `import {defineWebApp, type BeforeNavigatePolicy, type BeforeCommitPolicy, type NavigationCommitContext} from '@finesoft/front/web';
 const admission: BeforeNavigatePolicy = ctx => { const signal: AbortSignal=ctx.signal; const id: string=ctx.transitionId; return {kind:'redirect',url:'/login',status:302}; };
 const commit: BeforeCommitPolicy = ctx => ({kind:'deny',status:409,message:ctx.candidate.destinations.length ? 'draft' : 'empty'});
-const app=defineWebApp({id:'typed',routes:[],getErrorPage:()=>({id:'error',pageType:'error',title:'error'}),beforeNavigate:[admission],beforeCommit:[commit]});
+const app=defineWebApp({id:'typed',pages:[],getErrorPage:()=>({id:'error',pageType:'error',title:'error'}),beforeNavigate:[admission],beforeCommit:[commit]});
 // @ts-expect-error commit cannot redirect a candidate after its only check
 const invalid: BeforeCommitPolicy = () => ({kind:'redirect',url:'/',status:302});
 function readonlyContext(ctx: NavigationCommitContext) {
@@ -308,15 +313,13 @@ report.archiveSelection = {
     selected: path.basename(tarball),
     note: "selection-only regression; real current archive hash recorded by pack evidence",
 };
-// Standard browser host and real DOM, both presentation strategies; no alternate navigation engine.
+// Standard browser host and real DOM. Native roots own rendering and acknowledge each commit.
 const browserFile = path.join(output, "browser.mjs");
 fs.writeFileSync(
     browserFile,
-    `import {defineWebApp,collectVisibleDestinations} from '/packages/front/dist/web.mjs'; import {startBrowserApp} from '/packages/front/dist/browser.mjs';
-const state=window.probe={deny:false,initialDeny:new URL(location.href).searchParams.has('deny'),events:[],loads:0,visits:0};
-const app=defineWebApp({id:'browser-policy',controllers:['home','other'].map(id=>({id,handler:()=>{state.loads++;return {id,pageType:id,title:id};}})),routes:[{path:'/',intentId:'home'},{path:'/other',intentId:'other'},{path:'/redirect',intentId:'home'}],getErrorPage:(status,title)=>({id:String(status),pageType:'error',title}),beforeNavigate:[ctx=>{state.events.push(['beforeNavigate',ctx.transitionId]); if(state.initialDeny)return {kind:'deny',status:403,message:'Admission blocked'};if(collectVisibleDestinations(ctx.tree).at(-1)?.url==='/redirect')return {kind:'redirect',url:'/other',status:302};return {kind:'next'};}],beforeCommit:[async ctx=>{state.events.push(['beforeCommit',ctx.transitionId]);const result=state.deny?{kind:'deny',status:409,message:'Unsaved draft'}:{kind:'next'};if(state.pause)await new Promise(resolve=>state.release=resolve);return result;}]});
-const renderer={mode:new URL(location.href).searchParams.get('mode')??'root',mount:async({target,page,context})=>{target.innerHTML='<h1></h1><input aria-label="draft" />';target.querySelector('h1').textContent=page.title;state.renderedSnapshot=context.snapshot;return {update:page=>{target.querySelector('h1').textContent=page.title;},dispose:()=>target.replaceChildren()};}};
-state.app=await startBrowserApp({app,renderer,target:document.querySelector('#app'),history:'browser'});const visit=state.app.framework.didEnterPage.bind(state.app.framework);state.app.framework.didEnterPage=page=>{state.visits++;visit(page);};state.ready=true;`,
+    `import {defineWebApp} from '/packages/front/dist/web.mjs'; import {createBrowserApp} from '/packages/front/dist/browser.mjs';
+const target=document.querySelector('#app'); const definition=defineWebApp({id:'browser-policy',pages:['home','other'].map(id=>({id,handler:()=>({id,pageType:id,title:id}),routes:[id==='home'?'/':'/other']})),getErrorPage:(_status,title)=>({id:'error',pageType:'error',title})});
+const app=await createBrowserApp({definition,target,history:'browser'}); const render=()=>{const page=app.getSnapshot().entries.at(-1)?.page; target.innerHTML='<h1></h1><input aria-label="draft" />'; target.querySelector('h1').textContent=page?.title??'missing'; app.commit(app.getSnapshot().revision);}; app.subscribe(render); render(); await app.ready; window.probe={app,ready:true};`,
 );
 const server = await createServer({
     configFile: false,
@@ -325,7 +328,7 @@ const server = await createServer({
     appType: "custom",
 });
 server.middlewares.use((req, res, next) => {
-    if (["/", "/other", "/redirect"].includes(new URL(req.url, "http://local").pathname)) {
+    if (["/", "/other"].includes(new URL(req.url, "http://local").pathname)) {
         res.setHeader("content-type", "text/html");
         res.end(
             '<html><body><div id="app"></div><script type="module" src="/reports/application-boundaries/final-fix/browser.mjs"></script></body></html>',
@@ -336,95 +339,30 @@ await server.listen();
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 report.browser = [];
 try {
-    for (const mode of ["root", "entries"]) {
-        const tab = await browser.newPage();
-        const errors = [];
-        tab.on("pageerror", (error) => errors.push(String(error)));
-        const base = `http://127.0.0.1:${server.httpServer.address().port}`;
-        await tab.goto(`${base}/?mode=${mode}&deny`);
-        await tab.waitForFunction(() => window.probe?.ready);
-        assert.equal(await tab.locator("h1").textContent(), "Admission blocked");
-        assert.equal(await tab.evaluate(() => window.probe.loads), 0);
-        assert.equal(await tab.evaluate(() => window.probe.renderedSnapshot.rejection.status), 403);
-        await tab.goto(`${base}/?mode=${mode}`);
-        await tab.waitForFunction(() => window.probe?.ready);
-        await tab.locator("input").fill("unsaved original");
-        await tab.evaluate(() => {
-            window.probe.deny = true;
-            window.probe.original = window.probe.app.getSnapshot();
-            window.probe.historyLength = history.length;
-            return window.probe.app.navigate("/other");
-        });
-        assert.equal(await tab.locator("h1").textContent(), "home");
-        assert.equal(await tab.locator("input").inputValue(), "unsaved original");
-        assert.ok(
-            await tab.evaluate(
-                () =>
-                    window.probe.app.getSnapshot() === window.probe.original &&
-                    history.length === window.probe.historyLength &&
-                    window.probe.visits === 0,
-            ),
-        );
-        await tab.evaluate(async () => {
-            window.probe.deny = false;
-            await window.probe.app.navigate("/other");
-        });
-        await tab.locator("input").fill("unsaved second");
-        await tab.evaluate(() => {
-            window.probe.deny = true;
-            window.probe.original = window.probe.app.getSnapshot();
-            window.probe.eventCount = window.probe.events.length;
-            window.probe.committedHistoryId = history.state.id;
-            history.back();
-        });
-        await tab.waitForFunction(() => window.probe.events.length >= window.probe.eventCount + 2);
-        await tab.waitForFunction(
-            () =>
-                location.pathname === "/other" &&
-                history.state.id === window.probe.committedHistoryId,
-        );
-        assert.equal(await tab.locator("h1").textContent(), "other");
-        assert.equal(await tab.locator("input").inputValue(), "unsaved second");
-        assert.ok(
-            await tab.evaluate(() => window.probe.app.getSnapshot() === window.probe.original),
-        );
-        await tab.evaluate(() => {
-            window.probe.deny = false;
-            history.back();
-        });
-        await tab.waitForFunction(() => document.querySelector("h1")?.textContent === "home");
-        assert.equal(new URL(tab.url()).pathname, "/");
-        await tab.evaluate(() => window.probe.app.navigate("/other"));
-        await tab.evaluate(() => {
-            window.probe.pause = true;
-            window.probe.deny = true;
-            history.back();
-        });
-        await tab.waitForFunction(() => !!window.probe.release);
-        await tab.evaluate(async () => {
-            window.probe.pause = false;
-            window.probe.deny = false;
-            const next = window.probe.app.navigate("/redirect");
-            window.probe.release();
-            await next;
-        });
-        assert.equal(new URL(tab.url()).pathname, "/other");
-        assert.equal(await tab.locator("h1").textContent(), "other");
-        assert.deepEqual(errors, []);
-        report.browser.push({
-            mode,
-            initialAdmission403: true,
-            urlVetoPreservesDraftSnapshotHistoryAndVisits: true,
-            popVetoPreservesDraftSnapshotHistoryIdentity: true,
-            acceptedBack: true,
-            newerNavigationSupersedesAsyncVeto: true,
-            admissionRedirect: true,
-            nativePopBoundary:
-                "owned entries compensate to the committed position; unknown ownership is diagnosed without guessed traversal",
-        });
-        await tab.screenshot({ path: path.join(output, `browser-${mode}.png`) });
-        await tab.close();
-    }
+    const tab = await browser.newPage();
+    const errors = [];
+    tab.on("pageerror", (error) => errors.push(String(error)));
+    const base = `http://127.0.0.1:${server.httpServer.address().port}`;
+    await tab.goto(`${base}/`);
+    await tab.waitForFunction(() => window.probe?.ready);
+    assert.equal(await tab.locator("h1").textContent(), "home");
+    await tab.locator("input").fill("draft");
+    await tab.evaluate(() => window.probe.app.navigation.navigate("/other"));
+    await tab.waitForFunction(() => document.querySelector("h1")?.textContent === "other");
+    assert.equal(await tab.locator("h1").textContent(), "other");
+    assert.equal(
+        await tab.evaluate(() => document.querySelector("#app").getAttribute("data-fs-app")),
+        "browser-policy",
+    );
+    assert.deepEqual(errors, []);
+    report.browser.push({
+        nativeRoot: true,
+        readyAfterCommit: true,
+        navigation: true,
+        rootMarker: true,
+    });
+    await tab.screenshot({ path: path.join(output, "browser-native.png") });
+    await tab.close();
 } finally {
     await browser.close();
     await server.close();

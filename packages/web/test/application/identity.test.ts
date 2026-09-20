@@ -1,3 +1,4 @@
+import { routePages } from "../helpers/definition";
 import { expect, test } from "vite-plus/test";
 import { leaf, stack, serializeNavigation, deserializeNavigation } from "../../src/navigation";
 import { collectLeafKeys } from "../../src/session/scoped-state";
@@ -20,16 +21,15 @@ test("serialized duplicate EntryIds are rejected", () => {
 });
 
 test("same-target prefetch values hydrate their own EntryIds without overwriting", async () => {
-    const { Framework, defineWebApp, PrefetchedIntents, loadPage } =
+    const { createWebRuntime, defineWebApp, PrefetchedIntents, loadPage } =
         await import("../../src/index");
     const a = leaf("edit", { id: 7 }),
         b = leaf("edit", { id: 7 });
     const page = (id: string) => ({ id, pageType: "edit", title: id });
-    const fw = Framework.create({
+    const fw = createWebRuntime({
         definition: defineWebApp({
+            pages: routePages([{ id: "edit", handler: () => page("refetched") }], []),
             id: "prefetch",
-            controllers: [{ id: "edit", handler: () => page("refetched") }],
-            routes: [],
             getErrorPage: (_status, message) => page(message),
         }),
         prefetchedIntents: PrefetchedIntents.fromArray([
@@ -45,11 +45,11 @@ test("same-target prefetch values hydrate their own EntryIds without overwriting
             },
         ]),
     });
-    expect(await loadPage({ framework: fw, target: a })).toMatchObject({
+    expect(await loadPage({ web: fw, target: a })).toMatchObject({
         kind: "page",
         page: page("draft-a"),
     });
-    expect(await loadPage({ framework: fw, target: b })).toMatchObject({
+    expect(await loadPage({ web: fw, target: b })).toMatchObject({
         kind: "page",
         page: page("draft-b"),
     });
@@ -58,8 +58,12 @@ test("same-target prefetch values hydrate their own EntryIds without overwriting
 });
 
 test("equal targets own separate drafts while sharing an opt-in query result; explicit reuse selects an EntryId", async () => {
-    const { Framework, defineWebApp, createNavigationController, createNavigationScopedState } =
-        await import("../../src/index");
+    const {
+        createWebRuntime,
+        defineWebApp,
+        createNavigationController,
+        createNavigationScopedState,
+    } = await import("../../src/index");
     const { defineApp, defineOperation } = await import("@finesoft/core");
     let calls = 0;
     const query = defineOperation({
@@ -72,32 +76,34 @@ test("equal targets own separate drafts while sharing an opt-in query result; ex
         cache: { ttlMs: 10000 },
     });
     const web = defineWebApp({
+        pages: routePages(
+            [
+                {
+                    id: "edit",
+                    handler: async (_params, ctx) => ({
+                        id: "7",
+                        pageType: "edit",
+                        title: "Edit",
+                        product: await ctx.execute(query, undefined),
+                    }),
+                },
+            ],
+            [],
+        ),
         id: "drafts",
         app: defineApp({ id: "business", operations: [query] }),
-        controllers: [
-            {
-                id: "edit",
-                handler: async (_params, ctx) => ({
-                    id: "7",
-                    pageType: "edit",
-                    title: "Edit",
-                    product: await ctx.execute(query, undefined),
-                }),
-            },
-        ],
-        routes: [],
         getErrorPage: (status, message) => ({
             id: String(status),
             pageType: "error",
             title: message,
         }),
     });
-    const fw = Framework.create({
+    const fw = createWebRuntime({
         definition: web,
         invocation: { identity: "alice", locale: "en" },
     });
     const nav = createNavigationController({
-        framework: fw,
+        web: fw,
         initial: stack(leaf("edit", { id: 7 })),
     });
     const first = (await nav.resolve()).destinations[0];

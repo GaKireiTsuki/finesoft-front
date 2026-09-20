@@ -1,14 +1,28 @@
-import { startBrowserApp } from "@finesoft/front/browser";
-import { createVueRenderer } from "@finesoft/front/renderers/vue/browser";
+import { createBrowserApp } from "@finesoft/front/browser";
+import { createApp, createSSRApp } from "vue";
 import { app } from "./app-definition";
-import { views } from "./views";
+import App from "./App.vue";
 import "./styles.css";
 
-export const started = startBrowserApp({
-    app,
-    renderer: createVueRenderer(views),
-    target: document.getElementById("app")!,
-});
+const target = document.getElementById("app")!;
+export async function mountApplication(
+    target: HTMLElement,
+    history: "browser" | "memory" = "browser",
+    url?: string,
+) {
+    const handle = await createBrowserApp({ definition: app, target, history, url });
+    const root = (handle.hydrate ? createSSRApp : createApp)(App, { app: handle });
+    root.mount(target);
+    const originalDispose = handle.dispose.bind(handle);
+    let disposal: Promise<void> | undefined;
+    Object.assign(handle, {
+        dispose: () => (disposal ??= originalDispose().finally(() => root.unmount())),
+    });
+    await handle.ready;
+    return handle;
+}
+
+export const started = mountApplication(target);
 
 if (import.meta.hot) {
     import.meta.hot.dispose(async () => {

@@ -8,7 +8,7 @@
     "preview": "vp preview"
   },
   "dependencies": {
-    "@finesoft/front": "file:/Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries/reports/application-boundaries/final-delivery/packed/finesoft-front-0.5.1.tgz",
+    "@finesoft/front": "file:/Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries/reports/template-unification/packed/finesoft-front-0.5.1.tgz",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

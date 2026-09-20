@@ -46,11 +46,11 @@ fs.writeFileSync(
 );
 fs.writeFileSync(
     path.join(root, "src/app.ts"),
-    `import { defineWebApp, markPublic } from '@finesoft/front/web'; export default defineWebApp({ id:'probe', controllers:[{id:'home',handler:()=>markPublic({id:'home',pageType:'home',title:'Home',user:{name:'Alice',secret:'SECRET'}},{user:{name:true}})}], routes:[{path:'/',intentId:'home',renderMode:'prerender',cache:'public'}], getErrorPage:(status,message)=>({id:String(status),pageType:'error',title:message}) });`,
+    `import { defineWebApp, markPublic } from '@finesoft/front/web'; export default defineWebApp({ id:'probe', pages:[{id:'home',routes:[{path:'/',renderMode:'prerender',cache:'public'}],handler:()=>markPublic({id:'home',pageType:'home',title:'Home',user:{name:'Alice',secret:'SECRET'}},{user:{name:true}})}], getErrorPage:(status,message)=>({id:String(status),pageType:'error',title:message}) });`,
 );
 fs.writeFileSync(
     path.join(root, "src/ssr.ts"),
-    `import { createSSRRender } from '@finesoft/front/ssr'; import definition from './app'; export { serializeServerData } from '@finesoft/front/ssr'; export const render=createSSRRender({definition,renderApp:page=>({html:page.title,head:'',css:''})});`,
+    `import { createSSRRender } from '@finesoft/front/ssr'; import definition from './app'; export { serializeServerData } from '@finesoft/front/ssr'; export const render=createSSRRender({definition,render:app=>({html:app.getSnapshot().entries.at(-1)?.page.title ?? '',head:'',css:''})});`,
 );
 const ids = [];
 for (let round = 0; round < 2; round++) {
@@ -74,8 +74,8 @@ for (let round = 0; round < 2; round++) {
     assert.equal(consumer.decode(wire).status, "ready");
     assert.equal(consumer.read({ script: { textContent: raw, parentNode: null } }).status, "ready");
     assert.equal(consumer.decode({ ...wire, buildId: "old" }).code, "build-mismatch");
-    assert.equal(wire.payload[0].data.user.name, "Alice");
-    assert.equal(wire.payload[0].data.user.secret, undefined);
+    assert.equal(wire.payload.pages[0].data.user.name, "Alice");
+    assert.equal(wire.payload.pages[0].data.user.secret, undefined);
     assert.ok(fs.statSync(path.join(root, "dist/server/index.mjs")).size);
     ids.push(wire.buildId);
 }

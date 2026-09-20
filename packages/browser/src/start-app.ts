@@ -1,28 +1,25 @@
-import { DEP_KEYS, detectPlatform, type LoggerFactory } from "@finesoft/core";
+import { detectPlatform, ExecutionError } from "@finesoft/core";
 import {
-    Framework,
-    type BasePage,
-    ACTION_KINDS,
+    createWebRuntime,
+    createAppView,
     createNavigationController,
     createActiveLeafCodec,
     resolveInitialNavigation,
     createNavigationSessionAdapter,
     createSessionStore,
     leaf,
-    resourceKey,
     stack,
-    mapNavigationLeaves,
-    collectVisibleDestinations,
     deserializeNavigation,
     PrefetchedIntents,
     resolveConfiguredMessages,
-    type FlowAction,
     type WebAppDefinition,
-    type NavigationController,
-    type NavigationSnapshot,
+    type WebAppView,
     type SessionStateProvider,
     type SessionSnapshot,
     type AsyncStorage,
+    type WebRuntime,
+    type NavigationController,
+    type NavigationSnapshot,
 } from "@finesoft/web";
 import { createNavigationBridge, type NavigationHandle } from "./navigation-bridge";
 import { deserializeServerData } from "./server-data";
@@ -30,10 +27,6 @@ import { createSessionBridge, type SessionHandle } from "./session-bridge";
 import { createWebStorage } from "./web-storage";
 import { createDomRestore, type DomRestore } from "./dom-restore";
 import { createBrowserContext } from "./middleware/context";
-import { resolveIslandsShell } from "./islands-shell";
-import { registerExternalUrlHandler } from "./action-handlers/external-url-action";
-import type { BrowserRenderer, RenderContext, ViewHandle } from "./renderer";
-import { createEntryRenderer } from "./navigation-islands";
 
 export interface BrowserSessionConfig {
     readonly providers?: readonly SessionStateProvider[];
@@ -44,8 +37,7 @@ export interface BrowserSessionConfig {
     readonly shouldRestore?: (snapshot: SessionSnapshot, currentUrl: string) => boolean;
 }
 export interface BrowserAppConfig {
-    readonly app: WebAppDefinition;
-    readonly renderer: BrowserRenderer;
+    readonly definition: WebAppDefinition;
     readonly target: HTMLElement;
     readonly history?: "browser" | "memory";
     readonly url?: string;
@@ -54,86 +46,100 @@ export interface BrowserAppConfig {
     readonly domRestore?: boolean;
     readonly buildId?: string;
     readonly serverDataSource?: HTMLScriptElement | null;
-    readonly onModal?: (page: BasePage, context: RenderContext) => void | Promise<void>;
 }
-export interface BrowserAppHandle {
-    readonly framework: Framework;
-    readonly runtime: Framework["runtime"];
-    readonly navigation?: NavigationHandle;
-    readonly session?: SessionHandle;
-    navigate(url: string): Promise<void>;
-    refresh(): Promise<NavigationSnapshot>;
-    getSnapshot(): NavigationSnapshot;
-    subscribe(listener: (snapshot: NavigationSnapshot) => void): () => void;
+export interface BrowserAppHandle extends WebAppView {
+    readonly hydrate: boolean;
+    /** Resolves after the first native commit and optional session restore. Mount before awaiting. */
+    readonly ready: Promise<void>;
     dispose(): Promise<void>;
 }
 const targets = new WeakSet<HTMLElement>();
 const windows = new WeakSet<Window>();
-export async function startBrowserApp(config: BrowserAppConfig): Promise<BrowserAppHandle> {
-    const { target, app: definition, renderer } = config;
+export async function createBrowserApp(config: BrowserAppConfig): Promise<BrowserAppHandle> {
+    const { target, definition } = config;
     if (!target) throw Error("A browser target is required");
-    if (targets.has(target)) throw Error("Browser target already owned");
+    const ownerWindow = target.ownerDocument.defaultView;
+    if (!ownerWindow) throw Error("A browser window is required");
+    const win = ownerWindow;
     const browserHistory = (config.history ?? "browser") === "browser";
-    if (browserHistory && windows.has(window))
+    if (targets.has(target)) throw Error("Browser target already owned");
+    if (browserHistory && windows.has(win))
         throw Error("Browser history already owned; use memory history for embedded apps");
     if (config.session && !config.persistenceKey)
         throw Error("Session requires a stable persistenceKey");
+    if (config.domRestore && !config.session) throw Error("DOM restore requires session storage");
     targets.add(target);
-    if (browserHistory) windows.add(window);
-    let framework: Framework | undefined,
-        controller: NavigationController | undefined,
-        bridge: NavigationHandle | undefined,
+    if (browserHistory) windows.add(win);
+    let web: WebRuntime | undefined, controller: NavigationController | undefined;
+    let bridge: NavigationHandle | undefined,
         session: SessionHandle | undefined,
         dom: DomRestore | undefined;
-    let root: ViewHandle | undefined,
-        entries: ReturnType<typeof createEntryRenderer> | undefined,
-        closed = false,
-        disposing: Promise<void> | undefined;
-    let lastEntry: string | undefined;
-    let lastPageType: string | undefined;
-    let navigationSequence = 0;
-    const modalWork = new Set<Promise<void>>();
-    const modalControllers = new Set<NavigationController>();
-    const localeBefore = {
+    let presentation: ReturnType<typeof createAppView> | undefined;
+    let closed = false,
+        mounted = false,
+        restoring = !!config.session;
+    let acknowledged = 0,
+        navigationSequence = 0,
+        disposal: Promise<void> | undefined;
+    let settleReady!: () => void, failReady!: (error: unknown) => void;
+    const ready = new Promise<void>((resolve, reject) => {
+        settleReady = resolve;
+        failReady = reject;
+    });
+    void ready.catch(() => {});
+    const pending = new Map<number, { resolve: () => void; reject: (error: unknown) => void }>();
+    const cleanups: (() => void)[] = [];
+    const originalLocale = {
         lang: target.getAttribute("lang"),
         dir: target.getAttribute("dir"),
-        "data-fs-entry": target.getAttribute("data-fs-entry"),
-        "data-fs-key": target.getAttribute("data-fs-key"),
+        "data-fs-app": target.getAttribute("data-fs-app"),
+    };
+    target.setAttribute("data-fs-app", definition.id);
+    const containers = () =>
+        [...target.querySelectorAll<HTMLElement>("[data-fs-entry]")].filter(
+            (element) => element.closest("[data-fs-app]") === target,
+        );
+    const capture = () => {
+        if (!restoring) for (const element of containers()) dom?.captureEntry(element);
+    };
+    const restore = () => {
+        for (const element of containers()) if (!element.hidden) dom?.restoreEntry(element);
     };
     const dispose = (): Promise<void> =>
-        (disposing ??= (async () => {
+        (disposal ??= (async () => {
+            capture();
             closed = true;
-            for (const modal of modalControllers) modal.cancel();
             controller?.cancel();
+            for (const waiter of pending.values()) waiter.reject(new ExecutionError("cancelled"));
+            pending.clear();
+            failReady(new ExecutionError("cancelled"));
+            for (const cleanup of cleanups) cleanup();
             bridge?.dispose();
             const errors: unknown[] = [];
-            const clean = async (fn: () => unknown) => {
+            for (const cleanup of [
+                () => controller?.dispose(),
+                () => session?.dispose(),
+                () => dom?.dispose(),
+                () => presentation?.dispose(),
+                () => web?.dispose(),
+            ]) {
                 try {
-                    await fn();
+                    await cleanup();
                 } catch (error) {
                     errors.push(error);
                 }
-            };
-            await clean(() => controller?.dispose());
-            await Promise.allSettled(modalWork);
-            await clean(() => session?.dispose());
-            await clean(() => dom?.dispose());
-            await clean(() => entries?.dispose());
-            await clean(() => root?.dispose());
-            await clean(() => framework?.dispose());
-            for (const [key, value] of Object.entries(localeBefore)) {
-                if (value === null) target.removeAttribute?.(key);
+            }
+            for (const [key, value] of Object.entries(originalLocale)) {
+                if (value === null) target.removeAttribute(key);
                 else target.setAttribute(key, value);
             }
             targets.delete(target);
-            if (browserHistory) windows.delete(window);
-            if (errors.length)
-                throw new AggregateError(errors, "Browser application cleanup failed");
+            if (browserHistory) windows.delete(win);
+            if (errors.length) throw new AggregateError(errors, "Browser cleanup failed");
         })());
     try {
         const initialUrl =
-            config.url ??
-            (browserHistory ? window.location.pathname + window.location.search : "/");
+            config.url ?? (browserHistory ? win.location.pathname + win.location.search : "/");
         const wire = deserializeServerData({
             script:
                 config.serverDataSource === undefined
@@ -141,347 +147,263 @@ export async function startBrowserApp(config: BrowserAppConfig): Promise<Browser
                     : config.serverDataSource,
             buildId: config.buildId,
         });
-        const prefetched =
-            wire.status === "ready"
-                ? PrefetchedIntents.fromArray(wire.data)
-                : PrefetchedIntents.empty();
+        const configuration = definition.configuration ?? {};
         const locale =
-            definition.frameworkConfig?.locale ??
+            configuration.locale ??
             target.getAttribute("lang") ??
-            target.ownerDocument.documentElement?.lang ??
+            target.ownerDocument.documentElement.lang ??
             undefined;
-        const fetchFn = definition.frameworkConfig?.fetch ?? globalThis.fetch?.bind(globalThis);
-        if (locale && definition.loadMessages && typeof fetchFn !== "function")
-            throw Error("Browser messages loader requires fetch capability");
+        const fetch = configuration.fetch ?? globalThis.fetch?.bind(globalThis);
         const messages = await resolveConfiguredMessages({
             locale,
             loadMessages: definition.loadMessages,
-            context: locale ? { runtime: "browser", url: initialUrl, fetch: fetchFn } : undefined,
+            context: locale ? { runtime: "browser", url: initialUrl, fetch } : undefined,
         });
-        const frameworkOptions = {
-            ...definition.frameworkConfig,
+        web = createWebRuntime({
+            ...configuration,
             definition,
-            prefetchedIntents: prefetched,
             locale,
-            fetch: fetchFn,
-            safeFetch: {
-                validateDns: false,
-                ...definition.frameworkConfig?.safeFetch,
-            },
+            fetch,
+            messages,
+            safeFetch: { validateDns: false, ...configuration.safeFetch },
             platform:
-                definition.frameworkConfig?.platform ??
-                detectPlatform(
-                    globalThis.navigator?.userAgent ?? "",
-                    globalThis.navigator?.maxTouchPoints ?? 0,
-                ),
-            _resolvedMessages: messages,
-        };
-        framework = Framework.create(frameworkOptions);
-        const fw = framework;
-        const log = fw.container
-            .resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY)
-            .loggerFor("browser");
-        const resolvedLocale = fw.getLocale();
-        if (resolvedLocale) {
-            target.setAttribute("lang", resolvedLocale.lang);
-            target.setAttribute("dir", resolvedLocale.dir);
+                configuration.platform ??
+                detectPlatform(win.navigator.userAgent, win.navigator.maxTouchPoints),
+            prefetchedIntents:
+                wire.status === "ready"
+                    ? PrefetchedIntents.fromArray(wire.data.pages)
+                    : PrefetchedIntents.empty(),
+        });
+        const activeWeb = web;
+        const log = web.getLogger();
+        const attributes = web.getLocale();
+        if (attributes) {
+            target.setAttribute("lang", attributes.lang);
+            target.setAttribute("dir", attributes.dir);
         }
         const codec = definition.navigationCodec ?? createActiveLeafCodec();
-        const resolved = await resolveInitialNavigation(fw, initialUrl, {
-            codec,
-            initial: definition.navigation,
-        });
-        const sentinel =
-            wire.status === "ready"
-                ? (wire.data.find((item) => item.intent.id === "@finesoft/navigation-tree")
-                      ?.data as { tree?: Parameters<typeof deserializeNavigation>[0] } | undefined)
-                : undefined;
-        const initial = sentinel?.tree
-            ? deserializeNavigation(sentinel.tree)
-            : (resolved?.tree ?? stack(leaf("@finesoft/not-found")));
-        let handle: BrowserAppHandle;
-        let renderSnapshot: NavigationSnapshot;
-        const context: RenderContext = {
-            framework: fw,
-            get app() {
-                return handle;
-            },
-            get snapshot() {
-                return renderSnapshot;
-            },
-        };
-        async function render(snapshot: NavigationSnapshot) {
-            if (closed) return;
-            const committed = snapshot === controller?.getSnapshot();
-            if (snapshot.rejection) {
-                const error = leaf("@finesoft/rejected");
-                snapshot = {
-                    ...snapshot,
-                    tree: stack(error),
-                    destinations: [
-                        {
-                            ...error,
-                            resourceKey: resourceKey(error.intent, error.params),
-                            page: definition.getErrorPage(
-                                snapshot.rejection.status,
-                                snapshot.rejection.message,
-                            ),
-                            status: snapshot.rejection.status,
-                        },
-                    ],
-                };
-            }
-            renderSnapshot = snapshot;
-            const page =
-                snapshot.destinations.at(-1)?.page ??
-                definition.getErrorPage(404, "Page not found");
-            if (renderer.mode === "entries") {
-                if (!entries) {
-                    const shell = resolveIslandsShell(target);
-                    if (renderer.mountChrome)
-                        root = await renderer.mountChrome({
-                            target: shell.chromeRoot,
-                            page,
-                            context,
-                            hydrate: wire.status === "ready" && shell.hydrate,
-                        });
-                    entries = createEntryRenderer({ outlet: shell.outlet, renderer, context });
-                } else await root?.update(page);
-                await entries.sync(snapshot);
-            } else {
-                const entry = snapshot.destinations.at(-1)?.entryId;
-                const resetType = lastEntry === entry && lastPageType !== page.pageType;
-                if (root && (lastEntry !== entry || resetType)) {
-                    await root.dispose();
-                    root = undefined;
-                    target.replaceChildren();
-                    // Unmounting a focused native input can emit a final change event.
-                    // Discard its captured draft only after the previous view is gone.
-                    if (resetType) target.dispatchEvent(new Event("fs:reset", { bubbles: true }));
-                }
-                if (root) await root.update(page);
-                else
-                    root = await renderer.mount({
-                        target,
-                        page,
-                        context,
-                        hydrate:
-                            wire.status === "ready" &&
-                            lastEntry === undefined &&
-                            target.hasChildNodes(),
-                    });
-                if (entry) {
-                    target.setAttribute("data-fs-entry", "");
-                    target.setAttribute("data-fs-key", entry);
-                }
-                if (lastEntry !== entry) dom?.restoreEntry(target);
-                lastEntry = entry;
-                lastPageType = page.pageType;
-            }
-            if (!committed) return;
-            fw.currentEntry = collectVisibleDestinations(snapshot.tree).at(-1);
-            try {
-                fw.didEnterPage(page);
-            } catch (error) {
-                log.error("didEnterPage error:", error);
-            }
-        }
-        const createContext = ({
-            intent,
-            params,
-            url,
-        }: {
-            intent: string;
-            params: Record<string, unknown>;
-            url?: string;
-        }) => ({
-            container: fw.container,
-            navigation: createBrowserContext({
-                url: url ?? codec.encode(leaf(intent, params), fw.router),
-                intent: { id: intent, params },
-                container: fw.container,
-            }),
-            url,
-        });
-        const redirect = async ({ url }: { url: string }, candidate: NavigationSnapshot) => {
-            const destination = new URL(url, window.location.origin);
-            if (destination.origin !== window.location.origin) {
-                window.location.assign(destination.href);
+        const resolveUrl = async (url: string) =>
+            (await resolveInitialNavigation(activeWeb, url, { codec }))?.tree;
+        const initial =
+            wire.status === "ready" && wire.data.tree
+                ? deserializeNavigation(wire.data.tree)
+                : ((await resolveUrl(initialUrl)) ??
+                  stack(leaf("@finesoft/not-found", {}, { url: initialUrl })));
+        async function navigate(url: string) {
+            if (closed) throw new ExecutionError("configuration", "Browser application is closed");
+            const parsed = new URL(url, win.location.href);
+            if (parsed.origin !== win.location.origin) {
+                win.location.assign(parsed.href);
                 return;
             }
-            const path = destination.pathname + destination.search + destination.hash;
-            const match = await fw.router.resolve(path);
-            const redirectedEntry = candidate.destinations.find(
-                (item) => item.status && item.status >= 300 && item.status < 400,
-            )?.entryId;
-            if (!redirectedEntry) {
-                // Whole-transaction admission can redirect before any page is loaded.
-                return (
-                    (
-                        await resolveInitialNavigation(fw, path, {
-                            codec,
-                            initial: definition.navigation,
-                        })
-                    )?.tree ?? leaf("@finesoft/not-found", {}, { url: path })
-                );
-            }
-            return mapNavigationLeaves(candidate.tree, (item) =>
-                item.entryId === redirectedEntry
-                    ? leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
-                          url: path,
-                      })
-                    : item,
+            const sequence = ++navigationSequence;
+            controller!.cancel();
+            const tree = await resolveUrl(parsed.pathname + parsed.search + parsed.hash);
+            if (closed || sequence !== navigationSequence) throw new ExecutionError("cancelled");
+            const result = await controller!.hydrate(
+                tree ?? stack(leaf("@finesoft/not-found", {}, { url })),
             );
+            if (result !== controller!.getSnapshot())
+                throw new ExecutionError("denied", "Navigation was not committed");
+        }
+        const waitForCommit = (revision: number, signal?: AbortSignal): Promise<void> => {
+            if (!mounted || revision === acknowledged) return Promise.resolve();
+            if (signal?.aborted || closed) return Promise.reject(new ExecutionError("cancelled"));
+            return new Promise<void>((resolve, reject) => {
+                const finish = (error?: unknown) => {
+                    pending.delete(revision);
+                    signal?.removeEventListener("abort", abort);
+                    if (error) reject(error);
+                    else resolve();
+                };
+                const abort = () => finish(new ExecutionError("cancelled"));
+                pending.set(revision, { resolve: () => finish(), reject: finish });
+                signal?.addEventListener("abort", abort, { once: true });
+            });
+        };
+        const recordPageView = (snapshot: NavigationSnapshot) => {
+            const page = snapshot.destinations.at(-1)?.page;
+            if (page)
+                activeWeb.runtime.record("PageView", {
+                    page: page.pageType,
+                    pageId: page.id,
+                    title: page.title,
+                    transitionId: snapshot.transitionId,
+                });
         };
         controller = createNavigationController({
-            framework: fw,
-            isServer: false,
+            web,
             initial,
-            getErrorPage: definition.getErrorPage,
-            viewReady: render,
-            createContext,
-            onRedirect: redirect,
+            isServer: false,
+            createContext: ({ intent, params, url, execution }) => ({
+                container: execution.container,
+                navigation: createBrowserContext({
+                    url: url ?? initialUrl,
+                    intent: { id: intent, params },
+                    container: execution.container,
+                }),
+            }),
+            onRedirect: async (value) => {
+                const url = new URL(value.url, win.location.href);
+                if (url.origin !== win.location.origin) {
+                    win.location.assign(url.href);
+                    return;
+                }
+                return resolveUrl(url.pathname + url.search);
+            },
+            viewReady: async (snapshot, signal) => {
+                await waitForCommit(presentation!.view.getSnapshot().revision, signal);
+                if (!mounted) return;
+                if (!restoring) restore();
+                recordPageView(snapshot);
+            },
         });
-        const nav = controller;
-        function admitNavigation() {
-            if (closed) throw Error("Browser application disposed");
-            const sequence = ++navigationSequence;
-            nav.cancel();
-            return sequence;
-        }
         if (browserHistory)
             bridge = createNavigationBridge({
-                controller: nav,
+                controller,
                 codec,
-                router: fw.router,
+                router: web.router,
                 log,
-                onPopStart: admitNavigation,
-                resolveUrl: async (url) => {
-                    const sequence = navigationSequence;
-                    const resolved = await resolveInitialNavigation(fw, url, {
-                        codec,
-                        initial: definition.navigation,
-                    });
-                    return !closed && sequence === navigationSequence ? resolved?.tree : undefined;
+                onPopStart: () => {
+                    navigationSequence++;
                 },
+                resolveUrl,
                 getScrollablePageElement: () =>
                     target.querySelector<HTMLElement>("[data-fs-scroll]") ?? target,
             });
+        presentation = createAppView({
+            web,
+            controller,
+            navigate,
+            session: () => session,
+            commit(revision) {
+                if (closed) return;
+                acknowledged = revision;
+                pending.get(revision)?.resolve();
+                if (mounted) return;
+                mounted = true;
+                recordPageView(controller!.getSnapshot());
+                // Native acknowledgement already happened. Finish this commit's provider registrations.
+                queueMicrotask(() => {
+                    if (closed) return;
+                    void (async () => {
+                        await session?.restore(initialUrl);
+                        if (closed) return;
+                        restoring = false;
+                        restore();
+                        settleReady();
+                    })().catch((error) => {
+                        restoring = false;
+                        failReady(error);
+                        log.error("Session restore failed", error);
+                    });
+                });
+            },
+        });
+        cleanups.push(
+            controller.onCommit((next) => {
+                capture();
+                for (const destination of next.destinations) {
+                    const previous = presentation!.view
+                        .getSnapshot()
+                        .entries.find((entry) => entry.entryId === destination.entryId);
+                    if (
+                        previous &&
+                        previous.page.pageType !== destination.page.pageType &&
+                        session
+                    ) {
+                        const bag = session.scope.get(destination.entryId) as
+                            | Record<string, unknown>
+                            | undefined;
+                        if (bag) {
+                            const { __dom: _oldDom, ...state } = bag;
+                            session.scope.set(destination.entryId, state);
+                        }
+                    }
+                }
+            }),
+        );
         if (config.session) {
-            const adapter = createNavigationSessionAdapter(nav, () =>
-                codec.encode(nav.getTree(), fw.router),
+            const adapter = createNavigationSessionAdapter(controller, () =>
+                browserHistory
+                    ? win.location.pathname + win.location.search
+                    : codec.encode(controller!.getTree(), activeWeb.router),
             );
             const store = createSessionStore({
-                storage: config.session.storage ?? createWebStorage("session"),
+                ...config.session,
+                storage: config.session.storage ?? createWebStorage("local"),
+                key: `finesoft:${definition.id}:${config.persistenceKey}`,
                 navigation: adapter,
-                key: config.persistenceKey!,
-                version: config.session.version,
-                maxAgeMs: config.session.maxAgeMs,
             });
             for (const provider of config.session.providers ?? []) store.register(provider);
             session = createSessionBridge({
                 store,
                 adapter,
-                deferPersistenceUntilRestore: true,
-                subscribeNavigation: (fn) => nav.subscribe(fn),
+                subscribeNavigation: (listener) => controller!.subscribe(listener),
                 debounceMs: config.session.debounceMs,
                 shouldRestore: config.session.shouldRestore,
+                deferPersistenceUntilRestore: true,
             });
-        }
-        const navigation: NavigationHandle = bridge ?? nav;
-        handle = {
-            framework: fw,
-            runtime: fw.runtime,
-            navigation:
-                definition.navigation || renderer.mode === "entries" ? navigation : undefined,
-            session,
-            refresh: () => nav.refresh(),
-            getSnapshot: () => nav.getSnapshot(),
-            subscribe: (fn) => nav.subscribe(fn),
-            async navigate(url) {
-                const sequence = admitNavigation();
-                const match = await fw.router.resolve(url);
-                if (closed || sequence !== navigationSequence) return;
-                await nav.push(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
-                    url,
-                });
-            },
-            dispose,
-        };
-        fw.onAction(ACTION_KINDS.FLOW, async (action: FlowAction) => {
-            if (action.presentationContext !== "modal") {
-                if (action.entryId) {
-                    admitNavigation();
-                    await nav.reuseEntry(action.entryId);
-                } else await handle.navigate(action.url);
-                return;
-            }
-            const work = (async () => {
-                const match = await fw.router.resolve(action.url);
-                if (closed) return;
-                let delivered = false,
-                    handedOff = false;
-                const deliver = async (snapshot: NavigationSnapshot) => {
-                    const destination = snapshot.destinations.at(-1);
-                    if (closed || delivered || handedOff || !destination) return;
-                    delivered = true;
-                    await config.onModal?.(destination.page, {
-                        framework: fw,
-                        app: handle,
-                        snapshot,
-                    });
-                };
-                const modal = createNavigationController({
-                    framework: fw,
-                    isServer: false,
-                    initial: stack(
-                        leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
-                            url: action.url,
-                        }),
-                    ),
-                    getErrorPage: definition.getErrorPage,
-                    createContext,
-                    onRedirect: async (destination, candidate) => {
-                        const tree = await redirect(destination, candidate);
-                        handedOff = tree === undefined;
-                        return tree;
-                    },
-                    viewReady: deliver,
-                });
-                modalControllers.add(modal);
-                try {
-                    await deliver(await modal.resolve());
-                } finally {
-                    await modal.dispose();
-                    modalControllers.delete(modal);
-                }
-            })();
-            modalWork.add(work);
-            void work.finally(() => modalWork.delete(work)).catch(() => {});
-            return work;
-        });
-        registerExternalUrlHandler({ framework: fw, log });
-        const firstSnapshot = await nav.resolve();
-        if (
-            !root &&
-            !entries &&
-            !firstSnapshot.redirect &&
-            !firstSnapshot.destinations.some(
-                (item) => item.status && item.status >= 300 && item.status < 400,
-            )
-        )
-            await render(firstSnapshot);
-        if (session) {
-            await session.restore(initialUrl);
             if (config.domRestore) {
                 dom = createDomRestore({
-                    scope: session.scope,
                     schedule: (callback) => callback(),
+                    scope: {
+                        get: (key) => session!.scope.get(key),
+                        set: (key, value) => session!.scope.set(key, value),
+                        delete: (key) => session!.scope.delete(key),
+                        keys: () => session!.scope.keys(),
+                        prune: (ids) => session!.scope.prune(ids),
+                    },
                 });
-                dom.attach(entries?.outlet ?? target);
+                dom.attach(target);
             }
         }
-        return handle;
+        const first = await controller.resolve();
+        if (first !== controller.getSnapshot()) presentation.present(first);
+        const onClick = (event: MouseEvent) => {
+            if (
+                event.defaultPrevented ||
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.altKey ||
+                event.shiftKey
+            )
+                return;
+            const anchor = (event.target as Element | null)?.closest?.(
+                "a[href]",
+            ) as HTMLAnchorElement | null;
+            if (
+                !anchor ||
+                !target.contains(anchor) ||
+                anchor.closest("[data-fs-app]") !== target ||
+                anchor.hasAttribute("download") ||
+                (anchor.target && anchor.target !== "_self") ||
+                anchor.rel.split(/\s+/).includes("external")
+            )
+                return;
+            const url = new URL(anchor.href, win.location.href);
+            if (url.origin !== win.location.origin || !["http:", "https:"].includes(url.protocol))
+                return;
+            if (
+                url.pathname === win.location.pathname &&
+                url.search === win.location.search &&
+                url.hash
+            )
+                return;
+            event.preventDefault();
+            void navigate(url.href).catch((error) => {
+                if (!(error instanceof ExecutionError && error.code === "cancelled"))
+                    log.error("Navigation failed", error);
+            });
+        };
+        target.addEventListener("click", onClick);
+        cleanups.push(() => target.removeEventListener("click", onClick));
+        return Object.assign(presentation.view, {
+            hydrate: wire.status === "ready" && target.hasChildNodes(),
+            ready,
+            dispose,
+        });
     } catch (error) {
         await dispose().catch(() => {});
         throw error;

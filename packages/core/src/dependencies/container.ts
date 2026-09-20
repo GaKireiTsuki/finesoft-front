@@ -4,22 +4,12 @@ import type { Provider, ProviderContext } from "./providers";
  * Container — 通用的依赖注入容器
  */
 
-type Factory<T> = () => T;
-
-interface Registration<T> {
-    factory: Factory<T>;
-    singleton: boolean;
-    instance?: T;
-}
-
 interface Cleanup {
     dispose: () => void | Promise<void>;
     provider?: Provider<any>;
 }
 
 export class Container {
-    private registrations = new Map<string, Registration<unknown>>();
-    private resolutionStack = new Set<string>();
     private parent?: Container;
     private children = new Set<Container>();
 
@@ -151,65 +141,6 @@ export class Container {
         return ordered.reverse();
     }
 
-    /** 注册依赖（默认单例） */
-    register<T>(key: string, factory: Factory<T>, singleton = true): this {
-        this.assertOpen();
-        this.registrations.set(key, { factory, singleton });
-        return this;
-    }
-
-    /** 解析依赖 — 当前容器未注册时回退到 parent */
-    resolve<T>(key: string): T {
-        if (this.closed) throw new Error("[Container] No registration: container is closed");
-        const reg = this.registrations.get(key);
-        if (!reg) {
-            if (this.parent) {
-                return this.parent.resolve<T>(key);
-            }
-            throw new Error(`[Container] No registration for key: "${key}"`);
-        }
-
-        if (reg.singleton) {
-            if (reg.instance === undefined) {
-                if (this.resolutionStack.has(key)) {
-                    throw new Error(
-                        `[Container] Circular dependency detected: ${[
-                            ...this.resolutionStack,
-                            key,
-                        ].join(" → ")}`,
-                    );
-                }
-                this.resolutionStack.add(key);
-                try {
-                    reg.instance = reg.factory();
-                } finally {
-                    this.resolutionStack.delete(key);
-                }
-            }
-            return reg.instance as T;
-        }
-        return reg.factory() as T;
-    }
-
-    /** 检查是否已注册（含 parent） */
-    has(key: string): boolean {
-        return !this.closed && (this.registrations.has(key) || (this.parent?.has(key) ?? false));
-    }
-
-    /**
-     * 移除当前容器的注册（不影响 parent）。
-     *
-     * 用途：在 scope 内显式撤销之前覆写的依赖，避免用 `register(() => null)` 这种
-     * 反语义的写法。被移除的 key 之后再 resolve 会回退到 parent 容器。
-     *
-     * 返回 true 表示当前层确实存在过这个注册并被移除，false 表示未注册（含「只在
-     * parent 注册」的情况，本方法不向上递归删除 —— scope 不应能影响 parent 状态）。
-     */
-    unregister(key: string): boolean {
-        this.assertOpen();
-        return this.registrations.delete(key);
-    }
-
     /**
      * 创建子容器（请求级 scope）
      *
@@ -238,7 +169,6 @@ export class Container {
         this.closed = true;
         const children = [...this.children].map((child) => child.dispose());
         this.children.clear();
-        this.registrations.clear();
         // Keep the parent link available until pending factories and their dependencies settle.
         this.disposal = (async () => {
             const errors: unknown[] = [];

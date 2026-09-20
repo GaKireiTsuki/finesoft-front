@@ -1,12 +1,6 @@
-// ===== Action Handlers =====
-export {
-    registerExternalUrlHandler,
-    type ExternalUrlDependencies,
-} from "./action-handlers/external-url-action";
-
 // ===== Browser App =====
 export {
-    startBrowserApp,
+    createBrowserApp,
     type BrowserAppConfig,
     type BrowserAppHandle,
     type BrowserSessionConfig,
@@ -18,11 +12,6 @@ export {
     type NavigationBridgeDependencies,
     type NavigationHandle,
 } from "./navigation-bridge";
-
-// ===== Navigation Islands =====
-export type { ResolvedEntry } from "@finesoft/web";
-export type { BrowserRenderer, RenderContext, ViewHandle } from "./renderer";
-export { resolveIslandsShell, type IslandsShell } from "./islands-shell";
 
 // ===== Session =====
 export {
@@ -46,21 +35,13 @@ export { createPrefetchedIntentsFromDom, deserializeServerData } from "./server-
 
 // ===== Re-exports from @finesoft/core (convenience) =====
 export { BaseController, HttpClient, HttpError } from "@finesoft/core";
-export { Framework } from "@finesoft/web";
 export {
     isExternalUrlAction,
     isFlowAction,
     makeExternalUrlAction,
     makeFlowAction,
 } from "@finesoft/web";
-export type {
-    Action,
-    BaseItem,
-    BaseShelf,
-    ExternalUrlAction,
-    FlowAction,
-    RouteDefinition,
-} from "@finesoft/web";
+export type { Action, ExternalUrlAction, FlowAction, RouteDefinition } from "@finesoft/web";
 export type { BasePage } from "@finesoft/web";
 export type { Container, Intent } from "@finesoft/core";
 

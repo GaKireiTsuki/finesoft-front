@@ -111,7 +111,7 @@ const typeSource = `import { defineApp, defineOperation, createRuntime, BaseCont
 import { definePage, defineWebApp } from '@finesoft/front/web';
 import { createHttpHandler, defineEndpoint } from '@finesoft/front/http';
 import { createWorkerHandler } from '@finesoft/front/worker';
-import { startBrowserApp } from '@finesoft/front/browser';
+import { createBrowserApp } from '@finesoft/front/browser';
 import { createSSRHandler } from '@finesoft/front/ssr';
 const double = defineOperation({id:'double',kind:'query',handler:(n:number)=>n*2});
 const runtime=createRuntime({app:defineApp({id:'packed',operations:[double]})});
@@ -120,7 +120,7 @@ const promise:Promise<number>=runtime.execute(double,3);
 runtime.execute(double,'3');
 // @ts-expect-error Operation result stays typed through the packed declaration.
 const bad:Promise<string>=runtime.execute(double,3);
-const product=definePage({id:'load-product',handler:(params:{id:number})=>({id:String(params.id),pageType:'product' as const,title:'Product'})});
+const product=definePage({id:'load-product',routes:['/product/:id'],handler:(params:{id:number})=>({id:String(params.id),pageType:'product' as const,title:'Product'})});
 product.leaf({id:1});
 // @ts-expect-error Required parameter preserved.
 product.leaf();
@@ -128,10 +128,9 @@ product.leaf();
 product.leaf({id:'1'});
 product.bindView('product',{});
 class ProductController extends BaseController<{id:number}, {id:string,pageType:'product',title:string}> {
-    readonly intentId='class-product';
-    execute(params:{id:number}) { return {id:String(params.id),pageType:'product' as const,title:'Product'}; }
+    execute(params:{id:number}, _context: import('@finesoft/front').ExecutionContext) { return {id:String(params.id),pageType:'product' as const,title:'Product'}; }
 }
-const classProduct=definePage({id:'class-product',create:()=>new ProductController()});
+const classProduct=definePage({id:'class-product',routes:['/class-product/:id'],create:()=>new ProductController()});
 classProduct.leaf({id:1});
 classProduct.bindView('product',{});
 // @ts-expect-error Factory parameter inference survives packing.
@@ -140,8 +139,8 @@ classProduct.leaf({id:'one'});
 classProduct.bindView('class-product',{});
 // @ts-expect-error Transport id is not a result pageType.
 product.bindView('load-product',{});
-const app=defineWebApp({id:'web',controllers:[product],routes:[product.route('/product/:id')],getErrorPage:(_,title)=>({id:'error',pageType:'error',title})});
-void [promise,bad,app,startBrowserApp,createHttpHandler,defineEndpoint,createWorkerHandler,createSSRHandler];`;
+const app=defineWebApp({id:'web',pages:[product],getErrorPage:(_,title)=>({id:'error',pageType:'error',title})});
+void [promise,bad,app,createBrowserApp,createHttpHandler,defineEndpoint,createWorkerHandler,createSSRHandler];`;
 function typecheck(file, selected) {
     const program = ts.createProgram([file], {
         target: ts.ScriptTarget.ESNext,
@@ -190,7 +189,16 @@ try {
         await fs.writeFile(evidence + "/install-" + selected + ".log", run(["install"], cwd));
         const requireFromConsumer = createRequire(cwd + "/package.json");
         const absentPeers = [];
-        for (const peer of ["react", "vue", "svelte", "vite", "@types/node"]) {
+        for (const peer of [
+            "react",
+            "vue",
+            "svelte",
+            "vite",
+            "hono",
+            "@hono/node-server",
+            "undici",
+            "@types/node",
+        ]) {
             if (Object.hasOwn(peers[selected] ?? {}, peer)) continue;
             assert.throws(() => requireFromConsumer.resolve(peer + "/package.json"), {
                 code: "MODULE_NOT_FOUND",
@@ -218,7 +226,7 @@ try {
                   ? ["node"]
                   : selected === "tooling"
                     ? ["vite"]
-                    : ["renderers/" + selected + "/browser", "renderers/" + selected + "/server"];
+                    : [selected];
         for (const entry of entries) {
             const info = await graph(entry + ".mjs", dist);
             result.graphs[entry] = info;
@@ -233,6 +241,7 @@ try {
                     assert.ok(
                         spec === selected ||
                             spec.startsWith(selected + "/") ||
+                            spec.startsWith("@finesoft/front/") ||
                             (selected === "react" && /^react-dom(?:\/|$)/.test(spec)),
                         "Unselected UI/environment: " + spec,
                     );
@@ -241,14 +250,16 @@ try {
                     !info.external.some((spec) => /vite|dotenv|react|vue|svelte/.test(spec)),
                     "Production Node graph contains tooling/UI",
                 );
-            await import(pathToFileURL(path.join(dist, entry + ".mjs")).href);
+            // Svelte package entries are compiler inputs, not Node-loadable modules.
+            if (selected !== "svelte")
+                await import(pathToFileURL(path.join(dist, entry + ".mjs")).href);
         }
         let source = typeSource;
         if (["react", "vue", "svelte"].includes(selected))
-            source += `\nimport * as browserRenderer from '@finesoft/front/renderers/${selected}/browser';\nimport * as serverRenderer from '@finesoft/front/renderers/${selected}/server';\nvoid [browserRenderer,serverRenderer];`;
+            source += `\nimport * as nativeBinding from '@finesoft/front/${selected}';\nvoid nativeBinding;`;
         if (selected === "node")
             source +=
-                "\nimport { startNodeHandler } from '@finesoft/front/node'; void startNodeHandler;";
+                "\nimport { startNodeHandler, nodeSafeFetchOptions } from '@finesoft/front/node'; void [startNodeHandler,nodeSafeFetchOptions];";
         if (selected === "tooling")
             source +=
                 "\nimport { finesoftFrontViteConfig, staticAdapter } from '@finesoft/front/vite'; void [finesoftFrontViteConfig,staticAdapter];";
@@ -256,6 +267,19 @@ try {
         typecheck(cwd + "/consumer.ts", selected);
         await fs.copyFile(cwd + "/consumer.ts", evidence + "/consumer-" + selected + ".ts.txt");
         await fs.copyFile(cwd + "/package.json", evidence + "/package-" + selected + ".json");
+        if (selected === "node") {
+            const { secureFetch } = await import(pathToFileURL(dist + "/index.mjs"));
+            const { nodeSafeFetchOptions } = await import(pathToFileURL(dist + "/node.mjs"));
+            // Exercise the lazy transport from the tarball without an installed undici peer.
+            // The trailing dot deliberately leaves this decision to connection-time DNS.
+            await assert.rejects(
+                secureFetch(globalThis.fetch, nodeSafeFetchOptions)("http://localhost./", {
+                    signal: AbortSignal.timeout(2000),
+                }),
+                (error) => error.cause?.name === "HostGuardError",
+            );
+            result.nodeTransport = "bundled transport loaded; connection DNS rejected loopback";
+        }
         if (selected === "portable") {
             const { defineApp, defineOperation, createRuntime } = await import(
                 pathToFileURL(dist + "/index.mjs")

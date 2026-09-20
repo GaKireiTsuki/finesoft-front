@@ -51,4 +51,13 @@ export class LruMap<K, V> {
     clear(): void {
         this.map.clear();
     }
+
+    /** Iterate in eviction order: least recently used first. */
+    entries(): IterableIterator<[K, V]> {
+        return this.map.entries();
+    }
+
+    [Symbol.iterator](): IterableIterator<[K, V]> {
+        return this.entries();
+    }
 }

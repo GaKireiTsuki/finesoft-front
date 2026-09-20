@@ -21,7 +21,7 @@ export function deserializeServerData(source: ServerDataSource): WireDecodeResul
 }
 export function createPrefetchedIntentsFromDom(source: ServerDataSource): PrefetchedIntents {
     const result = deserializeServerData(source);
-    if (result.status === "ready") return PrefetchedIntents.fromArray(result.data);
+    if (result.status === "ready") return PrefetchedIntents.fromArray(result.data.pages);
     source.onFallback?.(result.code);
     return PrefetchedIntents.empty();
 }

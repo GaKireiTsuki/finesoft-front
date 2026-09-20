@@ -1,10 +1,4 @@
-import type {
-    ExecutionContext,
-    IntentController,
-    OperationPolicy,
-    ParamsFor,
-    QuerySchemaMap,
-} from "@finesoft/core";
+import type { ExecutionContext, OperationPolicy, ParamsFor, QuerySchemaMap } from "@finesoft/core";
 import { route, type RouteDefinition } from "../bootstrap/define-routes";
 import type { BasePage } from "../models/page";
 import { leaf } from "../navigation/nodes";
@@ -41,19 +35,24 @@ export interface PageReference<
         view: View,
     ): Readonly<Record<Type, View>>;
 }
-export function definePage<C extends IntentController<BasePage>>(input: {
+export function definePage<
+    C extends { perform(input: any, context: ExecutionContext): Promise<BasePage> },
+>(input: {
     readonly id: string;
+    readonly routes?: PageControllerDefinition["routes"];
     readonly create: () => C;
     readonly policies?: readonly OperationPolicy<RouteParams>[];
 }): PageReference<ControllerParams<C>, Awaited<ReturnType<C["perform"]>>>;
 export function definePage<P extends RouteParams, R extends BasePage>(input: {
     readonly id: string;
+    readonly routes?: PageControllerDefinition["routes"];
     readonly handler: (params: P, context: ExecutionContext) => R | Promise<R>;
     readonly policies?: readonly OperationPolicy<RouteParams>[];
 }): PageReference<P, R>;
 export function definePage(input: {
     readonly id: string;
-    readonly create?: () => IntentController<BasePage>;
+    readonly routes?: PageControllerDefinition["routes"];
+    readonly create?: () => { perform(input: any, context: ExecutionContext): Promise<BasePage> };
     readonly handler?: (params: any, context: ExecutionContext) => BasePage | Promise<BasePage>;
     readonly policies?: readonly OperationPolicy<RouteParams>[];
 }): PageReference<RouteParams, BasePage> {

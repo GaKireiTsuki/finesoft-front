@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { generateProxyCode, registerProxyRoutes } from "../src/proxy";
+import { runInNewContext } from "node:vm";
+import { generateProxyCode, registerProxyRoutes, type ProxyRouteConfig } from "../src/proxy";
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -9,6 +10,73 @@ afterEach(() => {
 });
 
 describe("proxy helpers", () => {
+    test("follows same-origin redirects but refuses a hop leaving the configured origin", async () => {
+        const app = makeApp();
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const fetch = vi
+            .fn<typeof globalThis.fetch>()
+            .mockResolvedValueOnce(
+                new Response(null, { status: 302, headers: { location: "/next" } }),
+            )
+            .mockResolvedValueOnce(new Response("ok"))
+            .mockResolvedValueOnce(
+                new Response(null, {
+                    status: 302,
+                    headers: { location: "http://127.0.0.1/internal" },
+                }),
+            );
+        vi.stubGlobal("fetch", fetch);
+        registerProxyRoutes(app, [
+            { prefix: "/api", target: "https://upstream.example", followRedirects: true },
+        ]);
+        const handler = app.all.mock.calls[0][1] as (
+            ctx: ReturnType<typeof makeContext>,
+        ) => Promise<unknown>;
+        expect(
+            await handler(makeContext("/api/start", "https://app.example/api/start")),
+        ).toMatchObject({ status: 200, body: "ok" });
+        expect(fetch.mock.calls[1][0]).toBe("https://upstream.example/next");
+        expect(
+            await handler(makeContext("/api/start", "https://app.example/api/start")),
+        ).toMatchObject({ status: 502 });
+        expect(fetch).toHaveBeenCalledTimes(3);
+    });
+
+    test.each([undefined, "1"])(
+        "cancels an oversized streaming response with length %s before draining it",
+        async (length) => {
+            const app = makeApp();
+            let pulls = 0;
+            const cancel = vi.fn();
+            const body = new ReadableStream<Uint8Array>(
+                {
+                    pull(controller) {
+                        pulls++;
+                        controller.enqueue(new Uint8Array(1024 * 1024));
+                        if (pulls === 100) controller.close();
+                    },
+                    cancel,
+                },
+                { highWaterMark: 0 },
+            );
+            vi.stubGlobal(
+                "fetch",
+                vi.fn(
+                    async () =>
+                        new Response(body, { headers: length ? { "content-length": length } : {} }),
+                ),
+            );
+            registerProxyRoutes(app, [{ prefix: "/api", target: "https://upstream.example" }]);
+            const handler = app.all.mock.calls[0][1] as (
+                ctx: ReturnType<typeof makeContext>,
+            ) => Promise<unknown>;
+            expect(
+                await handler(makeContext("/api/large", "https://app.example/api/large")),
+            ).toEqual({ kind: "text", body: "Proxy response too large", status: 502 });
+            expect(pulls).toBe(11);
+            expect(cancel).toHaveBeenCalledTimes(1);
+        },
+    );
     test("validates proxy configuration and warns on plain HTTP targets", () => {
         const app = makeApp();
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -77,20 +145,16 @@ describe("proxy helpers", () => {
                 "X-App": "finesoft",
                 Authorization: "Bearer secret",
             },
-            redirect: "follow",
+            redirect: "manual",
         });
     });
 
     test("uses Basic auth headers and defaults content-type when the upstream omits it", async () => {
         process.env.BASIC_TOKEN = "encoded-secret";
         const app = makeApp();
-        const fetchMock = vi.fn(async () => ({
-            status: 201,
-            headers: {
-                get: vi.fn(() => null),
-            },
-            arrayBuffer: vi.fn(async () => new TextEncoder().encode("proxied-basic").buffer),
-        }));
+        const fetchMock = vi.fn(
+            async () => new Response(new TextEncoder().encode("proxied-basic"), { status: 201 }),
+        );
         vi.stubGlobal("fetch", fetchMock);
 
         registerProxyRoutes(app as never, [
@@ -229,7 +293,7 @@ describe("proxy helpers", () => {
         expect(new Uint8Array(capturedBuffer!)).toEqual(binary);
     });
 
-    test("generates inline proxy code and validates configs", () => {
+    test("generates registration code and validates configs", () => {
         expect(generateProxyCode([])).toBe("");
         expect(() => generateProxyCode([{ prefix: "/api", target: "file:///tmp/unsafe" }])).toThrow(
             /target must start with/,
@@ -240,37 +304,116 @@ describe("proxy helpers", () => {
                 prefix: "/api",
                 target: "https://upstream.example",
                 methods: ["get"],
-                headers: { Accept: "application/json" },
+                headers: { "X-Quote": 'a"b\\c' },
                 auth: { type: "basic", envKey: "BASIC_TOKEN" },
-                cache: "max-age=60",
+                cache: 'max-age=60, x="quoted"',
             },
         ]);
 
-        expect(code).toContain('app.get("/api/*"');
-        expect(code).toContain('const _headers = {"Accept":"application/json"}');
-        expect(code).toContain('process.env["BASIC_TOKEN"]');
-        expect(code).toContain('"Cache-Control"');
-        expect(code).toContain('"manual"');
+        expect(code).toContain("registerProxyRoutes(app,");
+        expect(code).toContain('"X-Quote":"a\\\"b\\\\c"');
+        expect(code).toContain('"cache":"max-age=60, x=\\\"quoted\\\""');
     });
 
-    test("generated proxy code embeds the same response size limit as runtime (parity)", () => {
-        const code = generateProxyCode([{ prefix: "/api", target: "https://upstream.example" }]);
+    test("executes generated registration code with runtime proxy behavior in Node and edge-like hosts", async () => {
+        process.env.PROXY_TOKEN = "node-secret";
+        const app = makeApp();
+        const binary = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff]);
+        const fetchMock = vi.fn(
+            async () =>
+                new Response(binary, {
+                    status: 201,
+                    headers: { "Content-Type": "image/png" },
+                }),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+        const config = {
+            prefix: "/api",
+            target: "https://upstream.example",
+            methods: ["get"],
+            headers: { "X-Quote": 'a"b\\c' },
+            auth: { type: "bearer" as const, envKey: "PROXY_TOKEN" },
+            cache: 'max-age=60, x="quoted"',
+            followRedirects: true,
+        } satisfies ProxyRouteConfig;
 
-        // 与 registerProxyRoutes 一致的 10MB 上限
-        const MAX = String(10 * 1024 * 1024);
+        executeGeneratedProxyCode(generateProxyCode([config]), app);
+        const handler = app.get.mock.calls[0][1] as (
+            ctx: ReturnType<typeof makeContext>,
+        ) => Promise<unknown>;
+        const context = makeContext("/api/logo.png", "https://app.example/api/logo.png?v=1");
+        let captured: ArrayBuffer | undefined;
+        context.newResponse = vi.fn((body: ArrayBuffer, status: number, headers) => {
+            captured = body;
+            return { kind: "response", body, status, headers };
+        }) as never;
 
-        // Content-Length fast-reject 路径
-        expect(code).toMatch(/Content-Length/);
-        expect(code).toContain(`parseInt(_cl, 10) > ${MAX}`);
+        await expect(handler(context)).resolves.toMatchObject({
+            kind: "response",
+            status: 201,
+            headers: { "Content-Type": "image/png", "Cache-Control": config.cache },
+        });
+        expect(new Uint8Array(captured!)).toEqual(binary);
+        expect(fetchMock).toHaveBeenCalledWith("https://upstream.example/logo.png?v=1", {
+            headers: { "X-Quote": 'a"b\\c', Authorization: "Bearer node-secret" },
+            redirect: "manual",
+        });
 
-        // 实际 body byteLength 拒绝路径
-        expect(code).toContain(`_body.byteLength > ${MAX}`);
+        vi.stubGlobal("process", undefined);
+        fetchMock.mockImplementation(
+            async () =>
+                new Response("edge", { status: 200, headers: { "Content-Type": "text/plain" } }),
+        );
+        await handler(makeContext("/api/edge", "https://app.example/api/edge"));
+        expect(fetchMock.mock.calls.at(-1)).toEqual([
+            "https://upstream.example/edge",
+            {
+                headers: { "X-Quote": 'a"b\\c' },
+                redirect: "manual",
+            },
+        ]);
 
-        // 两条路径都返回相同的 502 错误
-        const matches = code.match(/"Proxy response too large"/g);
-        expect(matches?.length).toBeGreaterThanOrEqual(2);
+        fetchMock.mockResolvedValueOnce(
+            new Response("ignored", {
+                status: 200,
+                headers: { "Content-Length": String(10 * 1024 * 1024 + 1) },
+            }),
+        );
+        await expect(
+            handler(makeContext("/api/large", "https://app.example/api/large")),
+        ).resolves.toEqual({
+            kind: "text",
+            body: "Proxy response too large",
+            status: 502,
+        });
+
+        fetchMock.mockResolvedValueOnce(
+            new Response("x".repeat(10 * 1024 * 1024 + 1), { status: 200 }),
+        );
+        await expect(
+            handler(makeContext("/api/body-too-large", "https://app.example/api/body-too-large")),
+        ).resolves.toEqual({
+            kind: "text",
+            body: "Proxy response too large",
+            status: 502,
+        });
+
+        fetchMock.mockRejectedValueOnce(new Error("edge failure"));
+        await expect(
+            handler(makeContext("/api/fail", "https://app.example/api/fail")),
+        ).resolves.toEqual({
+            kind: "json",
+            body: { error: "Proxy request failed" },
+            status: 502,
+        });
     });
 });
+
+function executeGeneratedProxyCode(code: string, app: ReturnType<typeof makeApp>): void {
+    // The adapter inserts this snippet after its public SSR import. Execute the exact generated
+    // source with that import binding to verify it registers the shared runtime implementation.
+    runInNewContext(code, { app, registerProxyRoutes });
+}
 
 function makeApp() {
     return {

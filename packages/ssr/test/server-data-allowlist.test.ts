@@ -27,7 +27,7 @@ describe("serializeServerData — markPublic allowlist", () => {
             ["id", "pageType", "title", "email"],
         );
 
-        const out = serializeServerData([{ intent: { id: "profile" }, data: page }]);
+        const out = serializeServerData({ pages: [{ intent: { id: "profile" }, data: page }] });
         expect(out).toContain("alice@example.com");
         expect(out).not.toContain("FLAG{should-not-leak}");
         expect(out).not.toContain("internalNotes");
@@ -44,15 +44,15 @@ describe("serializeServerData — markPublic allowlist", () => {
             true,
         );
 
-        const out = serializeServerData([{ intent: { id: "profile" }, data: page }]);
+        const out = serializeServerData({ pages: [{ intent: { id: "profile" }, data: page }] });
         expect(out).toContain("atk_x");
     });
 
     test("unmarked page emits only base fields without private diagnostics", () => {
         const page = { id: "p", pageType: "profile", title: "Alice", apiToken: "SECRET" };
-        expect(serializeServerData([{ intent: { id: "profile" }, data: page }])).not.toContain(
-            "SECRET",
-        );
+        expect(
+            serializeServerData({ pages: [{ intent: { id: "profile" }, data: page }] }),
+        ).not.toContain("SECRET");
     });
 
     test("onUnmarkedPage='base-fields' keeps only BasePage fields", () => {
@@ -64,9 +64,12 @@ describe("serializeServerData — markPublic allowlist", () => {
             apiToken: "leak",
             email: "leak@x",
         };
-        const out = serializeServerData([{ intent: { id: "profile" }, data: page }], {
-            onUnmarkedPage: "base-fields",
-        });
+        const out = serializeServerData(
+            { pages: [{ intent: { id: "profile" }, data: page }] },
+            {
+                onUnmarkedPage: "base-fields",
+            },
+        );
         expect(out).toContain('"title":"Alice"');
         expect(out).toContain('"description":"hi"');
         expect(out).not.toContain("leak");
@@ -82,9 +85,12 @@ describe("serializeServerData — markPublic allowlist", () => {
             apiToken: "leak",
         };
         expect(() =>
-            serializeServerData([{ intent: { id: "profile" }, data: page }], {
-                onUnmarkedPage: "strict",
-            }),
+            serializeServerData(
+                { pages: [{ intent: { id: "profile" }, data: page }] },
+                {
+                    onUnmarkedPage: "strict",
+                },
+            ),
         ).toThrow(/markPublic/);
     });
 
@@ -97,7 +103,7 @@ describe("serializeServerData — markPublic allowlist", () => {
             },
             ["id", "pageType", "title"],
         );
-        const out = serializeServerData([{ intent: { id: "profile" }, data: page }]);
+        const out = serializeServerData({ pages: [{ intent: { id: "profile" }, data: page }] });
         expect(out).toContain("\\u003C");
         expect(out).not.toContain("</script>");
     });

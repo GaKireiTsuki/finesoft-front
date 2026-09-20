@@ -5,7 +5,7 @@ vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import { vi } from "vite-plus/test";
 import { createNavigationScopedState } from "@finesoft/web";
-import { FakeCustomEvent, FakeElement, FakeEvent, stubDomGlobals } from "./fake-dom";
+import { FakeElement, FakeEvent, stubDomGlobals } from "./fake-dom";
 import { createDomRestore } from "../src/dom-restore";
 
 // Register Event + CustomEvent + document globals before any DOM usage.
@@ -200,12 +200,7 @@ describe("dom-restore — 回填", () => {
 // ---------------------------------------------------------------------------
 
 describe("dom-restore — attach 接线", () => {
-    /** Trigger a bubbling CustomEvent on target (models orchestrator fs:* dispatch). */
-    function fire(target: FakeElement, type: string): void {
-        target.dispatchEvent(new FakeCustomEvent(type, { bubbles: true }));
-    }
-
-    test("fs:conceal → 捕获该 island 进 scope", () => {
+    test("input event captures the owning entry", () => {
         const scope = createNavigationScopedState();
         const dr = createDomRestore({ scope, schedule: (cb) => cb() });
         const outlet = new FakeElement("div");
@@ -213,7 +208,7 @@ describe("dom-restore — attach 接线", () => {
         const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "typed" }]);
         outlet.appendChild(c);
 
-        fire(c, "fs:conceal");
+        c.querySelector("[name]")!.dispatchEvent(new FakeEvent("input", { bubbles: true }));
 
         const dom = (scope.get("k {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom;
         expect(dom?.fields).toEqual({ note: "typed" });
@@ -238,7 +233,7 @@ describe("dom-restore — attach 接线", () => {
         expect(dom?.fields).toEqual({ note: "x" });
     });
 
-    test("attach 时 catch-up：对已 attached 的 island 立即回填一次（boot 路径）", () => {
+    test("attach does not restore until the caller acknowledges a commit", () => {
         const scope = createNavigationScopedState();
         scope.set("k {}", { __dom: { fields: { note: "boot" } } });
         const dr = createDomRestore({ scope, schedule: (cb) => cb() });
@@ -246,15 +241,17 @@ describe("dom-restore — attach 接线", () => {
         const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "" }]);
         outlet.appendChild(c); // boot: island already in outlet before attach
 
-        dr.attach(asHTMLElement(outlet)); // catch-up should restore
+        dr.attach(asHTMLElement(outlet));
 
         const inputEl = c
             .querySelector("[data-restore-root]")!
             .querySelector("[name]") as FakeElement;
+        expect(inputEl.value).toBe("");
+        dr.restoreEntry(asHTMLElement(c));
         expect(inputEl.value).toBe("boot");
     });
 
-    test("fs:enter → 回填（会话内新挂载，scope 空则 no-op）", () => {
+    test("explicit restore refills a newly committed entry", () => {
         const scope = createNavigationScopedState();
         scope.set("k {}", { __dom: { fields: { note: "later" } } });
         const dr = createDomRestore({ scope, schedule: (cb) => cb() });
@@ -263,7 +260,7 @@ describe("dom-restore — attach 接线", () => {
         const c = island("k {}", [{ tag: "input", attrs: { name: "note" }, value: "" }]);
         outlet.appendChild(c);
 
-        fire(c, "fs:enter");
+        dr.restoreEntry(asHTMLElement(c));
 
         const inputEl = c
             .querySelector("[data-restore-root]")!
@@ -306,7 +303,7 @@ describe("dom-restore — attach 接线", () => {
         expect(dom?.fields).toEqual({ note: "vis-flush" });
     });
 
-    test("dispose 解绑：dispose 后 fs:conceal 不再捕获", () => {
+    test("dispose unbinds delegated input capture", () => {
         const scope = createNavigationScopedState();
         const dr = createDomRestore({ scope, schedule: (cb) => cb() });
         const outlet = new FakeElement("div");
@@ -316,15 +313,34 @@ describe("dom-restore — attach 接线", () => {
 
         dr.dispose();
 
-        // Update value then conceal → should NOT be captured
+        // Update value then edit → should NOT be captured
         const inputEl = c
             .querySelector("[data-restore-root]")!
             .querySelector("[name]") as FakeElement;
         inputEl.value = "after";
-        fire(c, "fs:conceal");
+        inputEl.dispatchEvent(new FakeEvent("input", { bubbles: true }));
 
         expect(scope.get("k {}")).toBeUndefined();
     });
+});
+
+test("nested data-fs-app roots are excluded from the parent capture", () => {
+    const scope = createNavigationScopedState();
+    const restore = createDomRestore({ scope, schedule: (callback) => callback() });
+    const parent = new FakeElement("div");
+    parent.setAttribute("data-fs-app", "");
+    const outer = island("outer", [{ tag: "input", attrs: { name: "outer" }, value: "kept" }]);
+    const nestedApp = new FakeElement("div");
+    nestedApp.setAttribute("data-fs-app", "");
+    const nested = island("nested", [{ tag: "input", attrs: { name: "nested" }, value: "skip" }]);
+    nestedApp.appendChild(nested);
+    outer.appendChild(nestedApp);
+    parent.appendChild(outer);
+    restore.attach(asHTMLElement(parent));
+    restore.captureEntry(asHTMLElement(outer));
+    expect(
+        (scope.get("outer") as { __dom: { fields: Record<string, unknown> } }).__dom.fields,
+    ).toEqual({ outer: "kept" });
 });
 
 // Keep TypeScript happy: FakeEvent is used by stub but the import might be

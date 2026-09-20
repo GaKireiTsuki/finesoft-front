@@ -2,41 +2,35 @@
  * ConsoleLogger — 基于 console 的日志实现
  */
 
-import { BaseLogger } from "./base";
-export type LogFilter = (category: string, level: "debug" | "info" | "warn" | "error") => boolean;
 import type { Logger, LoggerFactory } from "./types";
 
-export class ConsoleLogger extends BaseLogger {
+export type LogFilter = (category: string, level: "debug" | "info" | "warn" | "error") => boolean;
+
+export class ConsoleLogger implements Logger {
     constructor(
-        category: string,
+        private readonly category: string,
         private readonly shouldLog: LogFilter = () => true,
-    ) {
-        super(category);
-    }
-    debug(...args: unknown[]): string {
+    ) {}
+    debug(...args: unknown[]): void {
         if (this.shouldLog(this.category, "debug")) {
             console.debug(`[${this.category}]`, ...args);
         }
-        return "";
     }
 
-    info(...args: unknown[]): string {
+    info(...args: unknown[]): void {
         if (this.shouldLog(this.category, "info")) {
             console.info(`[${this.category}]`, ...args);
         }
-        return "";
     }
 
-    warn(...args: unknown[]): string {
+    warn(...args: unknown[]): void {
         if (this.shouldLog(this.category, "warn")) {
             console.warn(`[${this.category}]`, ...args);
         }
-        return "";
     }
 
-    error(...args: unknown[]): string {
+    error(...args: unknown[]): void {
         console.error(`[${this.category}]`, ...args);
-        return "";
     }
 }
 

@@ -58,6 +58,15 @@ export const serializeServerData=JSON.stringify;
                 setupPath: "setup.mjs",
                 defaultLocale: "ar",
                 renderModes: { "/shell/*": "csr" },
+                proxies: [
+                    {
+                        prefix: "/proxy",
+                        target: "https://upstream.example",
+                        headers: { "x-config": 'a"b\\c' },
+                        cache: "max-age=60",
+                        auth: { type: "bearer", envKey: "GENERATED_PROXY_TOKEN" },
+                    },
+                ],
             } as never,
             { dnsPolicy: "hostname", platformImport: "", platformExport: "export default app;" },
         );
@@ -72,6 +81,25 @@ response=await app.fetch(new Request('https://test/redirect'));assert.equal(resp
 response=await app.fetch(new Request('https://test/internal'),{tenant:'first'});assert.ok((await response.text()).includes('first'));
 response=await app.fetch(new Request('https://test/internal'),{tenant:'second'});assert.ok((await response.text()).includes('second'));
 response=await app.fetch(new Request('https://test/shell/path'));html=await response.text();assert.ok(html.includes('lang="ar" dir="rtl"'));assert.ok(!html.includes('hello'));
+const originalFetch=globalThis.fetch;
+const binary=new Uint8Array([0x89,0x50,0xff,0xfe]);
+const requests=[];
+globalThis.fetch=async (url,init)=>{requests.push({url,init});return new Response(binary,{headers:{'content-type':'image/png'}});};
+try {
+  process.env.GENERATED_PROXY_TOKEN='runtime-secret';
+  response=await app.fetch(new Request('https://test/proxy/image?v=2'));
+  assert.deepEqual(new Uint8Array(await response.arrayBuffer()),binary);
+  assert.equal(response.headers.get('cache-control'),'max-age=60');
+  assert.equal(requests[0].url,'https://upstream.example/image?v=2');
+  assert.equal(requests[0].init.headers.Authorization,'Bearer runtime-secret');
+  assert.equal(requests[0].init.headers['x-config'],${JSON.stringify('a"b\\c')});
+  response=await app.fetch(new Request('https://test/proxy/%2Fprivate'));
+  assert.equal(response.status,400);assert.equal(requests.length,1);
+  const nodeProcess=globalThis.process;
+  try { globalThis.process=undefined; response=await app.fetch(new Request('https://test/proxy/edge')); }
+  finally { globalThis.process=nodeProcess; }
+  assert.equal(response.status,200);assert.equal(requests[1].init.headers.Authorization,undefined);
+} finally { globalThis.fetch=originalFetch;delete process.env.GENERATED_PROXY_TOKEN; }
 console.log('exact emitted module: imported and response contract passed');
 `;
         expect(

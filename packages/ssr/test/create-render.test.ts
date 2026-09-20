@@ -1,101 +1,86 @@
+import { describe, expect, test } from "vite-plus/test";
 import { fixtureDefinition } from "../../web/test/helpers/definition";
-import { describe, expect, test, vi } from "vite-plus/test";
-import type { BasePage, Framework } from "@finesoft/web";
-
-const { ssrRender } = vi.hoisted(() => ({
-    ssrRender: vi.fn(),
-}));
-
-vi.mock("../src/render", () => ({
-    ssrRender,
-}));
-
 import { createSSRRender } from "../src/create-render";
 
 describe("createSSRRender", () => {
-    test("forwards render configuration to ssrRender", async () => {
-        const definition = fixtureDefinition();
-        const getErrorPage = vi.fn((status: number, message: string) => ({
-            id: `error-${status}`,
-            pageType: "error",
-            title: message,
-        }));
-        const renderApp = vi.fn(async () => ({
-            html: "<main>ok</main>",
-            head: "",
-            css: "",
-        }));
-        const resolveLocale = vi.fn(() => ({ lang: "en-US", dir: "ltr" }));
-        const loadMessages = vi.fn();
-        const ssrContext = { request: new Request("https://example.com/") };
-        const expected = {
-            html: "<main>ok</main>",
-            head: "",
-            css: "",
-            serverData: [],
-        };
-        ssrRender.mockResolvedValue(expected);
-
+    test("passes one composed WebAppView to the native renderer", async () => {
         const render = createSSRRender({
-            definition,
-            getErrorPage,
-            renderApp,
-            frameworkConfig: { locale: "en-US" },
-            resolveLocale,
-            loadMessages,
+            definition: fixtureDefinition([
+                {
+                    path: "/home",
+                    intentId: "home",
+                    controller: {
+                        intentId: "home",
+                        perform() {
+                            return { id: "home", pageType: "home", title: "Home" };
+                        },
+                    },
+                },
+            ]),
+            render: (app) => {
+                const snapshot = app.getSnapshot();
+                expect(snapshot.entries).toHaveLength(1);
+                expect(snapshot.destinations[0]?.page.title).toBe("Home");
+                expect(app.locale).toBeUndefined();
+                return { html: `<main>${snapshot.entries[0]!.page.title}</main>` };
+            },
         });
 
-        await expect(render("/home", ssrContext as never)).resolves.toBe(expected);
-        expect(ssrRender).toHaveBeenCalledWith({
-            url: "/home",
-            frameworkConfig: expect.objectContaining({
-                locale: "en-US",
-                definition,
-                runtime: expect.any(Object),
-            }),
-            getErrorPage,
-            renderApp: expect.any(Function),
-            ssrContext,
-            resolveLocale,
-            loadMessages,
+        await expect(render("/home")).resolves.toMatchObject({
+            html: "<main>Home</main>",
+            head: "",
+            css: "",
+            serverData: {
+                pages: [
+                    {
+                        entryId: expect.any(String),
+                        intent: { id: "home", params: {} },
+                        data: { id: "home", pageType: "home", title: "Home" },
+                    },
+                ],
+            },
         });
-
-        const forwardedRenderApp = ssrRender.mock.calls[0][0].renderApp as (
-            page: BasePage,
-            framework: Framework,
-        ) => Promise<unknown>;
-
-        await expect(
-            forwardedRenderApp({ id: "home", pageType: "home", title: "Home" }, {} as Framework),
-        ).resolves.toEqual({ html: "<main>ok</main>", head: "", css: "" });
-        expect(renderApp).toHaveBeenCalled();
+        expect(render.routes).toEqual([
+            expect.objectContaining({ path: "/home", intentId: "home" }),
+        ]);
         await render.dispose();
     });
 
-    test("defaults frameworkConfig to an empty object", async () => {
-        ssrRender.mockResolvedValue({
-            html: "",
-            head: "",
-            css: "",
-            serverData: [],
-        });
-
+    test("applies configuration and locale resolution to the request view", async () => {
+        const definition = fixtureDefinition([
+            {
+                path: "/",
+                intentId: "home",
+                controller: {
+                    intentId: "home",
+                    perform() {
+                        return { id: "home", pageType: "home", title: "Home" };
+                    },
+                },
+            },
+        ]);
         const render = createSSRRender({
-            definition: fixtureDefinition(),
-            getErrorPage: vi.fn(),
-            renderApp: vi.fn(),
+            definition,
+            configuration: { locale: "en-US" },
+            resolveLocale: () => ({ lang: "zh-Hans", dir: "ltr" }),
+            render: (app) => {
+                expect(app.locale).toEqual({ lang: "zh-Hans", dir: "ltr" });
+                return {
+                    html: "ok",
+                    head: '<meta name="language" content="zh-Hans">',
+                    css: ".app{}",
+                };
+            },
         });
 
-        await render("/");
+        await expect(
+            render("/", { request: new Request("https://example.com/") }),
+        ).resolves.toMatchObject({
+            html: "ok",
+            head: '<meta name="language" content="zh-Hans">',
+            css: ".app{}",
+            locale: { lang: "zh-Hans", dir: "ltr" },
+        });
         await render.dispose();
-
-        expect(ssrRender).toHaveBeenCalledWith(
-            expect.objectContaining({
-                frameworkConfig: expect.objectContaining({
-                    definition: expect.any(Object),
-                    runtime: expect.any(Object),
-                }),
-            }),
-        );
     });
 });

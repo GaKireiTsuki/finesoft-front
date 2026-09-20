@@ -31,7 +31,10 @@ describe("Router", () => {
         const router = new Router();
         router.add("/blog/:slug?", "blog");
 
-        expect((await router.resolve("/blog"))?.intent).toEqual({ id: "blog", params: {} });
+        expect((await router.resolve("/blog"))?.intent).toEqual({
+            id: "blog",
+            params: { slug: undefined },
+        });
         expect((await router.resolve("/blog/hello#comments"))?.intent).toEqual({
             id: "blog",
             params: { slug: "hello" },
@@ -50,6 +53,22 @@ describe("Router", () => {
 
         expect(router.getRoutes()).toEqual(["/ → home", "/account/:tab? → account"]);
         expect(await router.resolve("/missing")).toBeNull();
+    });
+
+    test("publishes structured definitions and reverse routes", () => {
+        const router = new Router();
+        router.add("/products/:id", "product");
+        expect(router.hasIntent("product")).toBe(true);
+        expect(router.getDefinitions()).toMatchObject([
+            {
+                pattern: "/products/:id",
+                intentId: "product",
+                path: { parameters: [{ name: "id" }] },
+            },
+        ]);
+        expect(router.reverse("product", { id: "a/b", tab: "details" })).toBe(
+            "/products/a%2Fb?tab=details",
+        );
     });
 
     test("stores URL params in null-prototype records to avoid prototype pollution", async () => {

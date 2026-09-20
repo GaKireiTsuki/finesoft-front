@@ -39,8 +39,6 @@ export {
 } from "./nodes";
 
 // ===== Islands（条目类型 + 共享标记构造器）=====
-export { islandContainerAttributes } from "./islands";
-export { type ResolvedEntry } from "./islands";
 
 // ===== Keys（稳定身份键）=====
 export { resourceKey } from "./keys";
@@ -81,7 +79,6 @@ export {
 // ===== Codec（URL 编解码）=====
 export {
     createActiveLeafCodec,
-    createFlatStackCodec,
     createFullStateCodec,
     decodeNavigationTreeParam,
     DEFAULT_NAV_PARAM,

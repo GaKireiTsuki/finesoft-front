@@ -18,9 +18,12 @@ export async function enforceHostGuard(
     try {
         parsed = new URL(url);
     } catch {
-        return;
+        // True relative URLs stay with the injected host. Network-path and
+        // backslash variants can select a different host in the URL parser.
+        parsed = new URL(url, "http://relative.invalid/");
+        if (parsed.origin === "http://relative.invalid") return;
     }
-    const verdict = classifyUrl(url);
+    const verdict = classifyUrl(parsed.href);
     if (!verdict.ok) throw new HostGuardError(url, verdict.reason);
     if (
         options.validateDns === false ||

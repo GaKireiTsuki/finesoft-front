@@ -4,8 +4,6 @@ import { markPublic } from "@finesoft/front/web";
 import type { SearchPage } from "../models/product";
 
 export class SearchController extends BaseController<{ q?: string }, SearchPage> {
-    readonly intentId = "search";
-
     execute(params: { q?: string }): SearchPage {
         const query = params.q ?? "";
         const results = query

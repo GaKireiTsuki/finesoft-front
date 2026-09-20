@@ -1,15 +1,7 @@
 # Hydration mismatch
 
-The server and browser must share the same app declaration and view binding. Hydrate server HTML before restoring persisted state.
+Share the same page definition, App and Outlet view registry between browser and SSR. Use `createSSRRender({ definition, render: app => nativeRender(app) })` on the server. In the browser, select native hydrate or mount using `app.hydrate`, mount first, then await `app.ready`.
 
-## Shared SSR / 共用 SSR
+Hydrate the server snapshot before restoring persisted state. Avoid random values, time or browser globals during the first render. Do not await ready before mounting or manually mutate Outlet's child tree.
 
-```ts
-import { createReactSSRRender } from "@finesoft/front/renderers/react/server";
-import { app } from "./app-definition";
-import { views } from "./views";
-export const render = createReactSSRRender({ app, renderer: views });
-export { serializeServerData } from "@finesoft/front/ssr";
-```
-
-Use explicit public projections for controller data; nested data requires a nested declaration or codec. Strict serialization rejects unmarked pages even after materialization. Avoid time/random/browser-global differences during initial render. A wire/build mismatch intentionally performs a fresh load rather than hydrating incompatible data. Verify the actual browser warning and rendered DOM, not only the HTML string.
+Declare explicit public projections; nested data needs a nested declaration or codec. Wire/buildId mismatches trigger fresh loading. Inspect browser warnings, DOM, requests and entry identity when diagnosing a mismatch.

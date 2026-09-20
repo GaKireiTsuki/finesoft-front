@@ -1,22 +1,13 @@
-import {
-    createSvelteSSRRender,
-    serializeServerData,
-} from "@finesoft/front/renderers/svelte/server";
-import Chrome from "./SvelteChrome.svelte";
-import Probe from "./SvelteProbe.svelte";
+import { render as renderSvelte } from "svelte/server";
+import { createSSRRender, serializeServerData } from "@finesoft/front/ssr";
+import App from "./SvelteApp.svelte";
 import { definition } from "./definition";
-export async function render(
-    url: string,
-    mode: "root" | "entries",
-    structured = false,
-    chrome = false,
-) {
-    const factory = createSvelteSSRRender({
-        app: definition("en", "first", { pageType: "probe" }, structured),
-        renderer: {
-            mode,
-            chrome: chrome ? Chrome : undefined,
-            views: { probe: Probe, other: Probe },
+export async function render(url: string, structured = false) {
+    const factory = createSSRRender({
+        definition: definition("en", "first", { pageType: "probe" }, structured),
+        render: (app) => {
+            const result = renderSvelte(App, { props: { app } });
+            return { html: result.body, head: result.head, css: "" };
         },
     });
     try {

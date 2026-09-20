@@ -1,32 +1,51 @@
-import { expect, test, vi } from "vite-plus/test";
-vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
-vi.mock("@finesoft/front", async () => ({
-    ...(await import("../../core/src/index.ts")),
-    ...(await import("../../web/src/index.ts")),
-}));
-import { serializeServerData } from "../src/server-data";
-import { HomeController as ReactHome } from "../../../templates/react/src/lib/controllers/home";
-import { HomeController as VueHome } from "../../../templates/vue/src/lib/controllers/home";
-import { HomeController as SvelteHome } from "../../../templates/svelte/src/lib/controllers/home";
-import { HomeController as ReactFeed } from "../../../templates/react-minimal/src/lib/controllers/home";
-import { HomeController as VueFeed } from "../../../templates/vue-minimal/src/lib/controllers/home";
+import { expect, test, vi } from "vite-plus/test";
 
-test("full templates retain explicit nested shelves/actions and minimal templates retain feed items", () => {
-    for (const Controller of [ReactHome, VueHome, SvelteHome, ReactFeed, VueFeed]) {
-        const page = Object.assign(new Controller().execute(), {
+vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
+
+import { defineWebApp, markPublic } from "@finesoft/web";
+import { routePages } from "../../web/test/helpers/definition";
+import { createSSRRender } from "../src/create-render";
+import { serializeServerData } from "../src/server-data";
+
+test("native page data retains declared nested actions while excluding internal fields", async () => {
+    const page = markPublic(
+        {
+            id: "home",
+            pageType: "home",
+            title: "Home",
+            shelves: [
+                {
+                    name: "Featured",
+                    items: [{ name: "TypeScript Handbook", clickAction: { url: "/products/1" } }],
+                    seeAllAction: { url: "/search" },
+                },
+            ],
             internalSecret: "TEMPLATE_SECRET",
-        });
-        const data = JSON.parse(
-            serializeServerData([{ entryId: "home", intent: { id: "home" }, data: page }]),
-        ).payload[0].data;
-        expect(data.internalSecret).toBeUndefined();
-        if ("shelves" in page) {
-            expect(data.shelves[0].items[0].name).toBe("TypeScript Handbook");
-            expect(data.shelves[0].items[0].clickAction.url).toBe("/products/1");
-            expect(data.shelves[0].seeAllAction.url).toBe("/search");
-        } else {
-            expect(data.items[0]).toEqual({ id: "1", title: "Structured navigation" });
-        }
-    }
+        },
+        {
+            shelves: {
+                name: true,
+                items: { name: true, clickAction: { url: true } },
+                seeAllAction: { url: true },
+            },
+        },
+    );
+    const definition = defineWebApp({
+        id: "public-page",
+        pages: routePages([{ id: "home", handler: () => page }], [{ path: "/", intentId: "home" }]),
+        getErrorPage: (status, message) => ({
+            id: String(status),
+            pageType: "error",
+            title: message,
+        }),
+    });
+    const render = createSSRRender({ definition, render: () => "Home" });
+    const result = await render("/");
+    const data = JSON.parse(serializeServerData(result.serverData)).payload.pages[0].data;
+    expect(data.internalSecret).toBeUndefined();
+    expect(data.shelves[0].items[0].name).toBe("TypeScript Handbook");
+    expect(data.shelves[0].items[0].clickAction.url).toBe("/products/1");
+    expect(data.shelves[0].seeAllAction.url).toBe("/search");
+    await render.dispose();
 });

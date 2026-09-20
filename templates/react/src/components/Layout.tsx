@@ -1,17 +1,15 @@
-import type { Action } from "@finesoft/front/web";
 import Navigation from "./Navigation";
 
 interface LayoutProps {
     children: React.ReactNode;
     currentPath?: string;
-    onAction?: (action: Action) => void;
 }
 
 /** 公共布局 — 顶部导航栏 + 内容区 */
-export function Layout({ children, currentPath = "/", onAction }: LayoutProps) {
+export function Layout({ children, currentPath = "/" }: LayoutProps) {
     return (
         <div className="app-shell">
-            <Navigation currentPath={currentPath} onAction={onAction} />
+            <Navigation currentPath={currentPath} />
             <main className="app-main">{children}</main>
         </div>
     );

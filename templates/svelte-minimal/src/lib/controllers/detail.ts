@@ -3,8 +3,6 @@ import { markPublic } from "@finesoft/front/web";
 import type { DetailPage } from "../models/page";
 
 export class DetailController extends BaseController<{ id?: string }, DetailPage> {
-    readonly intentId = "detail";
-
     execute(params: { id?: string }): DetailPage {
         const id = params.id ?? "?";
         return markPublic(

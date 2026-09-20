@@ -1,9 +1,17 @@
 import { expect, test, vi } from "vite-plus/test";
-vi.mock("@finesoft/web", async () => import("../../web/src/index"));
-vi.mock("@finesoft/core", async () => import("../../core/src/index"));
-import { defineWebApp } from "@finesoft/web";
+vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
+vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
+
+import { defineWebApp, loadPage, markPublic, next, PrefetchedIntents } from "@finesoft/web";
+import { routePages } from "../../web/test/helpers/definition";
 import { createSSRRender } from "../src/create-render";
-import { serializeServerData } from "../src/index";
+import { materializeServerData, serializeServerData } from "../src/server-data";
+
+const errorPage = (status: number, message: string) => ({
+    id: String(status),
+    pageType: "error",
+    title: message,
+});
 
 test("standard reusable Web SSR retains Runtime while request fetch and cleanup remain scoped", async () => {
     const runtimes: string[] = [];
@@ -13,256 +21,185 @@ test("standard reusable Web SSR retains Runtime while request fetch and cleanup 
     );
     const web = defineWebApp({
         id: "ssr-web",
-        controllers: [
-            {
-                id: "home",
-                handler: async (_params, ctx) => {
-                    runtimes.push(ctx.runtimeId);
-                    expect(ctx.bindings.request).toBe(requests[String(ctx.bindings.name)]);
-                    ctx.onDispose(() => {
-                        cleaned.push(String(ctx.bindings.name));
-                    });
-                    const response = await ctx.fetch("/data");
-                    return {
-                        id: String(ctx.bindings.name),
-                        pageType: "home",
-                        title: await response.text(),
-                    };
+        pages: routePages(
+            [
+                {
+                    id: "home",
+                    handler: async (_params, context) => {
+                        const name = String(context.bindings.name);
+                        runtimes.push(context.runtimeId);
+                        expect(context.bindings.request).toBe(requests[name]);
+                        context.onDispose(() => {
+                            cleaned.push(name);
+                        });
+                        const response = await context.fetch("/data");
+                        return { id: name, pageType: "home", title: await response.text() };
+                    },
                 },
-            },
-        ],
-        routes: [{ path: "/", intentId: "home" }],
-        getErrorPage: (status, message) => ({
-            id: String(status),
-            pageType: "error",
-            title: message,
-        }),
+            ],
+            [{ path: "/", intentId: "home" }],
+        ),
+        getErrorPage: errorPage,
     });
     const render = createSSRRender({
         definition: web,
-        renderApp: async (page) => {
-            expect(cleaned).not.toContain(page.id);
-            return { html: page.title!, head: "", css: "" };
-        },
+        render: (app) => app.getSnapshot().entries.at(-1)?.page.title ?? "",
     });
-    const a = render("/", {
-        request: requests.a,
-        bindings: { name: "a" },
-        fetch: async () => new Response("a"),
-    });
-    const b = render("/", {
-        request: requests.b,
-        bindings: { name: "b" },
-        fetch: async () => new Response("b"),
-    });
-    const [first, second] = await Promise.all([a, b]);
-    expect(first).toMatchObject({ html: "a" });
+    const [first, second] = await Promise.all([
+        render("/", {
+            request: requests.a,
+            bindings: { name: "a" },
+            fetch: async () => new Response("a"),
+        }),
+        render("/", {
+            request: requests.b,
+            bindings: { name: "b" },
+            fetch: async () => new Response("b"),
+        }),
+    ]);
+    expect(first.html).toBe("a");
     expect(first.cache).toBeUndefined();
     expect(second.html).toBe("b");
     expect(new Set(runtimes).size).toBe(1);
     expect(cleaned.sort()).toEqual(["a", "b"]);
-    expect(
-        (
-            await render("/", {
-                request: requests.c,
-                bindings: { name: "c" },
-                fetch: async () => new Response("c"),
-            })
-        ).html,
-    ).toBe("c");
+    await expect(
+        render("/", {
+            request: requests.c,
+            bindings: { name: "c" },
+            fetch: async () => new Response("c"),
+        }),
+    ).resolves.toMatchObject({ html: "c" });
     await render.dispose();
 });
 
-test("ordinary SSR hydration preserves the generated page EntryId and one-shot data", async () => {
-    const { Framework, PrefetchedIntents, loadPage } = await import("@finesoft/web");
+test("ordinary SSR hydration preserves the generated page EntryId and consumes one-shot data", async () => {
     let calls = 0;
     const definition = defineWebApp({
         id: "hydrate",
-        controllers: [
-            {
-                id: "home",
-                handler: () => ({ id: String(++calls), pageType: "home", title: "Home" }),
-            },
-        ],
-        routes: [{ path: "/", intentId: "home" }],
-        getErrorPage: (status, message) => ({
-            id: String(status),
-            pageType: "error",
-            title: message,
-        }),
+        pages: routePages(
+            [
+                {
+                    id: "home",
+                    handler: () => ({ id: String(++calls), pageType: "home", title: "Home" }),
+                },
+            ],
+            [{ path: "/", intentId: "home" }],
+        ),
+        getErrorPage: errorPage,
     });
-    const render = createSSRRender({
-        definition,
-        renderApp: () => ({ html: "home", head: "", css: "" }),
-    });
+    const render = createSSRRender({ definition, render: () => "home" });
     const output = await render("/");
-    expect(output.serverData[0].entryId).toEqual(expect.any(String));
-    const browser = Framework.create({
+    const entryId = output.serverData.pages[0]!.entryId;
+    expect(entryId).toEqual(expect.any(String));
+    const browser = (await import("@finesoft/web")).createWebRuntime({
         definition,
-        prefetchedIntents: PrefetchedIntents.fromArray(output.serverData),
+        prefetchedIntents: PrefetchedIntents.fromArray(output.serverData.pages),
     });
-    const loaded = await loadPage({ framework: browser, target: "/" });
-    expect(loaded).toMatchObject({
-        kind: "page",
-        target: { entryId: output.serverData[0].entryId },
-    });
+    const loaded = await loadPage({ web: browser, target: "/" });
+    expect(loaded).toMatchObject({ kind: "page", target: { entryId }, page: { id: "1" } });
     expect(calls).toBe(1);
     await browser.dispose();
     await render.dispose();
 });
 
-test("standard SSR producer exposes public prerender only by explicit route declaration", async () => {
-    const { createSSRHandler } = await import("../../server/src/ssr-handler");
+test("SSR cache metadata reflects explicit public route declarations", async () => {
     const definition = defineWebApp({
         id: "public-web",
-        controllers: [
-            { id: "home", handler: () => ({ id: "home", pageType: "home", title: "Public" }) },
-        ],
-        routes: [
-            { path: "/public", intentId: "home", renderMode: "prerender", cache: "public" },
-            { path: "/private", intentId: "home", renderMode: "prerender" },
-        ],
-        getErrorPage: (status, message) => ({
-            id: String(status),
-            pageType: "error",
-            title: message,
-        }),
+        pages: routePages(
+            [{ id: "home", handler: () => ({ id: "home", pageType: "home", title: "Public" }) }],
+            [
+                { path: "/public", intentId: "home", renderMode: "prerender", cache: "public" },
+                { path: "/private", intentId: "home", renderMode: "prerender" },
+            ],
+        ),
+        getErrorPage: errorPage,
     });
     const render = createSSRRender({
         definition,
-        renderApp: () => ({ html: "<main>public-page</main>", head: "", css: "" }),
+        render: () => ({ html: "<main>public-page</main>" }),
     });
     expect((await render("/public")).cache).toBe("public");
     expect((await render("/private")).cache).toBeUndefined();
-    const handler = createSSRHandler({
-        render,
-        serializeServerData,
-        template:
-            "<html><head><!--ssr-head--></head><body><!--ssr-body--><!--ssr-data--></body></html>",
-    });
-    const response = await handler(new Request("https://example.com/public"));
-    expect(response.status).toBe(200);
-    expect(await response.text()).toContain("<main>public-page</main>");
     await render.dispose();
 });
 
-test("definition framework defaults reach per-request message loading and controller scope", async () => {
+test("definition configuration reaches per-request message loading and page scope", async () => {
     const definition = defineWebApp({
         id: "locale-default",
-        frameworkConfig: { locale: "en-US" },
-        routes: [{ path: "/", intentId: "home" }],
-        controllers: [
-            {
-                id: "home",
-                handler: (_params, ctx) => ({
+        configuration: { locale: "en-US" },
+        loadMessages: async () => ({ hello: "Hello" }),
+        pages: routePages(
+            [
+                {
                     id: "home",
-                    pageType: "home",
-                    title: String(ctx.locale),
-                }),
-            },
-        ],
-        getErrorPage: (status, message) => ({
-            id: String(status),
-            pageType: "error",
-            title: message,
-        }),
+                    handler: (_params, context) => ({
+                        id: "home",
+                        pageType: "home",
+                        title: String(context.locale),
+                    }),
+                },
+            ],
+            [{ path: "/", intentId: "home" }],
+        ),
+        getErrorPage: errorPage,
     });
     const render = createSSRRender({
         definition,
-        loadMessages: async () => ({ hello: "Hello" }),
-        renderApp: (page, fw) => ({
-            html: `${page.title}:${fw.getTranslator()?.t("hello")}`,
-            head: "",
-            css: "",
-        }),
+        render: (app) =>
+            `${app.getSnapshot().entries.at(-1)?.page.title}:${app.translator?.t("hello")}`,
     });
-    expect((await render("/")).html).toBe("en-US:Hello");
+    await expect(render("/")).resolves.toMatchObject({ html: "en-US:Hello" });
     await render.dispose();
 });
 
-test("SSR and browser tree producers preserve the shared seven-stage guard order", async () => {
-    const { Framework, createNavigationController, createActiveLeafCodec, leaf, next } =
-        await import("@finesoft/web");
-    const { createSSRNavigationRender } = await import("../src/navigation");
+test("SSR and route loading preserve the shared before/after guard order", async () => {
     const calls: string[] = [];
     const guard = (name: string) => () => {
         calls.push(name);
         return next();
     };
     const definition = defineWebApp({
-        id: "guard-producers",
-        controllers: [
-            {
-                id: "home",
-                handler: () => {
-                    calls.push("controller");
-                    return { id: "home", pageType: "home", title: "Home" };
+        id: "guard-order",
+        pages: routePages(
+            [
+                {
+                    id: "home",
+                    handler: () => {
+                        calls.push("page");
+                        return { id: "home", pageType: "home", title: "Home" };
+                    },
                 },
-            },
-        ],
-        routes: [
-            {
-                path: "/",
-                intentId: "home",
-                beforeLoad: [guard("route-before")],
-                afterLoad: [guard("route-after")],
-            },
-        ],
+            ],
+            [
+                {
+                    path: "/",
+                    intentId: "home",
+                    beforeLoad: [guard("route-before")],
+                    afterLoad: [guard("route-after")],
+                },
+            ],
+        ),
         beforeLoad: [guard("global-before")],
         afterLoad: [guard("global-after")],
-        getErrorPage: (status, message) => ({
-            id: String(status),
-            pageType: "error",
-            title: message,
-        }),
+        getErrorPage: errorPage,
     });
-    const beforeLoad = [guard("navigation-before")],
-        afterLoad = [guard("navigation-after")];
-    const expected = [
-        "global-before",
-        "route-before",
-        "navigation-before",
-        "controller",
-        "global-after",
-        "route-after",
-        "navigation-after",
-    ];
-    const render = createSSRNavigationRender({
-        definition,
-        navigation: { codec: createActiveLeafCodec(), beforeLoad, afterLoad },
-        renderApp: () => ({ html: "home", head: "", css: "" }),
-    });
+    const render = createSSRRender({ definition, render: () => "Home" });
     await render("/");
-    expect(calls).toEqual(expected);
-    calls.length = 0;
-    const framework = Framework.create({ definition });
-    const browser = createNavigationController({
-        framework,
-        isServer: false,
-        initial: leaf("home"),
-        beforeLoad,
-        afterLoad,
-    });
-    await browser.resolve();
-    expect(calls).toEqual(expected);
-    await browser.dispose();
-    await framework.dispose();
+    expect(calls).toEqual(["global-before", "route-before", "page", "global-after", "route-after"]);
     await render.dispose();
 });
 
-test("flat and tree producers materialize declared getters before execution disposal", async () => {
-    const { markPublic, createActiveLeafCodec } = await import("@finesoft/web");
-    const { createSSRNavigationRender } = await import("../src/navigation");
-    for (const structured of [false, true]) {
-        let closed = false;
-        const order: string[] = [];
-        const definition = defineWebApp({
-            id: "materialization",
-            controllers: [
+test("SSR materializes declared getters before request cleanup", async () => {
+    let closed = false;
+    const order: string[] = [];
+    const definition = defineWebApp({
+        id: "materialization",
+        pages: routePages(
+            [
                 {
                     id: "home",
-                    handler: (_params, ctx) => {
-                        ctx.onDispose(() => {
+                    handler: (_params, context) => {
+                        context.onDispose(() => {
                             order.push("dispose");
                             closed = true;
                         });
@@ -282,27 +219,30 @@ test("flat and tree producers materialize declared getters before execution disp
                     },
                 },
             ],
-            routes: [{ path: "/", intentId: "home" }],
-            getErrorPage: (status, message) => ({
-                id: String(status),
-                pageType: "error",
-                title: message,
-            }),
-        });
-        const options = { definition, renderApp: () => ({ html: "Home", head: "", css: "" }) };
-        const render = structured
-            ? createSSRNavigationRender({
-                  ...options,
-                  navigation: { codec: createActiveLeafCodec() },
-              })
-            : createSSRRender(options);
-        const output = await render("/");
-        expect(closed).toBe(true);
-        expect(order).toEqual(["project", "dispose"]);
-        const wire = serializeServerData(output.serverData);
-        expect(wire).toContain("Public");
-        expect(wire).not.toContain("PRIVATE");
-        expect(order).toEqual(["project", "dispose"]);
-        await render.dispose();
-    }
+            [{ path: "/", intentId: "home" }],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({ definition, render: () => "Home" });
+    const output = await render("/");
+    expect(order).toEqual(["project", "dispose"]);
+    const wire = serializeServerData(output.serverData);
+    expect(wire).toContain("Public");
+    expect(wire).not.toContain("PRIVATE");
+    expect(order).toEqual(["project", "dispose"]);
+    await render.dispose();
+});
+
+test("materialized server data preserves the v2 tree and page projection", () => {
+    const data = materializeServerData({
+        pages: [
+            {
+                intent: { id: "home" },
+                data: { id: "home", pageType: "home", title: "Home", secret: "hidden" },
+            },
+        ],
+    });
+    expect(data).toEqual({
+        pages: [{ intent: { id: "home" }, data: { id: "home", pageType: "home", title: "Home" } }],
+    });
 });

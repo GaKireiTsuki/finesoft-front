@@ -92,3 +92,29 @@ test("optional definition arrays accept explicit undefined and are copied when p
     expect(await runtime.execute(app.operations![0], undefined)).toBe(42);
     await runtime.dispose();
 });
+
+test("immutable application structure is reused while each host override and capability is checked", async () => {
+    const { normalize } = await import("../../src/application/definition");
+    const operation = defineOperation({
+        id: "selected",
+        kind: "query",
+        handler: () => "declaration",
+        capabilities: ["fetch"],
+    });
+    const app = defineApp({ id: "structure", operations: [operation] });
+    const fetch = async () => new Response("ok");
+    const first = normalize({ app, capabilities: { fetch } });
+    const second = normalize({ app, capabilities: { fetch } });
+    expect(first.operations).toBe(second.operations);
+    expect(() => normalize({ app })).toThrow(/Missing capability/);
+    const runtime = createRuntime({
+        app,
+        capabilities: { fetch },
+        implementations: [implementOperation(operation, () => "host")],
+    });
+    expect(await runtime.execute(operation, undefined)).toBe("host");
+    const unchanged = createRuntime({ app, capabilities: { fetch } });
+    expect(await unchanged.execute(operation, undefined)).toBe("declaration");
+    await runtime.dispose();
+    await unchanged.dispose();
+});

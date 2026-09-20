@@ -1,6 +1,13 @@
-import { createSvelteSSRRender } from "@finesoft/front/renderers/svelte/server";
+import { render as renderSvelte } from "svelte/server";
+import { createSSRRender } from "@finesoft/front/ssr";
 import { app } from "./app-definition";
-import { views } from "./views";
+import App from "./App.svelte";
 
-export const render = createSvelteSSRRender({ app, renderer: views });
+export const render = createSSRRender({
+    definition: app,
+    render: (app) => {
+        const result = renderSvelte(App, { props: { app } });
+        return { html: result.body, head: result.head, css: "" };
+    },
+});
 export { serializeServerData } from "@finesoft/front/ssr";

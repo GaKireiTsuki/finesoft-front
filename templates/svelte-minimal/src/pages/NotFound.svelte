@@ -1,11 +1,9 @@
 <script lang="ts">
-    import type { BrowserAppHandle } from "@finesoft/front/browser";
-    import { createNavigation } from "../app-definition";
+    import type { ViewProps } from "@finesoft/front/svelte";
     import type { ErrorPage } from "../lib/models/page";
-    let { page, controller }: { page: ErrorPage; controller?: BrowserAppHandle } = $props();
+    let { page, app }: { page: ErrorPage; app: ViewProps["app"] } = $props();
     function goHome(event: MouseEvent) {
         if (
-            !controller?.navigation ||
             event.button !== 0 ||
             event.metaKey ||
             event.ctrlKey ||
@@ -13,7 +11,7 @@
             event.altKey
         ) return;
         event.preventDefault();
-        void controller.navigation.hydrate(createNavigation("/")!);
+        void app.navigation.navigate("/");
     }
 </script>
 

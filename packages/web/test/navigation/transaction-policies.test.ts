@@ -1,6 +1,7 @@
+import { routePages } from "../helpers/definition";
 import { expect, test, vi } from "vite-plus/test";
 import {
-    Framework,
+    createWebRuntime,
     defineWebApp,
     createNavigationController,
     leaf,
@@ -15,28 +16,30 @@ import type { WebAppDefinition } from "../../src/index";
 function fixture(policies: Partial<WebAppDefinition> = {}) {
     const events: string[] = [];
     const definition = defineWebApp({
+        pages: routePages(
+            ["home", "other"].map((id) => ({
+                id,
+                handler: () => {
+                    events.push(`load:${id}`);
+                    return { id, pageType: id, title: id };
+                },
+            })),
+            [
+                { path: "/", intentId: "home" },
+                { path: "/other", intentId: "other" },
+            ],
+        ),
         id: "transaction",
-        controllers: ["home", "other"].map((id) => ({
-            id,
-            handler: () => {
-                events.push(`load:${id}`);
-                return { id, pageType: id, title: id };
-            },
-        })),
-        routes: [
-            { path: "/", intentId: "home" },
-            { path: "/other", intentId: "other" },
-        ],
         getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }),
         ...policies,
     });
-    const framework = Framework.create({ definition });
+    const framework = createWebRuntime({ definition });
     const controller = createNavigationController({
-        framework,
+        web: framework,
         initial: stack(leaf("home")),
         isServer: false,
     });
-    return { framework, controller, events };
+    return { web: framework, controller, events };
 }
 test("transaction phases surround per-page Split loads exactly once and precede listeners", async () => {
     const order: string[] = [];
@@ -78,7 +81,7 @@ test("transaction phases surround per-page Split loads exactly once and precede 
     );
     expect(order).toEqual(["navigate", "before", "after", "before", "after", "commit", "listener"]);
     await fixtureApp.controller.dispose();
-    await fixtureApp.framework.dispose();
+    await fixtureApp.web.dispose();
 });
 test.each(["beforeNavigate", "beforeCommit"] as const)(
     "%s veto preserves an empty exit, snapshot, listeners and retained cache",
@@ -99,7 +102,7 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
         await f.controller.resolve();
         expect(f.events).toEqual(["load:home"]);
         await f.controller.dispose();
-        await f.framework.dispose();
+        await f.web.dispose();
     },
 );
 test("beforeCommit veto does not admit loaded cache or evict refreshed committed data", async () => {
@@ -114,7 +117,7 @@ test("beforeCommit veto does not admit loaded cache or evict refreshed committed
     await f.controller.resolve();
     expect(f.events).toEqual(["load:home", "load:home"]);
     await f.controller.dispose();
-    await f.framework.dispose();
+    await f.web.dispose();
 });
 test.each(["beforeNavigate", "beforeCommit"] as const)(
     "async %s cancellation stops commit and keeps execution signal",
@@ -147,7 +150,7 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
         await assertion;
         expect(f.controller.getSnapshot()).toBe(original);
         await f.controller.dispose();
-        await f.framework.dispose();
+        await f.web.dispose();
     },
 );
 test("admission redirect preserves transaction identity, final commit sees final candidate, invalid commit redirect rejects", async () => {
@@ -163,7 +166,7 @@ test("admission redirect preserves transaction identity, final commit sees final
     });
     const f = fixture({ beforeNavigate: [beforeNavigate], beforeCommit: [beforeCommit] });
     const controller = createNavigationController({
-        framework: f.framework,
+        web: f.web,
         initial: leaf("home"),
         onRedirect: () => leaf("other"),
     });
@@ -171,15 +174,15 @@ test("admission redirect preserves transaction identity, final commit sees final
     expect(beforeNavigate).toHaveBeenCalledOnce();
     expect(beforeCommit).toHaveBeenCalledOnce();
     expect(f.events).toEqual(["load:other"]);
-    const invalidFramework = Framework.create({
+    const invalidFramework = createWebRuntime({
         definition: defineWebApp({
-            ...f.framework.definition!,
+            ...f.web.definition!,
             beforeNavigate: [],
             beforeCommit: [],
         }),
     });
     const invalid = createNavigationController({
-        framework: invalidFramework,
+        web: invalidFramework,
         initial: leaf("home"),
         beforeCommit: [(() => redirect("/")) as never],
     });
@@ -188,7 +191,7 @@ test("admission redirect preserves transaction identity, final commit sees final
     await invalidFramework.dispose();
     await controller.dispose();
     await f.controller.dispose();
-    await f.framework.dispose();
+    await f.web.dispose();
 });
 test("denied commit preserves one-shot SSR prefetch until a committed read", async () => {
     let veto = true;
@@ -201,11 +204,11 @@ test("denied commit preserves one-shot SSR prefetch until a committed read", asy
             data: { id: "prefetch", pageType: "home", title: "prefetch" },
         },
     ]);
-    const framework = Framework.create({
-        definition: f.framework.definition,
+    const framework = createWebRuntime({
+        definition: f.web.definition,
         prefetchedIntents: prefetched,
     });
-    const controller = createNavigationController({ framework, initial: target });
+    const controller = createNavigationController({ web: framework, initial: target });
     await controller.resolve();
     expect(prefetched.size).toBe(1);
     veto = false;
@@ -215,5 +218,5 @@ test("denied commit preserves one-shot SSR prefetch until a committed read", asy
     await controller.dispose();
     await framework.dispose();
     await f.controller.dispose();
-    await f.framework.dispose();
+    await f.web.dispose();
 });

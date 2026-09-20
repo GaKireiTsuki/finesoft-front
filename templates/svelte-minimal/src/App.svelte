@@ -1,40 +1,50 @@
 <script lang="ts">
-    import type { BrowserAppHandle } from "@finesoft/front/browser";
-    import type { NavigationSnapshot } from "@finesoft/front/web";
-    import { onMount } from "svelte";
-    import type { NameStore } from "./instance";
-    import { getNavigationChrome, TAB_LABELS } from "./lib/navigation";
-
-    let { initialSnapshot, controller, nameStore }: {
-        initialSnapshot?: NavigationSnapshot;
-        controller?: BrowserAppHandle;
-        nameStore?: NameStore;
-    } = $props();
-    const chrome = $derived(getNavigationChrome(initialSnapshot));
-    // Start empty on both server and client; restore the profile after hydration.
+    import { Outlet, useSnapshot, type WebAppView } from "@finesoft/front/svelte";
+    import { onMount, untrack } from "svelte";
+    import { TAB_LABELS } from "./lib/navigation";
+    import { views } from "./views";
+    let { app }: { app: WebAppView } = $props();
+    const snapshot = untrack(() => useSnapshot(app));
     let name = $state("");
-    onMount(() => {
-        if (!nameStore) return;
-        const store = nameStore;
-        name = store.get();
-        return store.subscribe(() => { name = store.get(); });
-    });
+    onMount(() => app.session?.register({
+        key: "profile",
+        version: 1,
+        decode: (data) => {
+            if (
+                !data ||
+                typeof data !== "object" ||
+                typeof (data as { name?: unknown }).name !== "string"
+            ) throw Error("invalid-profile-state");
+            return data as { name: string };
+        },
+        capture: () => ({ name }),
+        restore: (data) => {
+            name = data.name;
+        },
+    }));
 </script>
-
 <div class="app-chrome">
     <header class="profile">
         <label>
             Your name (global):
-            <input value={name} placeholder="anon" oninput={(event) => nameStore?.set(event.currentTarget.value)} onblur={() => controller?.session?.save()} />
+            <input bind:value={name} placeholder="anon" onblur={() => app.session?.save()} />
         </label>
         {#if name}<span>👋 {name}</span>{/if}
     </header>
-    {#if chrome.tabs}
+    {#if $snapshot.navigation.tabs}
         <nav class="tabs" aria-label="Pages">
-            {#each chrome.tabs.order as key (key)}
-                <button aria-current={key === chrome.tabs.active} onclick={() => void controller?.navigation?.selectTab(key)}>{TAB_LABELS[key] ?? key}</button>
+            {#each $snapshot.navigation.tabs.order as key (key)}
+                <button
+                    aria-current={key === $snapshot.navigation.tabs.active}
+                    onclick={() => app.navigation.selectTab(key)}
+                >
+                    {TAB_LABELS[key] ?? key}
+                </button>
             {/each}
         </nav>
     {/if}
-    {#if chrome.canGoBack}<button onclick={() => void controller?.navigation?.pop()}>← Back</button>{/if}
+    {#if $snapshot.navigation.canGoBack}
+        <button onclick={() => app.navigation.pop()}>← Back</button>
+    {/if}
+    <Outlet {app} {views} />
 </div>

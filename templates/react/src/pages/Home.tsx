@@ -1,13 +1,11 @@
-import type { Action } from "@finesoft/front/web";
 import ProductCard from "../components/ProductCard";
 import type { HomePage } from "../lib/models/product";
 
 interface HomeProps {
     page: HomePage;
-    onAction?: (action: Action) => void;
 }
 
-export default function Home({ page, onAction }: HomeProps) {
+export default function Home({ page }: HomeProps) {
     return (
         <section className="page page-home">
             <h1>{page.title}</h1>
@@ -17,7 +15,7 @@ export default function Home({ page, onAction }: HomeProps) {
                     <h2>{shelf.title}</h2>
                     <div className={`shelf${shelf.isHorizontal ? " horizontal" : ""}`}>
                         {shelf.items.map((item) => (
-                            <ProductCard key={item.id} item={item} onAction={onAction} />
+                            <ProductCard key={item.id} item={item} />
                         ))}
                     </div>
                 </section>

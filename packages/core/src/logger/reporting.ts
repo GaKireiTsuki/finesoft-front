@@ -5,7 +5,6 @@
  * 用户通过 ReportCallback 注入上报逻辑，框架不直接依赖任何第三方 SDK。
  */
 
-import { BaseLogger } from "./base";
 import type { Level, Logger, LoggerFactory } from "./types";
 
 /** 日志上报回调 */
@@ -28,34 +27,32 @@ const LEVEL_PRIORITY: Record<Level, number> = {
     error: 3,
 };
 
-export class ReportingLogger extends BaseLogger {
+export class ReportingLogger implements Logger {
     private readonly minPriority: number;
     private readonly report: ReportCallback;
 
-    constructor(category: string, options: ReportingLoggerOptions) {
-        super(category);
+    constructor(
+        private readonly category: string,
+        options: ReportingLoggerOptions,
+    ) {
         this.minPriority = LEVEL_PRIORITY[options.minLevel ?? "warn"];
         this.report = options.report;
     }
 
-    debug(...args: unknown[]): string {
+    debug(...args: unknown[]): void {
         this.maybeReport("debug", args);
-        return "";
     }
 
-    info(...args: unknown[]): string {
+    info(...args: unknown[]): void {
         this.maybeReport("info", args);
-        return "";
     }
 
-    warn(...args: unknown[]): string {
+    warn(...args: unknown[]): void {
         this.maybeReport("warn", args);
-        return "";
     }
 
-    error(...args: unknown[]): string {
+    error(...args: unknown[]): void {
         this.maybeReport("error", args);
-        return "";
     }
 
     private maybeReport(level: Level, args: unknown[]): void {

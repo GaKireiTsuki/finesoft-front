@@ -1,8 +1,7 @@
-import { BaseController, type BasePage } from "@finesoft/front/browser";
+import { BaseController } from "@finesoft/front";
+import type { BasePage } from "@finesoft/front/web";
 
 export class HomeController extends BaseController<Record<string, string>, BasePage> {
-    readonly intentId = "home";
-
     execute(): BasePage {
         return {
             id: "home",

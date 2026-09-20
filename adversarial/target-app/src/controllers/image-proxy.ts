@@ -1,11 +1,11 @@
 import {
     BaseController,
-    type BasePage,
-    type Container,
+    type ExecutionContext,
     DEP_KEYS,
     HostGuardError,
     HttpClient,
-} from "@finesoft/front/browser";
+} from "@finesoft/front";
+import type { BasePage } from "@finesoft/front/web";
 
 class GenericHttpClient extends HttpClient {
     fetchRoot(): Promise<unknown> {
@@ -22,9 +22,7 @@ interface ImageProxyPage extends BasePage {
 }
 
 export class ImageProxyController extends BaseController<ImageProxyParams, ImageProxyPage> {
-    readonly intentId = "image-proxy";
-
-    async execute(params: ImageProxyParams, container: Container): Promise<ImageProxyPage> {
+    async execute(params: ImageProxyParams, context: ExecutionContext): Promise<ImageProxyPage> {
         if (!params.url) {
             return {
                 id: "image-proxy",
@@ -39,7 +37,7 @@ export class ImageProxyController extends BaseController<ImageProxyParams, Image
         // request throw HostGuardError before any network call.
         const client = new GenericHttpClient({
             baseUrl: params.url,
-            fetch: container.resolve<typeof globalThis.fetch>(DEP_KEYS.SAFE_FETCH),
+            fetch: await context.get(DEP_KEYS.SAFE_FETCH),
             validateDns: false,
         });
         let proxyResult: unknown;

@@ -4,8 +4,6 @@ import { markPublic, makeFlowAction } from "@finesoft/front/web";
 import type { HomePage, ProductShelf } from "../models/product";
 
 export class HomeController extends BaseController<Record<string, string>, HomePage> {
-    readonly intentId = "home";
-
     execute(): HomePage {
         const shelf: ProductShelf = {
             id: "featured",

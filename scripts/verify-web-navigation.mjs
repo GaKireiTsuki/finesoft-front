@@ -33,11 +33,14 @@ fs.writeFileSync(
 import { defineWebApp, markPublic } from "@finesoft/front/web";
 export default defineWebApp({
     id: "production-probe",
-    controllers: [{ id: "page", handler: () => markPublic({ id: "public", pageType: "probe", title: "Public artifact" }, true) }],
-    routes: [
-        { path: "/public", intentId: "page", renderMode: "prerender", cache: "public" },
-        { path: "/private", intentId: "page", renderMode: "prerender" },
-    ],
+    pages: [{
+        id: "page",
+        handler: () => markPublic({ id: "public", pageType: "probe", title: "Public artifact" }, true),
+        routes: [
+            { path: "/public", renderMode: "prerender", cache: "public" },
+            { path: "/private", renderMode: "prerender" },
+        ],
+    }],
     getErrorPage: (status, message) => ({ id: String(status), pageType: "error", title: message }),
 });
 `,
@@ -48,7 +51,7 @@ fs.writeFileSync(
 import { createSSRRender } from "@finesoft/front/ssr";
 import definition from "./app";
 export { serializeServerData } from "@finesoft/front/ssr";
-export const render = createSSRRender({ definition, renderApp: page => ({ html: "<main>" + page.title + "</main>", head: "", css: "" }) });
+export const render = createSSRRender({ definition, render: app => ({ html: "<main>" + app.getSnapshot().entries.at(-1).page.title + "</main>", head: "", css: "" }) });
 `,
 );
 const vite = { build: (options) => build({ ...options, configFile: false, logLevel: "warn" }) };

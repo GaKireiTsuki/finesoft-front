@@ -48,31 +48,22 @@ import type { SerializedNavigation } from "../navigation/index";
 export const SESSION_DEFAULT_KEY = "__finesoft_session__";
 
 /** 会话快照的默认版本号；解码时不匹配即整份丢弃。 */
-export const SESSION_DEFAULT_VERSION = 1;
-
-/** 扁平单页的导航位置：一个 URL（区别于结构化树的 `SerializedNavigation`）。 */
-export interface SessionUrlLocation {
-    readonly entryId: string;
-    readonly url: string;
-}
+export const SESSION_DEFAULT_VERSION = 2;
 
 /**
  * 会话快照：用户「当时在干什么」的可序列化捕获。
  *
- * `navigation` 用一个轻判别区分两种导航形态：`SerializedNavigation` 自带 `kind`
- * （leaf/stack/tabs/split），`SessionUrlLocation` 用独有的 `url` 字段（见 `isUrlLocation`）。
+ * `navigation` 始终是结构化 `SerializedNavigation`；版本 2 不接受早期 URL-only 导航载荷。
  */
 export interface SessionSnapshot {
     /** 快照版本；解码时与期望版本不符即丢弃。 */
     readonly version: number;
-    /** 导航位置：结构化 → `SerializedNavigation`；扁平 → `SessionUrlLocation`；缺省 → 不恢复导航。 */
-    readonly navigation?: SerializedNavigation | SessionUrlLocation;
+    /** 导航位置：统一为结构化导航树；缺省则不恢复导航。 */
+    readonly navigation?: SerializedNavigation;
     /**
      * 该快照导航位置的可比 URL（捕获时刻与 history 同步的浏览器 URL），供恢复门控做精确匹配。
      *
-     * 扁平与结构化适配器均可在 `capture` 时记录（见 `SessionNavigationAdapter.captureUrl`）。
-     * 缺省时（旧快照 / 适配器不提供）门控回退到旧策略：扁平比 `nav.url`、结构化只在根放行。
-     * 它让结构化导航也能像扁平一样「重载同深链即恢复、改去别的深链则跳过」（对称）。
+     * 适配器在 `capture` 时记录浏览器 URL。缺省时恢复门控只在根入口放行。
      */
     readonly url?: string;
     /** 全局切片（app-wide）：`provider.key` → `{ version, data }`。 */
@@ -81,21 +72,6 @@ export interface SessionSnapshot {
     readonly scoped: Readonly<Record<string, unknown>>;
     /** 捕获时刻（epoch ms）；用于 `maxAgeMs` 过期判断。 */
     readonly capturedAt: number;
-}
-
-/**
- * 判别 `navigation` 是否为扁平 URL 位置。
- *
- * `SerializedNavigation` 带 `kind`；URL 位置不带 kind，但必须保留 EntryId。
- */
-export function isUrlLocation(nav: SessionSnapshot["navigation"]): nav is SessionUrlLocation {
-    return (
-        nav != null &&
-        typeof nav === "object" &&
-        !("kind" in nav) &&
-        "url" in nav &&
-        typeof (nav as SessionUrlLocation).url === "string"
-    );
 }
 
 /**
@@ -135,10 +111,10 @@ export interface NavigationScopedState {
 }
 
 /**
- * 导航适配器：SessionStore 与具体导航机制（结构化 controller / 扁平 URL）解耦的接缝。
+ * 导航适配器：SessionStore 与具体结构化导航控制器解耦的接缝。
  *
  * SessionStore 不直接依赖 `NavigationController`，core 不产生 nav → session 的反向耦合；
- * 扁平与结构化导航经此同一套机制覆盖（见 `navigation-adapter.ts`）。
+ * 所有页面形态通过同一结构化树恢复。
  */
 export interface SessionNavigationAdapter {
     /** 捕获当前导航位置。 */
@@ -189,7 +165,7 @@ export interface SessionStoreOptions {
 /** 会话编排器：组装 / 落盘 / 读取 / 恢复快照，并持有导航作用域状态。 */
 export interface SessionStore {
     /** 注册全局切片 provider；返回反注册函数。 */
-    register(provider: SessionStateProvider): () => void;
+    register<T>(provider: SessionStateProvider<T>): () => void;
     /** 导航作用域状态读写 + prune。 */
     readonly scope: NavigationScopedState;
     /** 同步复制 nav/slices/scoped 的 JSON 值，独立于可变来源；不冻结来源、不落盘。 */

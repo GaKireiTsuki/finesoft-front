@@ -1,8 +1,10 @@
+import { routePages } from "../helpers/definition";
 import { expect, test } from "vite-plus/test";
 import { int, oneOf, optional } from "@finesoft/core";
 import { route } from "../../src/bootstrap/define-routes";
 import { defineWebApp } from "../../src/application/definition";
-import { Framework } from "../../src/framework";
+import { loadPage } from "../../src/application/load-page";
+import { createWebRuntime } from "../../src/application/runtime";
 test("immutable route declarations decode path and query through the definition owner", async () => {
     const product = route("/product/:id", {
         intentId: "product",
@@ -11,27 +13,32 @@ test("immutable route declarations decode path and query through the definition 
     });
     expect(Object.isFrozen(product)).toBe(true);
     const definition = defineWebApp({
+        pages: routePages(
+            [
+                {
+                    id: "product",
+                    handler: (params) => ({
+                        id: String(params.id),
+                        pageType: "product",
+                        title: String(params.sort),
+                    }),
+                },
+            ],
+            [product],
+        ),
         id: "typed-route",
-        routes: [product],
-        controllers: [
-            {
-                id: "product",
-                handler: (params) => ({
-                    id: String(params.id),
-                    pageType: "product",
-                    title: String(params.sort),
-                }),
-            },
-        ],
         getErrorPage: (_status, title) => ({ id: "error", pageType: "error", title }),
     });
-    const framework = Framework.create({ definition });
+    const framework = createWebRuntime({ definition });
     try {
-        const match = await framework.routeUrl("/product/42?sort=desc");
+        const match = await framework.router.resolve("/product/42?sort=desc");
         expect(match?.intent.params).toEqual({ id: 42, sort: "desc" });
-        expect(await framework.dispatch(match!.intent)).toMatchObject({ id: "42", title: "desc" });
-        expect(await framework.routeUrl("/product/invalid")).toBeNull();
-        expect(await framework.routeUrl("/product/42?sort=invalid")).toBeNull();
+        expect(await loadPage({ web: framework, target: "/product/42?sort=desc" })).toMatchObject({
+            kind: "page",
+            page: { id: "42", title: "desc" },
+        });
+        expect(await framework.router.resolve("/product/invalid")).toBeNull();
+        expect(await framework.router.resolve("/product/42?sort=invalid")).toBeNull();
     } finally {
         await framework.dispose();
     }

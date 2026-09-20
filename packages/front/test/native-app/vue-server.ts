@@ -1,20 +1,12 @@
-import { createVueSSRRender, serializeServerData } from "@finesoft/front/renderers/vue/server";
-import Chrome from "./VueChrome.vue";
-import Probe from "./VueProbe.vue";
+import { createSSRApp } from "vue";
+import { renderToString } from "vue/server-renderer";
+import { createSSRRender, serializeServerData } from "@finesoft/front/ssr";
+import App from "./VueApp.vue";
 import { definition } from "./definition";
-export async function render(
-    url: string,
-    mode: "root" | "entries",
-    structured = false,
-    chrome = false,
-) {
-    const factory = createVueSSRRender({
-        app: definition("en", "first", { pageType: "probe" }, structured),
-        renderer: {
-            mode,
-            chrome: chrome ? Chrome : undefined,
-            views: { probe: Probe, other: Probe },
-        },
+export async function render(url: string, structured = false) {
+    const factory = createSSRRender({
+        definition: definition("en", "first", { pageType: "probe" }, structured),
+        render: (app) => renderToString(createSSRApp(App, { app })),
     });
     try {
         const result = await factory(url);

@@ -1,6 +1,6 @@
-import { BaseController, type BasePage, type Container, markPublic } from "@finesoft/front/browser";
+import { BaseController, type ExecutionContext } from "@finesoft/front";
+import { markPublic, type BasePage } from "@finesoft/front/web";
 import { timingSafeEqual } from "node:crypto";
-import { TRACED_USER } from "../middleware/trace-user";
 
 interface AdminSecretsPage extends BasePage {
     adminToken?: string;
@@ -22,10 +22,9 @@ export class AdminSecretsController extends BaseController<
     Record<string, string>,
     AdminSecretsPage
 > {
-    readonly intentId = "admin-secrets";
-
-    execute(_params: Record<string, string>, container: Container): AdminSecretsPage {
-        const user = TRACED_USER.get(container) ?? null;
+    execute(_params: Record<string, string>, context: ExecutionContext): AdminSecretsPage {
+        const token = context.bindings["adminToken"];
+        const user = typeof token === "string" ? { name: token, seenAt: Date.now() } : null;
 
         // The cookie carries an opaque admin token, NOT the username. Compare
         // constant-time against a server-only secret. Unset env var = no admin.

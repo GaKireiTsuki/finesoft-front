@@ -26,7 +26,5 @@ export function implementController<I extends Record<string, unknown>, O>(
     operation: Operation<I, O>,
     create: () => BaseController<I, O>,
 ): Implementation<I, O> {
-    return implementOperation(operation, (input, context) =>
-        create().perform({ id: operation.id, params: input }, context.container, context),
-    );
+    return implementOperation(operation, (input, context) => create().perform(input, context));
 }

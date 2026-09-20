@@ -2,6 +2,7 @@ import { serve, type ServerType } from "@hono/node-server";
 import type { RuntimeHandle } from "@finesoft/core";
 import type { HttpHandler } from "./http";
 export { nodeDnsLookup } from "./node/dns";
+export { nodeSafeFetchOptions } from "./node/fetch-policy";
 export interface NodeHandlerOptions {
     handler: HttpHandler;
     port?: number;

@@ -68,7 +68,24 @@ function applyLocaleToHtml(html: string, locale: { lang: string; dir: string }):
         /(<html)([^>]*)(>)/i,
         (_match, open: string, attrs: string, close: string) => {
             const cleaned = attrs.replace(HTML_LANG_PATTERN, "").replace(HTML_DIR_PATTERN, "");
-            return `${open}${cleaned} lang="${locale.lang}" dir="${locale.dir}"${close}`;
+            return `${open}${cleaned} lang="${escapeAttribute(locale.lang)}" dir="${escapeAttribute(locale.dir)}"${close}`;
         },
     );
+}
+
+function escapeAttribute(value: string): string {
+    return value.replace(/[&<>"']/g, (character) => {
+        switch (character) {
+            case "&":
+                return "&amp;";
+            case "<":
+                return "&lt;";
+            case ">":
+                return "&gt;";
+            case '"':
+                return "&quot;";
+            default:
+                return "&#39;";
+        }
+    });
 }

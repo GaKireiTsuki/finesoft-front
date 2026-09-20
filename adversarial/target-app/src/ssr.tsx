@@ -1,5 +1,9 @@
-import { createReactSSRRender } from "@finesoft/front/renderers/react/server";
+import { createSSRRender } from "@finesoft/front/ssr";
+import { renderToString } from "react-dom/server";
 import { app } from "./app-definition";
-import { views } from "./views";
-export const render = createReactSSRRender({ app, renderer: views });
-export { serializeServerData } from "@finesoft/front/renderers/react/server";
+import App from "./App";
+export const render = createSSRRender({
+    definition: app,
+    render: (app) => renderToString(<App app={app} />),
+});
+export { serializeServerData } from "@finesoft/front/ssr";

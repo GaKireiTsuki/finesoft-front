@@ -1,11 +1,13 @@
+import { routePages } from "../helpers/definition";
 import { fixtureEntryId } from "../helpers/navigation";
 import { leaf, treeShape } from "../helpers/navigation";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { Container } from "@finesoft/core";
-import { Framework } from "../../src/framework";
+import { createWebRuntime } from "../../src/application/runtime";
 import { defineWebApp } from "../../src/application/definition";
 import type { PageControllerDefinition } from "../../src/application/types";
-import type { Intent, IntentController } from "@finesoft/core";
+import type { Intent } from "@finesoft/core";
+import type { FixtureController } from "../helpers/definition";
 import { deny, next, redirect, rewrite } from "../../src/middleware/types";
 import type {
     AfterLoadGuard,
@@ -77,7 +79,7 @@ test("one queued redirect chain disposes each execution before following and com
         ]);
     } finally {
         await controller.dispose();
-        await options.framework.dispose();
+        await options.web.dispose();
     }
 });
 
@@ -101,7 +103,7 @@ function makeControllers(
 ): PageControllerDefinition[] {
     const dispatcher = [] as PageControllerDefinition[];
     for (const intentId of Object.keys(handlers)) {
-        const controller: IntentController<BasePage> = {
+        const controller: FixtureController = {
             intentId,
             perform(intent: Intent): BasePage {
                 calls?.push(intentId);
@@ -135,13 +137,11 @@ function contextFactory(url?: string): NavigationControllerOptions["createContex
 }
 
 /** 默认选项装配器：只需给 dispatcher + initial，其余取默认。 */
-function factory(controller: IntentController<BasePage>): PageControllerDefinition {
+function factory(controller: FixtureController): PageControllerDefinition {
     return {
         id: controller.intentId,
-        create: () => ({
-            intentId: controller.intentId,
-            perform: controller.perform.bind(controller),
-        }),
+        handler: (params, context) =>
+            controller.perform({ id: controller.intentId, params }, context.container, context),
     };
 }
 function makeOptions(
@@ -153,14 +153,16 @@ function makeOptions(
     },
 ): NavigationControllerOptions {
     const { controllers, router, prefetched, ...options } = overrides;
-    const framework = Framework.create({
+    const framework = createWebRuntime({
         definition: defineWebApp({
+            pages: routePages(
+                controllers,
+                (router?.getDefinitions() ?? []).map((route) => ({
+                    path: route.pattern,
+                    intentId: route.intentId,
+                })),
+            ),
             id: "navigation-fixture",
-            controllers,
-            routes: (router?.getRoutes() ?? []).map((route) => {
-                const [path, intentId] = route.split(" → ");
-                return { path, intentId };
-            }),
             getErrorPage: (status, message) => ({
                 id: String(status),
                 pageType: "error",
@@ -169,7 +171,7 @@ function makeOptions(
         }),
         prefetchedIntents: prefetched,
     });
-    return { createContext: contextFactory(), ...options, framework };
+    return { createContext: contextFactory(), ...options, web: framework };
 }
 
 // =====================================================================
@@ -1400,10 +1402,59 @@ describe("invalidate / refresh", () => {
     });
 });
 
+test("cancelled handlers cannot block a new generation, and release their own scope after settling", async () => {
+    let start!: () => void, release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+        start = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const events: string[] = [];
+    const web = createWebRuntime({
+        definition: defineWebApp({
+            id: "cancel-generation",
+            pages: [
+                {
+                    id: "slow",
+                    handler: async (_input, context) => {
+                        context.onDispose(() => {
+                            events.push("slow disposed");
+                        });
+                        start();
+                        await gate; // Simulates an API that does not implement AbortSignal.
+                        return pageFor("slow", {});
+                    },
+                },
+                { id: "fast", handler: () => pageFor("fast", {}) },
+            ],
+            getErrorPage: (_status, title) => pageFor(title, {}),
+        }),
+    });
+    const nav = createNavigationController({ web, initial: leaf("slow") });
+    const old = nav.resolve();
+    const rejected = expect(old).rejects.toMatchObject({ code: "cancelled" });
+    await entered;
+    nav.cancel();
+    try {
+        const latest = await nav.hydrate(leaf("fast"));
+        expect(latest.destinations[0].intent).toBe("fast");
+        expect(events).toEqual([]);
+        release();
+        await rejected;
+        expect(nav.getSnapshot()).toBe(latest);
+        expect(events).toEqual(["slow disposed"]);
+    } finally {
+        release();
+        await nav.dispose();
+        await web.dispose();
+    }
+});
+
 test.each(["resolve", "refresh"] as const)(
     "queued %s is invalidated by cancel and disposal at submission generation",
     async (method) => {
-        const { Framework, defineWebApp } = await import("../../src/index");
+        const { createWebRuntime, defineWebApp } = await import("../../src/index");
         for (const stop of ["cancel", "dispose"] as const) {
             let start!: () => void, release!: () => void;
             const started = new Promise<void>((resolve) => {
@@ -1414,25 +1465,27 @@ test.each(["resolve", "refresh"] as const)(
             });
             let calls = 0,
                 commits = 0;
-            const framework = Framework.create({
+            const framework = createWebRuntime({
                 definition: defineWebApp({
-                    id: "queue",
-                    routes: [],
-                    controllers: [
-                        {
-                            id: "home",
-                            handler: async () => {
-                                calls++;
-                                start();
-                                await gate;
-                                return pageFor("home", {});
+                    pages: routePages(
+                        [
+                            {
+                                id: "home",
+                                handler: async () => {
+                                    calls++;
+                                    start();
+                                    await gate;
+                                    return pageFor("home", {});
+                                },
                             },
-                        },
-                    ],
+                        ],
+                        [],
+                    ),
+                    id: "queue",
                     getErrorPage: (_status, message) => pageFor(message, {}),
                 }),
             });
-            const nav = createNavigationController({ framework, initial: leaf("home") });
+            const nav = createNavigationController({ web: framework, initial: leaf("home") });
             nav.subscribe(() => {
                 commits++;
             });

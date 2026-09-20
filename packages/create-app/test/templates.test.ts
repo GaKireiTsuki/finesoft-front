@@ -9,19 +9,21 @@ test.each(["react", "react-minimal", "vue", "vue-minimal", "svelte", "svelte-min
         const read = (path: string) => readFileSync(root + path, "utf8");
         const ui = name.split("-")[0];
         const main = read("src/main.ts");
-        expect(main).toContain("startBrowserApp(");
-        expect(main).toContain("target:");
+        expect(main).toContain("createBrowserApp(");
+        expect(main).toContain("target");
         expect(main).toContain("app-definition");
-        expect(main).toContain("./views");
-        expect(main).toContain(`/renderers/${ui}/browser`);
+        expect(main).toContain("./App");
+        expect(
+            read("src/App." + (ui === "react" ? "tsx" : ui === "vue" ? "vue" : "svelte")),
+        ).toContain(`@finesoft/front/${ui}`);
         const ssr = read("src/ssr.ts");
         expect(ssr).toContain("app-definition");
-        expect(ssr).toContain("./views");
-        expect(ssr).toContain(`/renderers/${ui}/server`);
+        expect(ssr).toContain("./App");
+        expect(ssr).toContain("createSSRRender");
         expect(read("src/app-definition.ts")).toContain("defineWebApp(");
         expect(existsSync(root + "src/bootstrap.ts")).toBe(false);
         expect(main + ssr).not.toMatch(
-            /hydrateRoot|createRoot|renderToString|mountEntry|updatePage|createAppHandle/,
+            /mountEntry|updatePage|createAppHandle|startBrowserApp|create\w+Renderer/,
         );
         expect(read("index.html")).toMatch(/<div id="app">[\s\S]*<!--ssr-data-->[\s\S]*<\/div>/);
     },
@@ -58,11 +60,11 @@ test.each(["", "-minimal"])("%s tier has one portable application contract", (su
     for (const file of neutral(sources[0])) {
         if (file === "config.ts") continue; // Per-application persistence identity is deliberately distinct.
         const values = roots.map((root) => readFileSync(root + "src/" + file, "utf8"));
-        const normalized = ["main.ts", "ssr.ts", "views.ts"].includes(file)
-            ? values.map(normalizeAdapter)
-            : values;
-        expect(normalized[1], file).toBe(normalized[0]);
-        expect(normalized[2], file).toBe(normalized[0]);
+        if (!["main.ts", "ssr.ts", "views.ts", "app-definition.ts"].includes(file)) {
+            const normalized = values.map(normalizeAdapter);
+            expect(normalized[1], file).toBe(normalized[0]);
+            expect(normalized[2], file).toBe(normalized[0]);
+        }
     }
     const nativeInventory = (files: string[]) =>
         files

@@ -9,8 +9,6 @@ const ITEMS: readonly FeedItem[] = [
 ];
 
 export class HomeController extends BaseController<Record<string, string>, HomePage> {
-    readonly intentId = "home";
-
     execute(): HomePage {
         return markPublic(
             {

@@ -27,8 +27,8 @@ try {
     ]) {
         const js =
             format === "ESM"
-                ? 'import { Container } from "@finesoft/core"; import { Framework, Router, defineWebApp } from "@finesoft/web";'
-                : 'const { Container } = require("@finesoft/core"); const { Framework, Router, defineWebApp } = require("@finesoft/web");';
+                ? 'import { Router, createWebRuntime, defineWebApp } from "@finesoft/web";'
+                : 'const { Router, createWebRuntime, defineWebApp } = require("@finesoft/web");';
         try {
             execFileSync(
                 process.execPath,
@@ -36,7 +36,7 @@ try {
                     "--input-type=" + (format === "ESM" ? "module" : "commonjs"),
                     "-e",
                     js +
-                        '\nconst framework = Framework.create({ definition: defineWebApp({ id: "artifact", routes: [], getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }) }) }); if (!(framework.container instanceof Container) || !(framework.router instanceof Router)) throw new Error("package constructor identity mismatch"); void framework.dispose();',
+                        '\nconst web = createWebRuntime({ definition: defineWebApp({ id: "artifact", pages: [], getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }) }) }); if (!(web.router instanceof Router)) throw new Error("package constructor identity mismatch"); void web.dispose();',
                 ],
                 { cwd: consumer, stdio: "pipe" },
             );
@@ -51,11 +51,10 @@ try {
         writeFileSync(
             sourcePath,
             `
-import { Container, type Intent, createRuntime, defineApp, defineOperation, createToken, provide } from "@finesoft/core";
-import { Framework, Router, defineWebApp } from "@finesoft/web";
-const framework: Framework = Framework.create({ definition: defineWebApp({ id: "artifact", routes: [], getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }) }) });
-const container: Container = framework.container;
-const router: Router = framework.router;
+import { type Intent, createRuntime, defineApp, defineOperation, createToken, provide } from "@finesoft/core";
+import { type WebRuntime, Router, createWebRuntime, defineWebApp } from "@finesoft/web";
+const web: WebRuntime = createWebRuntime({ definition: defineWebApp({ id: "artifact", pages: [], getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }) }) });
+const router: Router = web.router;
 const intent: Intent<string> = { id: "artifact-check" };
 const token = createToken<number>("value");
 const double = defineOperation({ id: "double", kind: "query", handler: (n: number) => n * 2 });
@@ -64,8 +63,8 @@ const numberResult: Promise<number> = runtime.execute(double, 21);
 // @ts-expect-error Input reference must reject strings through built declarations.
 runtime.execute(double, "wrong");
 const tokenResult: Promise<number> = runtime.createExecution().context.get(token);
-const closing: Promise<void> = framework.dispose();
-void [container, router, intent, numberResult, tokenResult, closing];
+const closing: Promise<void> = web.dispose();
+void [router, intent, numberResult, tokenResult, closing];
 `,
         );
         const options = {

@@ -28,7 +28,7 @@ import {
     type ExecutionContext,
     type Container,
 } from "@finesoft/core";
-import { Framework } from "../framework";
+import type { WebRuntime } from "../application/runtime";
 import { WEB_EXECUTION, type WebExecutionState } from "../application/definition";
 import { loadPage } from "../application/load-page";
 import type { AfterLoadGuard, BeforeLoadGuard, NavigationContext } from "../middleware/types";
@@ -182,6 +182,7 @@ export type NavigationOperation =
  * `signal` propagates to guarded page loading and the existing execution scope.
  */
 export interface NavigationContextInput {
+    readonly execution: ExecutionContext;
     readonly intent: string;
     readonly params: RouteParams;
     readonly signal?: AbortSignal;
@@ -230,9 +231,12 @@ export type BeforeCommitPolicy = (
 export interface NavigationControllerOptions {
     readonly beforeNavigate?: readonly BeforeNavigatePolicy[];
     readonly beforeCommit?: readonly BeforeCommitPolicy[];
-    readonly framework: Framework;
+    readonly web: WebRuntime;
     readonly execution?: ExecutionHandle;
-    readonly viewReady?: (snapshot: NavigationSnapshot) => void | Promise<void>;
+    readonly viewReady?: (
+        snapshot: NavigationSnapshot,
+        signal?: AbortSignal,
+    ) => void | Promise<void>;
     /** 初始导航树（单 LeafNode = 今天的扁平单页）。 */
     readonly initial: NavigationNode;
     /** 应用提供的「目标 → 派发上下文」构建回调。 */
@@ -268,6 +272,8 @@ export interface NavigationControllerOptions {
 export interface NavigationController {
     /** 当前导航树。 */
     getTree(): NavigationNode;
+    getEntries(): readonly ResolvedDestination[];
+    onCommit(listener: (snapshot: NavigationSnapshot) => void): () => void;
     /** 当前快照（树 + 已解析的可见目标）。 */
     getSnapshot(): NavigationSnapshot;
     /** 应用一个声明式操作，重解析并提交，返回新快照。 */
@@ -329,22 +335,26 @@ function defaultErrorPage(status: number, message: string): Page {
 export function createNavigationController(
     options: NavigationControllerOptions,
 ): NavigationController {
-    const framework = options.framework;
+    const web = options.web;
     const beforeNavigate = [
-        ...(framework.definition?.beforeNavigate ?? []),
+        ...(web.definition?.beforeNavigate ?? []),
         ...(options.beforeNavigate ?? []),
     ];
-    const beforeCommit = [
-        ...(framework.definition?.beforeCommit ?? []),
-        ...(options.beforeCommit ?? []),
-    ];
-    const getErrorPage =
-        options.getErrorPage ?? framework.definition?.getErrorPage ?? defaultErrorPage;
+    const beforeCommit = [...(web.definition?.beforeCommit ?? []), ...(options.beforeCommit ?? [])];
+    const getErrorPage = options.getErrorPage ?? web.definition?.getErrorPage ?? defaultErrorPage;
     let tree = options.initial;
     let snapshot: NavigationSnapshot = { tree, destinations: [] };
     const listeners = new Set<(snapshot: NavigationSnapshot) => void>();
     const pageCache = new Map<string, ResolvedDestination>();
+    const stale = new Set<string>();
+    const commitSteps = new Set<(snapshot: NavigationSnapshot) => void>();
+    let invalidationVersion = 0;
+    const unsubscribeInvalidation = web.runtime.onInvalidate(() => {
+        invalidationVersion++;
+        for (const id of pageCache.keys()) stale.add(id);
+    });
     let inflight: Promise<unknown> = Promise.resolve();
+    const settling = new Set<Promise<unknown>>();
     let current: AbortController | undefined;
     let generation = 0;
     let closed = false;
@@ -357,6 +367,11 @@ export function createNavigationController(
             return produce();
         };
         const run = inflight.then(runCurrent, runCurrent);
+        settling.add(run);
+        void run.then(
+            () => settling.delete(run),
+            () => settling.delete(run),
+        );
         inflight = run.catch(() => {});
         return run;
     }
@@ -409,6 +424,7 @@ export function createNavigationController(
         refreshEntryId?: string,
     ): Promise<{ snapshot: NavigationSnapshot; redirect?: { url: string; status: number } }> {
         const ownGeneration = generation;
+        const ownInvalidation = invalidationVersion;
         const ids = new Set<string>();
         for (const dest of collectAllLeaves(nextTree)) {
             if (ids.has(dest.entryId)) throw new Error(`Duplicate entry ID: ${dest.entryId}`);
@@ -416,13 +432,14 @@ export function createNavigationController(
         }
         current = new AbortController();
         const combined = signal ? AbortSignal.any([signal, current.signal]) : current.signal;
-        const execution = options.execution ?? framework.createExecution({ signal: combined });
+        const execution = options.execution ?? web.createExecution({ signal: combined });
         const unbind = bindExecutionCancellation(execution, combined);
         const check = () => {
             if (
                 combined.aborted ||
                 execution.context.signal.aborted ||
-                ownGeneration !== generation
+                ownGeneration !== generation ||
+                ownInvalidation !== invalidationVersion
             )
                 throw new ExecutionError("cancelled");
         };
@@ -472,9 +489,11 @@ export function createNavigationController(
                 check();
                 const key = resourceKey(dest.intent, dest.params, execution.context);
                 const retained =
-                    dest.entryId === refreshEntryId ? undefined : pageCache.get(dest.entryId);
+                    dest.entryId === refreshEntryId || stale.has(dest.entryId)
+                        ? undefined
+                        : pageCache.get(dest.entryId);
                 const result = await loadPage({
-                    framework,
+                    web,
                     target: dest,
                     execution,
                     signal: combined,
@@ -483,6 +502,7 @@ export function createNavigationController(
                     afterLoad: options.afterLoad,
                     createContext: ({ url, intent, execution: active }) => {
                         const provided = options.createContext?.({
+                            execution: active.context,
                             intent: intent.id,
                             params: intent.params ?? {},
                             signal: combined,
@@ -570,13 +590,43 @@ export function createNavigationController(
             }
             check();
             stage.commit();
-            for (const dest of destinations) pageCache.set(dest.entryId, dest);
+            for (const dest of destinations) {
+                pageCache.set(dest.entryId, dest);
+                stale.delete(dest.entryId);
+            }
             for (const id of pageCache.keys()) if (!ids.has(id)) pageCache.delete(id);
             tree = candidate.tree;
             snapshot = candidate;
-            for (const listener of listeners) listener(snapshot);
-            await options.viewReady?.(snapshot);
-            check();
+            const commitErrors: unknown[] = [];
+            for (const step of commitSteps) {
+                try {
+                    step(snapshot);
+                } catch (error) {
+                    commitErrors.push(error);
+                }
+            }
+            for (const listener of listeners) {
+                try {
+                    const result: unknown = listener(snapshot);
+                    if (result && typeof (result as Promise<unknown>).then === "function")
+                        void Promise.resolve(result).catch(() =>
+                            web.runtime.record("navigation.observer-error", {
+                                transitionId: snapshot.transitionId,
+                            }),
+                        );
+                } catch {
+                    web.runtime.record("navigation.observer-error", {
+                        transitionId: snapshot.transitionId,
+                    });
+                }
+            }
+            try {
+                await options.viewReady?.(snapshot, combined);
+                check();
+            } catch (error) {
+                commitErrors.push(error);
+            }
+            if (commitErrors.length) throw new NavigationCommitError(snapshot, commitErrors);
             return { snapshot };
         } finally {
             executionState.prefetched = prefetched;
@@ -637,6 +687,15 @@ export function createNavigationController(
     }
 
     return {
+        getEntries() {
+            return [...pageCache.values()];
+        },
+        onCommit(listener) {
+            commitSteps.add(listener);
+            return () => {
+                commitSteps.delete(listener);
+            };
+        },
         getTree() {
             return tree;
         },
@@ -651,13 +710,19 @@ export function createNavigationController(
             closed = true;
             generation++;
             current?.abort();
-            await inflight;
+            await Promise.allSettled(settling);
+            unsubscribeInvalidation();
             listeners.clear();
+            commitSteps.clear();
             pageCache.clear();
+            stale.clear();
         },
         cancel() {
             generation++;
             current?.abort();
+            // A cancelled handler may still be settling. Its generation cannot commit,
+            // but it must not hold the next navigation behind its ignored abort signal.
+            inflight = Promise.resolve();
         },
         push(intent, params, opts) {
             return apply({
@@ -697,9 +762,9 @@ export function createNavigationController(
         },
         invalidate(entryKey) {
             if (entryKey === undefined) {
-                pageCache.clear();
+                for (const id of pageCache.keys()) stale.add(id);
             } else {
-                pageCache.delete(entryKey);
+                stale.add(entryKey);
             }
         },
         refresh() {
@@ -734,4 +799,18 @@ function findActiveLeaf(tree: NavigationNode): LeafNode | undefined {
     const node = findNode(tree, path);
     if (node === undefined) return undefined;
     return node.kind === "leaf" ? node : undefined;
+}
+
+/** State is already committed; observers and hosts must not report a pre-commit rejection. */
+export class NavigationCommitError extends Error {
+    readonly committed = true;
+    constructor(
+        readonly snapshot: NavigationSnapshot,
+        causes: unknown[],
+    ) {
+        super("Navigation committed but host presentation failed", {
+            cause: new AggregateError(causes),
+        });
+        this.name = "NavigationCommitError";
+    }
 }

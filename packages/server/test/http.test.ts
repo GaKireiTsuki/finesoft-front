@@ -8,6 +8,85 @@ import {
     ExecutionError,
 } from "@finesoft/core";
 import { createHttpHandler, defineEndpoint } from "../src/http";
+import { int, str } from "@finesoft/core";
+
+test("parameter routes decode once, fall through schemas, and report deterministic methods", async () => {
+    const numeric = defineOperation({
+        id: "numeric",
+        kind: "query",
+        handler: (input: { id: number }) => input,
+    });
+    const slug = defineOperation({
+        id: "slug",
+        kind: "query",
+        handler: (input: { slug: string }) => input,
+    });
+    const runtime = createRuntime({
+        app: defineApp({ id: "patterns", operations: [numeric, slug] }),
+    });
+    const handler = createHttpHandler({
+        runtime,
+        endpoints: [
+            defineEndpoint({
+                method: "GET",
+                path: "/items/:id",
+                operation: numeric,
+                paramCodecs: { id: int() },
+                decode: (_request, _context, params) => ({ id: params.id as number }),
+                encode: (value) => Response.json(value),
+            }),
+            defineEndpoint({
+                method: "GET",
+                path: "/items/:slug/:tail?",
+                operation: slug,
+                paramCodecs: { slug: str() },
+                decode: (_request, _context, params) => ({
+                    slug: `${String(params.slug)}/${typeof params.tail === "string" ? params.tail : ""}`,
+                }),
+                encode: (value) => Response.json(value),
+            }),
+            defineEndpoint({
+                method: "POST",
+                path: "/items/:id",
+                operation: slug,
+                decode: (_request, _context, params) => ({ slug: String(params.id) }),
+                encode: (value) => Response.json(value),
+            }),
+        ],
+    });
+    expect(await (await handler(new Request("https://example.com/items/42"))).json()).toEqual({
+        id: 42,
+    });
+    expect(await (await handler(new Request("https://example.com/items/a%2Fb"))).json()).toEqual({
+        slug: "a/b/",
+    });
+    const method = await handler(new Request("https://example.com/items/42", { method: "PUT" }));
+    expect(method.status).toBe(405);
+    expect(method.headers.get("Allow")).toBe("GET, POST");
+    expect((await handler(new Request("https://example.com/items/%E0%A4%A"))).status).toBe(404);
+    expect(() =>
+        createHttpHandler({
+            runtime,
+            endpoints: [
+                defineEndpoint({
+                    method: "GET",
+                    path: "/same/:id",
+                    operation: slug,
+                    decode: () => ({ slug: "" }),
+                    encode: (value) => Response.json(value),
+                }),
+                defineEndpoint({
+                    method: "GET",
+                    path: "/same/:name",
+                    operation: slug,
+                    decode: () => ({ slug: "" }),
+                    encode: (value) => Response.json(value),
+                }),
+            ],
+        }),
+    ).toThrow();
+    await runtime.dispose();
+});
 
 test("explicit projection, context, protected nested calls and deterministic HTTP errors", async () => {
     const inner = defineOperation({

@@ -1,10 +1,7 @@
 import { fixtureEntryId } from "../helpers/navigation";
 import { leaf } from "../helpers/navigation";
-import { describe, expect, test, vi } from "vite-plus/test";
-import {
-    createNavigationSessionAdapter,
-    createUrlSessionAdapter,
-} from "../../src/session/navigation-adapter";
+import { describe, expect, test } from "vite-plus/test";
+import { createNavigationSessionAdapter } from "../../src/session/navigation-adapter";
 import { stack, tabs } from "../../src/navigation/nodes";
 import { serializeNavigation } from "../../src/navigation/serialization";
 import { collectLeafKeys } from "../../src/session/scoped-state";
@@ -49,13 +46,6 @@ describe("createNavigationSessionAdapter (structured)", () => {
         expect(serializeNavigation(hydrated[0])).toEqual(serialized);
     });
 
-    test("apply ignores a url location (structured app always has a tree)", async () => {
-        const { controller, hydrated } = fakeController(leaf("home"));
-        const adapter = createNavigationSessionAdapter(controller);
-        await adapter.apply({ entryId: "fixture-flat", url: "/x" });
-        expect(hydrated).toHaveLength(0);
-    });
-
     test("apply ignores undefined navigation", async () => {
         const { controller, hydrated } = fakeController(leaf("home"));
         const adapter = createNavigationSessionAdapter(controller);
@@ -86,63 +76,5 @@ describe("createNavigationSessionAdapter (structured)", () => {
         expect([...adapter.presentKeys()].sort()).toEqual(
             [fixtureEntryId("A", {}), fixtureEntryId("B", {}), fixtureEntryId("Y", {})].sort(),
         );
-    });
-});
-
-describe("createUrlSessionAdapter (flat)", () => {
-    test("capture returns the current url location", () => {
-        const adapter = createUrlSessionAdapter({
-            currentUrl: () => "/posts/7",
-            currentEntry: () => ({ entryId: "fixture-flat" }),
-            navigate: () => {},
-        });
-        expect(adapter.capture()).toEqual({ entryId: "fixture-flat", url: "/posts/7" });
-    });
-
-    test("apply navigates to the url location", async () => {
-        const navigate = vi.fn();
-        const adapter = createUrlSessionAdapter({ currentUrl: () => "/", navigate });
-        await adapter.apply({ entryId: "fixture-flat", url: "/posts/7" });
-        expect(navigate).toHaveBeenCalledWith("/posts/7", "fixture-flat");
-    });
-
-    test("apply ignores a structured navigation (flat adapter only knows urls)", async () => {
-        const navigate = vi.fn();
-        const adapter = createUrlSessionAdapter({ currentUrl: () => "/", navigate });
-        await adapter.apply(serializeNavigation(leaf("home")));
-        expect(navigate).not.toHaveBeenCalled();
-    });
-
-    test("apply ignores undefined navigation", async () => {
-        const navigate = vi.fn();
-        const adapter = createUrlSessionAdapter({ currentUrl: () => "/", navigate });
-        await adapter.apply(undefined);
-        expect(navigate).not.toHaveBeenCalled();
-    });
-
-    test("presentKeys is a single entry from currentEntry when provided", () => {
-        const adapter = createUrlSessionAdapter({
-            currentUrl: () => "/posts/7",
-            navigate: () => {},
-            currentEntry: () => ({ entryId: "post-entry" }),
-        });
-        expect([...adapter.presentKeys()]).toEqual(["post-entry"]);
-    });
-
-    test("presentKeys falls back to the current url when no currentIntent", () => {
-        const adapter = createUrlSessionAdapter({
-            currentUrl: () => "/posts/7",
-            navigate: () => {},
-        });
-        expect([...adapter.presentKeys()]).toEqual([]);
-    });
-
-    test("captureUrl returns the current url (so flat snapshots carry a comparable url)", () => {
-        const adapter = createUrlSessionAdapter({
-            currentUrl: () => "/posts/7",
-            currentEntry: () => ({ entryId: "fixture-flat" }),
-            navigate: () => {},
-        });
-        expect(adapter.captureUrl?.()).toBe("/posts/7");
     });
 });

@@ -1,6 +1,11 @@
-import { createVueSSRRender } from "@finesoft/front/renderers/vue/server";
+import { createSSRApp } from "vue";
+import { renderToString } from "vue/server-renderer";
+import { createSSRRender } from "@finesoft/front/ssr";
 import { app } from "./app-definition";
-import { views } from "./views";
+import App from "./App.vue";
 
-export const render = createVueSSRRender({ app, renderer: views });
+export const render = createSSRRender({
+    definition: app,
+    render: (app) => renderToString(createSSRApp(App, { app })),
+});
 export { serializeServerData } from "@finesoft/front/ssr";

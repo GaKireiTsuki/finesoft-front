@@ -21,9 +21,9 @@
  * - Names: `localhost`, `*.localhost`
  *
  * NOT covered here (callers can layer on top):
- * - DNS resolution of arbitrary hostnames — see `validateUrlWithDns` in
- *   server-only callers. DNS rebinding is impossible to fix at this layer
- *   alone; the right pattern is "resolve once, then fetch by IP".
+ * - DNS resolution of arbitrary hostnames — `enforceHostGuard` can preflight
+ *   answers, but connection-time enforcement requires a host transport such
+ *   as Node's `nodeSafeFetchOptions`, preserving hostname and TLS SNI.
  * - IDN / homograph attacks — Node's URL parser punycode-encodes hostnames
  *   already, so the hostname this code sees is the ASCII form.
  */

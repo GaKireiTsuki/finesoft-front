@@ -1,6 +1,8 @@
 import { ExecutionError, type ExecutionHandle, type Intent } from "@finesoft/core";
+import { getWebPlan, WEB_EXECUTION, type WebExecutionState } from "./definition";
+import { runBeforeLoadGuards, runAfterLoadGuards } from "../middleware/pipeline";
 import { bindExecutionCancellation } from "./execution";
-import type { Framework } from "../framework";
+import type { WebRuntime } from "./runtime";
 import type { BeforeLoadGuard, AfterLoadGuard, NavigationContext } from "../middleware/types";
 import type { BasePage } from "../models/page";
 import type { LeafNode } from "../navigation/types";
@@ -9,7 +11,7 @@ import { createActiveLeafCodec } from "../navigation/codec";
 import type { RouteMatch } from "../router/router";
 
 export interface LoadPageOptions {
-    readonly framework: Framework;
+    readonly web: WebRuntime;
     readonly target: string | LeafNode;
     readonly execution?: ExecutionHandle;
     readonly signal?: AbortSignal;
@@ -36,9 +38,9 @@ export type PageLoadResult =
 
 /** One page pipeline, shared by URL, SSR and every visible tree destination. */
 export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult> {
-    const { framework } = options;
+    const { web } = options;
     const owned = !options.execution;
-    const execution = options.execution ?? framework.createExecution({ signal: options.signal });
+    const execution = options.execution ?? web.createExecution({ signal: options.signal });
     const unbind = bindExecutionCancellation(execution, options.signal);
     const check = () => {
         if (execution.context.signal.aborted || options.signal?.aborted)
@@ -51,21 +53,19 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
         for (let depth = 0; depth < 5; depth++) {
             check();
             const direct = typeof target !== "string" ? target : undefined;
-            const hasRoutes =
-                direct &&
-                framework.router.getRoutes().some((route) => route.endsWith(` → ${direct.intent}`));
+            const hasRoutes = direct && web.router.hasIntent(direct.intent);
             const url =
                 typeof target === "string"
                     ? target
                     : (target.url ??
-                      (hasRoutes ? createActiveLeafCodec().encode(target, framework.router) : ""));
+                      (hasRoutes ? createActiveLeafCodec().encode(target, web.router) : ""));
             const match: RouteMatch | null =
                 direct && !direct.url && !hasRoutes
                     ? {
                           intent: { id: direct.intent, params: direct.params },
                           action: { kind: "flow" as const, url: "" },
                       }
-                    : await framework.routeUrl(url);
+                    : await web.router.resolve(url);
             check();
             if (!match) return { kind: "deny", status: 404, message: "Page not found" };
             if (direct && match.intent.id !== direct.intent)
@@ -74,7 +74,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                 typeof target === "string"
                     ? leaf(match.intent.id, match.intent.params ?? {}, {
                           url,
-                          entryId: entryId ?? framework.prefetchedIntents.entryIdFor(match.intent),
+                          entryId: entryId ?? web.prefetchedIntents.entryIdFor(match.intent),
                       })
                     : !hasRoutes && !target.url
                       ? target
@@ -102,10 +102,14 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                     ? AbortSignal.any([execution.context.signal, options.signal])
                     : execution.context.signal,
             };
-            const before = await framework.runBeforeLoad(navContext, [
-                ...(match.beforeGuards ?? []),
-                ...(options.beforeLoad ?? []),
-            ]);
+            const before = await runBeforeLoadGuards(
+                [
+                    ...(web.definition.beforeLoad ?? []),
+                    ...(match.beforeGuards ?? []),
+                    ...(options.beforeLoad ?? []),
+                ],
+                navContext,
+            );
             check();
             if (before.kind === "rewrite") {
                 target = before.url;
@@ -115,12 +119,13 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
             if (before.kind !== "next") return before;
             let page: BasePage;
             try {
-                page = await framework.dispatch<BasePage>(
-                    match.intent as Intent<BasePage>,
-                    execution,
-                    retained,
-                    destination.entryId,
-                );
+                const operation = getWebPlan(web.definition).operations.get(match.intent.id);
+                if (!operation) throw new ExecutionError("not_found");
+                const params = { ...match.intent.params };
+                const state = execution.context.bindings[WEB_EXECUTION] as WebExecutionState;
+                state.entryIds.set(params, destination.entryId);
+                if (retained) state.retained.set(params, retained);
+                page = await execution.execute(operation, params);
             } catch (error) {
                 if (error instanceof ExecutionError && error.code === "cancelled") throw error;
                 return {
@@ -130,10 +135,14 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                 };
             }
             check();
-            const after = await framework.runAfterLoad({ ...navContext, page }, [
-                ...(match.afterGuards ?? []),
-                ...(options.afterLoad ?? []),
-            ]);
+            const after = await runAfterLoadGuards(
+                [
+                    ...(web.definition.afterLoad ?? []),
+                    ...(match.afterGuards ?? []),
+                    ...(options.afterLoad ?? []),
+                ],
+                { ...navContext, page },
+            );
             check();
             if (after.kind === "deny" || after.kind === "redirect") return after;
             return {

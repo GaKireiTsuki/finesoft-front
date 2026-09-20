@@ -298,7 +298,10 @@ describe("createSessionBridge — restore gate", async () => {
     });
 
     test("flat snapshot: same url → restored", async () => {
-        const s = snap({ navigation: { entryId: "fixture-flat", url: "/posts/7" } });
+        const s = snap({
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
+            url: "/posts/7",
+        });
         const { store, bridge } = bridgeWith(s);
         await bridge.restore("/posts/7");
         expect(store.restore).toHaveBeenCalledWith(s);
@@ -306,7 +309,10 @@ describe("createSessionBridge — restore gate", async () => {
     });
 
     test("flat snapshot: different deep-link url → NOT restored", async () => {
-        const s = snap({ navigation: { entryId: "fixture-flat", url: "/posts/7" } });
+        const s = snap({
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
+            url: "/posts/7",
+        });
         const { store, bridge } = bridgeWith(s);
         await bridge.restore("/posts/99");
         expect(store.restore).not.toHaveBeenCalled();
@@ -314,7 +320,10 @@ describe("createSessionBridge — restore gate", async () => {
     });
 
     test("flat snapshot: at root / → restored", async () => {
-        const s = snap({ navigation: { entryId: "fixture-flat", url: "/posts/7" } });
+        const s = snap({
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
+            url: "/posts/7",
+        });
         const { store, bridge } = bridgeWith(s);
         await bridge.restore("/?ref=x#frag");
         expect(store.restore).toHaveBeenCalledWith(s);
@@ -382,7 +391,10 @@ describe("createSessionBridge — restore gate", async () => {
     });
 
     test("custom shouldRestore overrides the default policy", async () => {
-        const s = snap({ navigation: { entryId: "fixture-flat", url: "/posts/7" } });
+        const s = snap({
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
+            url: "/posts/7",
+        });
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore({ load: () => s });
@@ -479,8 +491,11 @@ describe("createSessionBridge — handle + dispose", async () => {
 // =====================================================================
 
 describe("defaultShouldRestore", async () => {
-    test("flat: same url true, different false, root true", async () => {
-        const s = snap({ navigation: { entryId: "fixture-flat", url: "/a/b" } });
+    test("structural snapshot URL: same url true, different false, root true", async () => {
+        const s = snap({
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
+            url: "/a/b",
+        });
         expect(defaultShouldRestore(s, "/a/b")).toBe(true); // 全等命中（重载同 URL）
         expect(defaultShouldRestore(s, "/a/c")).toBe(false); // 不同深链 → 跳过
         expect(defaultShouldRestore(s, "/")).toBe(true); // 根入口 → 恢复
@@ -513,7 +528,10 @@ describe("defaultShouldRestore", async () => {
 
     test("snapshot.url 优先于 nav.url（带 url 字段时以它为准）", async () => {
         // url 与 nav.url 不一致时，门控以 snapshot.url 为准（它是 capture 时刻的真实位置）。
-        const s = snap({ navigation: { entryId: "fixture-flat", url: "/stale" }, url: "/item/9" });
+        const s = snap({
+            navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
+            url: "/item/9",
+        });
         expect(defaultShouldRestore(s, "/item/9")).toBe(true);
         expect(defaultShouldRestore(s, "/stale")).toBe(false);
     });

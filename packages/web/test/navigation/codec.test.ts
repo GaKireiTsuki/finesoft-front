@@ -11,8 +11,9 @@ import {
 import { split, stack, tabs } from "../../src/navigation/nodes";
 import { NavigationError, type NavigationNode } from "../../src/navigation/types";
 import { Router } from "../../src/router/router";
+import { selectTab } from "../../src/navigation/operations";
 
-// 真实 Router：用其 getRoutes() 摘要驱动 codec 的反查（端到端验证摘要格式契约）。
+// Encoding uses the structured reverse-routing API.
 function realRouter(): Router {
     const router = new Router();
     router.add("/", "home");
@@ -24,10 +25,10 @@ function realRouter(): Router {
 
 // 轻量 stub：仅实现 codec 依赖的 NavigationRouterLike 读取面。
 function stubRouter(
-    routes: string[],
+    _routes: string[],
     reverse?: NavigationRouterLike["reverse"],
 ): NavigationRouterLike {
-    return { getRoutes: () => routes, reverse };
+    return { reverse: reverse ?? (() => undefined) };
 }
 
 describe("createActiveLeafCodec — encode (reverse active leaf)", () => {
@@ -114,10 +115,10 @@ describe("createActiveLeafCodec — encode (reverse active leaf)", () => {
         expect(codec.encode(leaf("product", { id: 1 }), router)).toBe("/custom/product/1");
     });
 
-    test("falls back to summary reverse when Router.reverse returns undefined", () => {
+    test("uses root when reverse routing cannot identify a URL", () => {
         const codec = createActiveLeafCodec();
         const router = stubRouter(["/products/:id → product"], () => undefined);
-        expect(codec.encode(leaf("product", { id: 8 }), router)).toBe("/products/8");
+        expect(codec.encode(leaf("product", { id: 8 }), router)).toBe("/");
     });
 });
 
@@ -242,6 +243,31 @@ describe("createFullStateCodec — encode/decode round-trip", () => {
 });
 
 describe("encodeNavigationTreeParam / decodeNavigationTreeParam", () => {
+    test.each(["constructor", "toString", "__proto__"])(
+        "requires an owned %s tab branch",
+        (key) => {
+            const tree = { kind: "tabs", active: key, order: [key], branches: {} };
+            expect(() => decodeNavigationTreeParam(base64UrlOf(JSON.stringify(tree)))).toThrow(
+                NavigationError,
+            );
+            expect(() =>
+                selectTab(tabs({ active: "home", branches: { home: leaf("home") } }), key),
+            ).toThrow(NavigationError);
+        },
+    );
+
+    test.each(["constructor", "toString", "__proto__"])(
+        "preserves an explicitly declared %s branch through the wire",
+        (key) => {
+            const tree = tabs({ active: key, order: [key], branches: { [key]: leaf("home") } });
+            const restored = decodeNavigationTreeParam(encodeNavigationTreeParam(tree));
+            expect(restored).toEqual(tree);
+            expect(restored.kind).toBe("tabs");
+            if (restored.kind !== "tabs") throw new Error("expected tabs");
+            expect(Object.hasOwn(restored.branches, key)).toBe(true);
+            expect(Object.getPrototypeOf(restored.branches)).toBeNull();
+        },
+    );
     test("output is URL-safe (no '+', '/', or '=' characters)", () => {
         const tree = leaf("blog", { slug: "a/b+c==d 日本" });
         const encoded = encodeNavigationTreeParam(tree);

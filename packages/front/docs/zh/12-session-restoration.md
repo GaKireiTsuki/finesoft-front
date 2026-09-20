@@ -1,28 +1,11 @@
 # 会话恢复与多实例
 
-会话恢复可选。启用时提供稳定的实例存储键和业务 provider，无需手写内部 scope 或条目 ID。
+使用 `createBrowserApp({ definition, target, history: "memory", persistenceKey: "first", session: {}, domRestore: true })` 创建嵌入应用。每个实例需要独立的 target 和稳定 persistenceKey；同一窗口只允许一个浏览器地址栏所有者。
 
-## Two instances / 双实例
+随后用原生 API 挂载 App，再等待 `app.ready`。会话读取及恢复在第一次原生提交确认之后开始，Outlet 的 commit 不等待恢复。React 的持久化 provider 在 layout effect 注册；Vue/Svelte 在原生挂载阶段注册。`app.session.register(provider)` 返回反注册函数。provider 的 capture/restore 直接读写原生业务状态，无需额外 NameStore。
 
-```ts
-import { startBrowserApp } from "@finesoft/front/browser";
-import { createReactRenderer } from "@finesoft/front/renderers/react/browser";
-import { app } from "./app-definition";
-import { views } from "./views";
-const mount = (target: HTMLElement, persistenceKey: string) =>
-    startBrowserApp({
-        app,
-        target,
-        history: "memory",
-        persistenceKey,
-        session: {},
-        renderer: createReactRenderer(views),
-    });
-const first = await mount(document.getElementById("first")!, "first");
-const second = await mount(document.getElementById("second")!, "second");
-await first.dispose();
-await second.navigate("/");
-await second.dispose();
-```
+切换隐藏页面保留原生实例；pop 移除 entry 及其 scoped 草稿。`data-restore-root` 内明确标记的表单与滚动状态由 DOM 恢复层处理，范围限定在所属应用。多个实例不会读取彼此的输入。
 
-异步存储报告失败或不可用，不会假称保存成功。各 provider 拥有独立版本切片，可单独迁移或丢弃。水合完成后才恢复。移除条目释放导航状态，无关业务切片保留。释放会完成已登记的待写入任务，不承诺无条件最终保存；业务需要时明确调用 session 的 save。地址栏只能有一个所有者，嵌入实例使用 memory history。
+`app.session.save()` / `clear()` 返回可检查的结果。相邻、尚未开始的隐式 save 合并；显式快照、load、restore、clear 构成顺序边界。最终 dispose 捕获当前状态并等待已登记存储操作；浏览器关闭仍不能保证异步存储完成。
+
+清理顺序是 `try { await app.dispose(); } finally { nativeRoot.unmount(); }`，Svelte 使用其 `unmount` 函数。另一个实例仍可通过 `other.navigation.navigate("/")` 工作。协议 v2 使用导航树，旧 URL-only 快照会被判为不兼容；业务切片有独立版本和迁移契约。

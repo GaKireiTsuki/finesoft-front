@@ -1,7 +1,7 @@
 import {
     BaseController,
-    type Container,
     DEP_KEYS,
+    type ExecutionContext,
     type Logger,
     type LoggerFactory,
 } from "@finesoft/front";
@@ -9,10 +9,8 @@ import { markPublic } from "@finesoft/front/web";
 import type { ProductPage } from "../models/product";
 
 export class ProductDetailController extends BaseController<{ id: number }, ProductPage> {
-    readonly intentId = "product-detail";
-
-    async execute(params: { id: number }, container: Container): Promise<ProductPage> {
-        const loggerFactory = container.resolve<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
+    async execute(params: { id: number }, context: ExecutionContext): Promise<ProductPage> {
+        const loggerFactory = await context.get<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
         const log: Logger = loggerFactory.loggerFor("ProductDetailController");
         log.info(`Loading product ${params.id}`);
 

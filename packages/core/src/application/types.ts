@@ -77,6 +77,8 @@ export interface RuntimeOptions {
         readonly fetch?: typeof globalThis.fetch;
     };
     readonly recorder?: EventRecorder;
+    /** Maximum number of completed query results retained per cache scope. */
+    readonly cacheCapacity?: number;
 }
 export interface ExecutionHandle {
     readonly context: ExecutionContext;
@@ -91,20 +93,29 @@ export interface RuntimeHandle {
     execute<I, O>(operation: Operation<I, O>, input: I, invocation?: Invocation): Promise<O>;
     createExecution(invocation?: Invocation): ExecutionHandle;
     invalidate(tags: readonly string[]): void;
+    onInvalidate(listener: (tags: readonly string[]) => void): () => void;
+    /** Record a host/application event without making recorder failures observable. */
+    record(type: string, fields?: Record<string, unknown>): void;
     dispose(): Promise<void>;
 }
 export type ExecutionErrorCode =
     | "validation"
+    | "unauthenticated"
     | "denied"
     | "not_found"
+    | "conflict"
+    | "rate_limited"
     | "cancelled"
     | "failure"
     | "capability"
     | "configuration";
 const errors = {
     validation: [400, "Invalid input"],
+    unauthenticated: [401, "Authentication required"],
     denied: [403, "Access denied"],
     not_found: [404, "Not found"],
+    conflict: [409, "Request conflicts with current state"],
+    rate_limited: [429, "Too many requests"],
     cancelled: [499, "Execution cancelled"],
     failure: [500, "Execution failed"],
     capability: [503, "Required capability unavailable"],
@@ -121,4 +132,23 @@ export class ExecutionError extends Error {
         this.name = "ExecutionError";
         this.status = errors[code][0];
     }
+}
+
+/** Convert a known upstream HTTP failure to the safe public execution vocabulary. */
+export function executionErrorFromHttp(error: { readonly status: number }): ExecutionError {
+    const code =
+        error.status === 400
+            ? "validation"
+            : error.status === 401
+              ? "unauthenticated"
+              : error.status === 403
+                ? "denied"
+                : error.status === 404
+                  ? "not_found"
+                  : error.status === 409
+                    ? "conflict"
+                    : error.status === 429
+                      ? "rate_limited"
+                      : "failure";
+    return new ExecutionError(code, undefined, { cause: error });
 }

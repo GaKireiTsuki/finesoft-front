@@ -484,7 +484,7 @@ export function selectTab(
             throw new NavigationError(`selectTab 失败：目标是 ${n.kind} 节点，不是 tabs`);
         }
         const t = n as TabsNode;
-        if (!(key in t.branches)) {
+        if (!Object.hasOwn(t.branches, key)) {
             throw new NavigationError(`selectTab 失败：未知分支 "${key}"`);
         }
         if (t.active === key) return t;
