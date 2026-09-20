@@ -36,7 +36,7 @@
             {#each $snapshot.navigation.tabs.order as key (key)}
                 <button
                     aria-current={key === $snapshot.navigation.tabs.active}
-                    onclick={() => app.navigation.selectTab(key)}
+                    onclick={() => app.perform({ kind: "selectTab", key })}
                 >
                     {TAB_LABELS[key] ?? key}
                 </button>
@@ -44,7 +44,7 @@
         </nav>
     {/if}
     {#if $snapshot.navigation.canGoBack}
-        <button onclick={() => app.navigation.pop()}>← Back</button>
+        <button onclick={() => app.perform({ kind: "pop" })}>← Back</button>
     {/if}
     <Outlet {app} {views} />
 </div>

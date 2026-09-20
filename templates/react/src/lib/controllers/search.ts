@@ -2,22 +2,23 @@ import { PRODUCTS } from "../data/products";
 import { BaseController } from "@finesoft/front";
 import { markPublic } from "@finesoft/front/web";
 import type { SearchPage } from "../models/product";
+import type { SearchControllerInput as Input } from "../../../.finesoft/controller-types";
 
-export class SearchController extends BaseController<{ q?: string }, SearchPage> {
-    execute(params: { q?: string }): SearchPage {
-        const query = params.q ?? "";
-        const results = query
-            ? PRODUCTS.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+export class SearchController extends BaseController<Input, SearchPage> {
+    execute({ query }: Input): SearchPage {
+        const term = query.q;
+        const results = term
+            ? PRODUCTS.filter((p) => p.name.toLowerCase().includes(term.toLowerCase()))
             : PRODUCTS;
 
         return markPublic(
             {
                 id: "search",
                 pageType: "search",
-                title: query ? `Search: ${query}` : "All Products",
+                title: term ? `Search: ${term}` : "All Products",
                 description: `${results.length} result(s)`,
                 url: "/search",
-                query,
+                query: term,
                 results,
             },
             {

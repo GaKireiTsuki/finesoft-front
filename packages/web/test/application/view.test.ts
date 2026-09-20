@@ -37,7 +37,10 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
         controller.onCommit(onCommit);
         try {
             const original = controller.getSnapshot();
-            const candidate = await controller.resolve();
+            const candidate = await controller.perform({
+                kind: "hydrate",
+                tree: controller.getTree(),
+            });
             expect(candidate.rejection).toEqual(deny(403, "Denied"));
             expect(controller.getSnapshot()).toBe(original);
             const snapshot = await controller.start();
@@ -54,7 +57,7 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
             expect(controller.getTree()).toBe(initial);
             expect([...controller.presentKeys()]).toEqual([privateEntry.entryId]);
             blocked = false;
-            const recovered = await controller.refresh();
+            const recovered = await controller.perform({ kind: "refresh" });
             expect(recovered).toBe(controller.getSnapshot());
             expect(recovered.destinations[0].page.title).toBe("SECRET");
             expect(onCommit).toHaveBeenCalledOnce();
@@ -87,7 +90,7 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
         try {
             await session.start();
             blocked = false;
-            const result = await session.selectTab("b");
+            const result = await session.perform({ kind: "selectTab", key: "b" });
             expect(result).toBe(session.getSnapshot());
             expect(result.destinations[0].page.title).toBe("b");
         } finally {
@@ -141,9 +144,11 @@ test.each(["retry", "leave-and-return"] as const)(
             expect(handler).toHaveBeenCalledOnce();
             blocked = false;
             value = 2;
-            if (mode === "leave-and-return") await session.selectTab("other");
-            if (mode === "retry") await session.resolve();
-            else await session.selectTab("split");
+            if (mode === "leave-and-return")
+                await session.perform({ kind: "selectTab", key: "other" });
+            if (mode === "retry")
+                await session.perform({ kind: "hydrate", tree: session.getTree() });
+            else await session.perform({ kind: "selectTab", key: "split" });
             expect(session.getSnapshot().destinations[0].page.title).toBe("2");
             expect(handler).toHaveBeenCalledTimes(2);
             expect(beforeNavigate.mock.calls[1][0].from).toMatchObject({
@@ -198,12 +203,12 @@ function setup() {
 }
 test("snapshots retain hidden entry identity, reuse unchanged records and ignore stale native acknowledgements", async () => {
     const f = setup();
-    await f.controller.resolve();
+    await f.controller.perform({ kind: "hydrate", tree: f.controller.getTree() });
     const initial = f.controller.getSnapshot();
     expect(f.controller.getSnapshot()).toBe(initial);
     expect(initial.entries).toHaveLength(1);
     expect(initial.navigation.tabs?.active).toBe("first");
-    await f.controller.selectTab("second");
+    await f.controller.perform({ kind: "selectTab", key: "second" });
     const hidden = f.controller.getSnapshot();
     expect(hidden.entries.map((e) => [e.entryId, e.visible])).toEqual([
         [f.home.entryId, false],
@@ -214,7 +219,7 @@ test("snapshots retain hidden entry identity, reuse unchanged records and ignore
     expect(f.commit).not.toHaveBeenCalled();
     f.controller.commit(hidden.revision);
     expect(f.commit).toHaveBeenCalledWith(hidden.revision);
-    await f.controller.selectTab("first");
+    await f.controller.perform({ kind: "selectTab", key: "first" });
     expect(f.controller.getSnapshot().entries[0].page).toBe(initial.entries[0].page);
     await f.dispose();
 });
@@ -235,7 +240,7 @@ test("an initial load denial is presented but never reused as a successful page"
         expect((await session.start()).destinations[0].status).toBe(403);
         expect(handler).not.toHaveBeenCalled();
         blocked = false;
-        const recovered = await session.resolve();
+        const recovered = await session.perform({ kind: "hydrate", tree: session.getTree() });
         expect(recovered).toBe(session.getSnapshot());
         expect(recovered.destinations[0].page.title).toBe("Home");
         expect(recovered.destinations[0].status).toBeUndefined();
@@ -247,12 +252,12 @@ test("an initial load denial is presented but never reused as a successful page"
 });
 test("one runtime invalidation reloads retained data without replacing entry identity or removing hidden views", async () => {
     const f = setup();
-    await f.controller.resolve();
-    await f.controller.selectTab("second");
+    await f.controller.perform({ kind: "hydrate", tree: f.controller.getTree() });
+    await f.controller.perform({ kind: "selectTab", key: "second" });
     const before = f.controller.getSnapshot();
     f.set(2);
     f.web.runtime.invalidate(["items"]);
-    await f.controller.selectTab("first");
+    await f.controller.perform({ kind: "selectTab", key: "first" });
     const fresh = f.controller.getSnapshot();
     expect(fresh.entries[0]).toMatchObject({
         entryId: f.home.entryId,
@@ -261,7 +266,7 @@ test("one runtime invalidation reloads retained data without replacing entry ide
     });
     expect(fresh.entries[1].page).toBe(before.entries[1].page);
     f.set(3, "replacement");
-    await f.controller.refresh();
+    await f.controller.perform({ kind: "refresh" });
     expect(f.controller.getSnapshot().entries[0]).toMatchObject({
         entryId: f.home.entryId,
         page: { title: "3", pageType: "replacement" },
@@ -278,13 +283,15 @@ test("observer exceptions do not reject committed navigation and required host f
     f.controller.subscribe(() => {
         throw Error("view observer");
     });
-    const committed = await f.controller.resolve();
+    const committed = await f.controller.perform({ kind: "hydrate", tree: f.controller.getTree() });
     expect(committed).toBe(f.controller.getSnapshot());
     expect(observer).toHaveBeenCalledOnce();
     f.controller.onCommit(() => {
         throw Error("history unavailable");
     });
-    const result = await f.controller.selectTab("second").catch((error) => error);
+    const result = await f.controller
+        .perform({ kind: "selectTab", key: "second" })
+        .catch((error) => error);
     expect(result).toMatchObject({
         name: "NavigationCommitError",
         committed: true,
@@ -310,7 +317,9 @@ test("data invalidation during page loading prevents a stale navigation commit",
         }),
     });
     const controller = createWebSession({ web, initial: stack(leaf("home")) });
-    const pending = controller.resolve().catch((error) => error);
+    const pending = controller
+        .perform({ kind: "hydrate", tree: controller.getTree() })
+        .catch((error) => error);
     await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
     web.runtime.invalidate(["items"]);
     finish({ id: "old", pageType: "home", title: "Old" });
@@ -329,15 +338,14 @@ test("one committed snapshot owns navigation, native entries and persistence wit
     f.controller.subscribe(notifications);
     const current = await f.controller.start();
     expect(current).toBe(f.controller.getSnapshot());
-    expect(f.controller.navigation).toBe(f.controller);
-    expect(f.controller.getEntries()).toBe(current.entries);
+    expect("navigation" in f.controller).toBe(false);
     expect(current.destinations[0]).toBe(current.entries[0]);
     expect(commits).toHaveBeenCalledExactlyOnceWith(current, previous);
     expect(notifications).toHaveBeenCalledExactlyOnceWith(current);
     expect(Object.isFrozen(current)).toBe(true);
     expect(Object.isFrozen(current.entries)).toBe(true);
     expect(Object.isFrozen(current.entries[0])).toBe(true);
-    await f.controller.selectTab("second");
+    await f.controller.perform({ kind: "selectTab", key: "second" });
     expect(current.entries[0].visible).toBe(true);
     expect(current.navigation.tabs?.active).toBe("first");
     expect(current.revision).toBe(1);

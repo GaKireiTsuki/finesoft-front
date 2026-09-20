@@ -46,7 +46,7 @@ export default function App({ app }: { readonly app: WebAppView }) {
                         <button
                             key={key}
                             aria-current={key === snapshot.navigation.tabs?.active}
-                            onClick={() => void app.navigation.selectTab(key)}
+                            onClick={() => void app.perform({ kind: "selectTab", key: key })}
                         >
                             {TAB_LABELS[key] ?? key}
                         </button>
@@ -54,7 +54,7 @@ export default function App({ app }: { readonly app: WebAppView }) {
                 </nav>
             )}
             {snapshot.navigation.canGoBack && (
-                <button onClick={() => void app.navigation.pop()}>← Back</button>
+                <button onClick={() => void app.perform({ kind: "pop" })}>← Back</button>
             )}
             <Outlet app={app} views={views} />
         </div>

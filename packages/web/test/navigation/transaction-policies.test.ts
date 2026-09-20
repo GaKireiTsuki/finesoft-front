@@ -73,12 +73,13 @@ test("transaction phases surround per-page Split loads exactly once and precede 
         ],
     });
     fixtureApp.controller.subscribe(() => order.push("listener"));
-    await fixtureApp.controller.hydrate(
-        split([
+    await fixtureApp.controller.perform({
+        kind: "hydrate",
+        tree: split([
             { id: "a", content: leaf("home") },
             { id: "b", content: leaf("other") },
         ]),
-    );
+    });
     expect(order).toEqual(["navigate", "before", "after", "before", "after", "commit", "listener"]);
     await fixtureApp.controller.dispose();
     await fixtureApp.web.dispose();
@@ -88,18 +89,18 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
     async (phase) => {
         let veto = false;
         const f = fixture({ [phase]: [() => (veto ? deny(409, "Unsaved draft") : next())] });
-        await f.controller.resolve();
+        await f.controller.perform({ kind: "hydrate", tree: f.controller.getTree() });
         const original = f.controller.getSnapshot();
         const listener = vi.fn();
         f.controller.subscribe(listener);
         veto = true;
-        const rejected = await f.controller.hydrate(stack([]));
+        const rejected = await f.controller.perform({ kind: "hydrate", tree: stack([]) });
         expect(rejected).not.toBe(original);
         expect(rejected.rejection).toEqual({ kind: "deny", status: 409, message: "Unsaved draft" });
         expect(f.controller.getSnapshot()).toBe(original);
         expect(listener).not.toHaveBeenCalled();
         veto = false;
-        await f.controller.resolve();
+        await f.controller.perform({ kind: "hydrate", tree: f.controller.getTree() });
         expect(f.events).toEqual(["load:home"]);
         await f.controller.dispose();
         await f.web.dispose();
@@ -108,13 +109,13 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
 test("beforeCommit veto does not admit loaded cache or evict refreshed committed data", async () => {
     let veto = false;
     const f = fixture({ beforeCommit: [() => (veto ? deny(409, "draft") : next())] });
-    await f.controller.resolve();
+    await f.controller.perform({ kind: "hydrate", tree: f.controller.getTree() });
     const original = f.controller.getSnapshot();
     veto = true;
-    await f.controller.refresh();
+    await f.controller.perform({ kind: "refresh" });
     expect(f.controller.getSnapshot()).toBe(original);
     veto = false;
-    await f.controller.resolve();
+    await f.controller.perform({ kind: "hydrate", tree: f.controller.getTree() });
     expect(f.events).toEqual(["load:home", "load:home"]);
     await f.controller.dispose();
     await f.web.dispose();
@@ -141,7 +142,7 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
             ],
         });
         const original = f.controller.getSnapshot();
-        const result = f.controller.resolve();
+        const result = f.controller.perform({ kind: "hydrate", tree: f.controller.getTree() });
         const assertion = expect(result).rejects.toMatchObject({ code: "cancelled" });
         await gate;
         f.controller.cancel();
@@ -170,7 +171,7 @@ test("admission redirect preserves transaction identity, final commit sees final
         initial: leaf("home"),
         onRedirect: () => leaf("other"),
     });
-    await controller.resolve();
+    await controller.perform({ kind: "hydrate", tree: controller.getTree() });
     expect(beforeNavigate).toHaveBeenCalledOnce();
     expect(beforeCommit).toHaveBeenCalledOnce();
     expect(f.events).toEqual(["load:other"]);
@@ -186,7 +187,9 @@ test("admission redirect preserves transaction identity, final commit sees final
         initial: leaf("home"),
         beforeCommit: [(() => redirect("/")) as never],
     });
-    await expect(invalid.resolve()).rejects.toMatchObject({ code: "configuration" });
+    await expect(
+        invalid.perform({ kind: "hydrate", tree: invalid.getTree() }),
+    ).rejects.toMatchObject({ code: "configuration" });
     await invalid.dispose();
     await invalidFramework.dispose();
     await controller.dispose();
@@ -209,10 +212,10 @@ test("denied commit preserves one-shot SSR prefetch until a committed read", asy
         prefetchedIntents: prefetched,
     });
     const controller = createWebSession({ web: framework, initial: target });
-    await controller.resolve();
+    await controller.perform({ kind: "hydrate", tree: controller.getTree() });
     expect(prefetched.size).toBe(1);
     veto = false;
-    const committed = await controller.resolve();
+    const committed = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
     expect(committed.destinations[0].page.id).toBe("prefetch");
     expect(prefetched.size).toBe(0);
     await controller.dispose();

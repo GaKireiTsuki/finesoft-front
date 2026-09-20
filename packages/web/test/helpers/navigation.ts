@@ -8,7 +8,7 @@ import type { RouteParams } from "../../src/router/types";
 export function leaf(
     intent: string,
     params: RouteParams = {},
-    options: { entryId?: string; url?: string } = {},
+    options: { entryId?: string; url?: string; query?: RouteParams } = {},
 ) {
     return createLeaf(intent, params, { entryId: fixtureEntryId(intent, params), ...options });
 }

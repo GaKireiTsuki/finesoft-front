@@ -4,7 +4,7 @@ import { describe, expect, test } from "vite-plus/test";
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
 import { vi } from "vite-plus/test";
-import { createNavigationScopedState } from "@finesoft/web";
+import { createNavigationScopedState, createSessionStore } from "@finesoft/web";
 import { FakeElement, FakeEvent, stubDomGlobals } from "./fake-dom";
 import { createDomRestore } from "../src/dom-restore";
 
@@ -79,6 +79,42 @@ function island(key: string, childSpecs: ElementSpec[]): FakeElement {
 function asHTMLElement(el: FakeElement): HTMLElement {
     return el as unknown as HTMLElement;
 }
+
+test("DOM restore and later edits follow the scope replaced by session restoration", async () => {
+    const store = createSessionStore({
+        storage: { get: async () => undefined, set: async () => {}, delete: async () => {} },
+    });
+    const original = store.scope;
+    const restore = createDomRestore({
+        get scope() {
+            return store.scope;
+        },
+    });
+    const entry = island("entry", [{ tag: "input", attrs: { name: "note" }, value: "" }]);
+    try {
+        await store.restore({
+            version: 2,
+            capturedAt: 1,
+            slices: {},
+            scoped: {
+                entry: { __dom: { fields: { note: "restored draft" } } },
+            },
+        });
+        expect(store.scope).not.toBe(original);
+        restore.restoreEntry(asHTMLElement(entry));
+        const input = entry.querySelector("[name]") as FakeElement;
+        expect(input.value).toBe("restored draft");
+        input.value = "edited draft";
+        restore.captureEntry(asHTMLElement(entry));
+        expect(store.capture().scoped.entry).toMatchObject({
+            __dom: { fields: { note: "edited draft" } },
+        });
+        expect(original.get("entry")).toBeUndefined();
+    } finally {
+        restore.dispose();
+        await store.dispose();
+    }
+});
 
 // ---------------------------------------------------------------------------
 // Capture tests

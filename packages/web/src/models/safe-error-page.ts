@@ -21,7 +21,7 @@
  * });
  *
  * // In a controller's fallback:
- * fallback(_params, error) {
+ * fallback({ error }) {
  *     return safeErrorPage({
  *         status: 500,
  *         publicMessage: "Could not load search results.",

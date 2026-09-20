@@ -9,7 +9,7 @@
  */
 
 import type { Container } from "@finesoft/core";
-import type { Intent } from "@finesoft/core";
+import type { RouteIntent } from "../router/types";
 import type { BasePage } from "../models/page";
 
 // =====================================================================
@@ -23,10 +23,11 @@ export interface NavigationContext {
     readonly url: string;
     /** 仅路径部分 */
     readonly path: string;
-    /** 路由参数 + 查询参数（codec 转换后可能是 number/boolean 等） */
+    /** 路径参数（codec 转换后可能是 number/boolean 等） */
     readonly params: Record<string, unknown>;
+    readonly query: Record<string, unknown>;
     /** 匹配的 Intent */
-    readonly intent: Intent;
+    readonly intent: RouteIntent;
     /** 是否在服务端运行 */
     readonly isServer: boolean;
     /** DI 容器（可获取自定义服务） */

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { makeFlowAction } from "../../src/actions/types";
-import { int, list, str } from "@finesoft/core";
+import { bool, int, list, optional, str, withDefault } from "@finesoft/core";
 import { Router } from "../../src/router/router";
 
 describe("Router", () => {
@@ -19,7 +19,8 @@ describe("Router", () => {
 
         expect(match?.intent).toEqual({
             id: "product",
-            params: { id: "42", sort: "asc" },
+            params: { id: "42" },
+            query: { sort: "asc" },
         });
         expect(match?.action).toEqual(makeFlowAction("/products/42?sort=asc"));
         expect(match?.renderMode).toBe("ssr");
@@ -38,13 +39,14 @@ describe("Router", () => {
         });
     });
 
-    test("lets query fill an omitted optional path parameter", async () => {
+    test("keeps query separate from omitted optional path parameters", async () => {
         const router = new Router();
         router.add("/users/:id?", "users");
 
         expect((await router.resolve("/users?id=42"))?.intent).toEqual({
             id: "users",
-            params: { id: "42" },
+            params: {},
+            query: { id: "42" },
         });
     });
 
@@ -73,9 +75,57 @@ describe("Router", () => {
                 path: { parameters: [{ name: "id" }] },
             },
         ]);
-        expect(router.reverse("product", { id: "a/b", tab: "details" })).toBe(
+        expect(router.reverse("product", { id: "a/b" }, { tab: "details" })).toBe(
             "/products/a%2Fb?tab=details",
         );
+    });
+
+    test("round-trips typed query lists, escaped values, and scalar defaults", async () => {
+        const router = new Router().add("/products/:id", "product", {
+            paramCodecs: { id: int() },
+            queryCodecs: {
+                q: withDefault(str(), ""),
+                ids: optional(list(int())),
+                tags: list(str()),
+                enabled: list(bool()),
+            },
+        });
+        const query = {
+            q: "空 格&+",
+            ids: [2, 1, 2],
+            tags: ["a&b", "", "c+d"],
+            enabled: [true, false],
+        };
+        const url = router.reverse("product", { id: 42 }, query)!;
+        expect(new URL(url, "http://localhost").searchParams.getAll("ids")).toEqual([
+            "2",
+            "1",
+            "2",
+        ]);
+        expect((await router.resolve(url))?.intent).toEqual({
+            id: "product",
+            params: { id: 42 },
+            query,
+        });
+        expect((await router.resolve("/products/42"))?.intent.query).toEqual({
+            q: "",
+            ids: undefined,
+            tags: [],
+            enabled: [],
+        });
+        expect(await router.resolve("/products/42?ids=bad")).toBeNull();
+    });
+
+    test("defaulted query lists keep multi-value validation and only default missing keys", async () => {
+        const router = new Router().add("/search", "search", {
+            queryCodecs: { ids: withDefault(list(int()), [7]), q: withDefault(str(), "all") },
+        });
+        expect((await router.resolve("/search"))?.intent.query).toEqual({ ids: [7], q: "all" });
+        expect((await router.resolve("/search?ids=1&ids=2&q="))?.intent.query).toEqual({
+            ids: [1, 2],
+            q: "",
+        });
+        expect(await router.resolve("/search?ids=")).toBeNull();
     });
 
     test("stores URL params in null-prototype records to avoid prototype pollution", async () => {
@@ -88,10 +138,12 @@ describe("Router", () => {
         expect(params).toBeDefined();
         expect(Object.getPrototypeOf(params)).toBeNull();
         expect(params?.id).toBe("42");
-        expect(params?.["__proto__"]).toBe("polluted");
-        expect(params?.["toString"]).toBe("string-value");
-        expect(Object.hasOwn(params!, "__proto__")).toBe(true);
-        expect(Object.hasOwn(params!, "toString")).toBe(true);
+        const query = match?.intent.query;
+        expect(Object.getPrototypeOf(query)).toBeNull();
+        expect(query?.["__proto__"]).toBe("polluted");
+        expect(query?.["toString"]).toBe("string-value");
+        expect(Object.hasOwn(query!, "__proto__")).toBe(true);
+        expect(Object.hasOwn(query!, "toString")).toBe(true);
     });
 
     // ===== 新增：codec 校验 =====
@@ -123,7 +175,7 @@ describe("Router", () => {
         const router = new Router();
         router.add("/search", "search", { queryCodecs: { page: int({ min: 1 }) } });
 
-        expect((await router.resolve("/search?page=2"))?.intent.params).toEqual({ page: 2 });
+        expect((await router.resolve("/search?page=2"))?.intent.query).toEqual({ page: 2 });
         expect(await router.resolve("/search?page=0")).toBeNull();
     });
 
@@ -132,7 +184,7 @@ describe("Router", () => {
         router.add("/search", "search", { queryCodecs: { page: int() } });
 
         const match = await router.resolve("/search?page=2&q=hello");
-        expect(match?.intent.params).toEqual({ page: 2, q: "hello" });
+        expect(match?.intent.query).toEqual({ page: 2, q: "hello" });
     });
 
     test("collects multi-value query params via list() codec", async () => {
@@ -140,14 +192,14 @@ describe("Router", () => {
         router.add("/search", "search", { queryCodecs: { tags: list(str()) } });
 
         const match = await router.resolve("/search?tags=a&tags=b");
-        expect(match?.intent.params).toEqual({ tags: ["a", "b"] });
+        expect(match?.intent.query).toEqual({ tags: ["a", "b"] });
     });
 
     test("list() query with a single value still yields an array", async () => {
         const router = new Router();
         router.add("/search", "search", { queryCodecs: { tags: list(str()) } });
 
-        expect((await router.resolve("/search?tags=solo"))?.intent.params).toEqual({
+        expect((await router.resolve("/search?tags=solo"))?.intent.query).toEqual({
             tags: ["solo"],
         });
     });
@@ -156,7 +208,7 @@ describe("Router", () => {
         const router = new Router();
         router.add("/search", "search", { queryCodecs: { tags: list(str()) } });
 
-        expect((await router.resolve("/search"))?.intent.params).toEqual({ tags: [] });
+        expect((await router.resolve("/search"))?.intent.query).toEqual({ tags: [] });
     });
 
     test("list() item codec rejection falls through", async () => {

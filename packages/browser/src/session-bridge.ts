@@ -9,7 +9,7 @@
  *   push/pop 生命周期）—— 再防抖落盘（默认 `SESSION_DEFAULT_DEBOUNCE_MS`，合并连续导航）。
  * - **生命周期落盘**：`window` 的 `pagehide` 与 `document` 的 `visibilitychange`
  *   （仅 `visibilityState === "hidden"`）请求异步保存；浏览器关闭不保证其完成。
- * - **boot 恢复**：`restore(currentUrl)` 读快照，命中且通过 `shouldRestore` 门控才整体应用
+ * - **boot 恢复**：`restoreFromUrl(currentUrl)` 读快照，命中且通过 `shouldRestore` 门控才整体应用
  *   （nav + slices 一个布尔门）。默认策略 `defaultShouldRestore` 遵循「显式深链优先」。
  * - **dispose**：反订阅、解绑、提交挂起保存，等已登记存储工作完成。
  *
@@ -17,13 +17,10 @@
  */
 
 import type {
-    NavigationScopedState,
     SessionNavigation,
     SessionRestoreResult,
     SessionSnapshot,
-    SessionStateProvider,
     SessionStore,
-    SessionWriteResult,
 } from "@finesoft/web";
 
 /** 导航变更后自动落盘的默认防抖窗口（ms）：合并连续导航，避免每跳一屏写一次。 */
@@ -45,24 +42,9 @@ export interface SessionBridgeOptions {
     readonly shouldRestore?: (snapshot: SessionSnapshot, currentUrl: string) => boolean;
 }
 
-/** SessionBridge 对外句柄：导航作用域读写 + boot 恢复 + 手动逃生口 + 解绑。 */
-export interface SessionHandle {
-    /**
-     * 导航作用域状态（每屏 per-entry）。应用渲染某屏时用 `scope.get(entryKey)` /
-     * `set(entryKey, data)` 读写（`entryKey = EntryId`）。
-     * 始终委托当前 store 的 scope —— restore 会重建 scope map，经此 getter 取到的恒是最新实例。
-     */
-    readonly scope: NavigationScopedState;
-    /** Register native component state while its provider is mounted. */
-    register<T>(provider: SessionStateProvider<T>): () => void;
-    /** boot 时调用：读快照，通过门控则整体恢复（nav + slices + scoped）。 */
-    restore(currentUrl: string): Promise<SessionRestoreResult>;
-    /** 手动落盘（= `store.save()`）。 */
-    save(): Promise<SessionWriteResult>;
-    /** 清除持久化快照（= `store.clear()`）。 */
-    clear(): Promise<SessionWriteResult>;
-    /** 反订阅导航 + 解绑全部监听 + 清挂起定时器（幂等）。 */
-    dispose(): Promise<void>;
+/** The store itself owns state and persistence; the browser adds lifecycle restoration. */
+export interface BrowserSession extends SessionStore {
+    restoreFromUrl(currentUrl: string): Promise<SessionRestoreResult>;
 }
 
 /** 剥离 query / hash，仅取路径部分（用于「根入口」判定）。 */
@@ -98,10 +80,12 @@ export function defaultShouldRestore(snapshot: SessionSnapshot, currentUrl: stri
  * 创建 SessionBridge：订阅导航、装配生命周期监听、返回会话句柄。
  *
  * 调用后 bridge 已激活（已订阅导航 + 已注册 `pagehide` / `visibilitychange`）。应用应在
- * 首次导航完成后调一次 `restore(initialUrl)` 完成 boot 恢复。
+ * 首次导航完成后调一次 `restoreFromUrl(initialUrl)` 完成 boot 恢复。
  */
-export function createSessionBridge(options: SessionBridgeOptions): SessionHandle {
+export function createSessionBridge(options: SessionBridgeOptions): BrowserSession {
     const { store, navigation, subscribeNavigation } = options;
+    const clear = store.clear.bind(store),
+        dispose = store.dispose.bind(store);
     const debounceMs = options.debounceMs ?? SESSION_DEFAULT_DEBOUNCE_MS;
     const shouldRestore = options.shouldRestore ?? defaultShouldRestore;
 
@@ -144,15 +128,8 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
     window.addEventListener("pagehide", flush);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
-    return {
-        // store.scope 在 restore 时被重建，故用 getter 委托而非捕获快照实例。
-        get scope(): NavigationScopedState {
-            return store.scope;
-        },
-        register<T>(provider: SessionStateProvider<T>): () => void {
-            return store.register(provider);
-        },
-        async restore(currentUrl: string): Promise<SessionRestoreResult> {
+    return Object.assign(store, {
+        async restoreFromUrl(currentUrl: string): Promise<SessionRestoreResult> {
             if (disposed) return { status: "closed" };
             restoring = true;
             cancelTimer();
@@ -166,12 +143,9 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
                 restoring = false;
             }
         },
-        save(): Promise<SessionWriteResult> {
-            return store.save();
-        },
-        clear(): Promise<SessionWriteResult> {
+        clear() {
             cancelTimer();
-            return store.clear();
+            return clear();
         },
         dispose(): Promise<void> {
             if (disposed) return disposed;
@@ -181,8 +155,8 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
             unsubscribeNavigation?.();
             window.removeEventListener("pagehide", flush);
             document.removeEventListener("visibilitychange", onVisibilityChange);
-            disposed = store.dispose();
+            disposed = dispose();
             return disposed;
         },
-    };
+    });
 }

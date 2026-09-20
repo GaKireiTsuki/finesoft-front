@@ -6,7 +6,7 @@
  * 命中则直接返回，未命中则走 Controller 调度。
  */
 
-import type { Intent } from "@finesoft/core";
+import type { RouteIntent as Intent } from "../router/types";
 import { stableStringify } from "@finesoft/core";
 
 /** 预获取的 Intent-Data 对 */

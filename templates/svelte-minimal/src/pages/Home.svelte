@@ -11,7 +11,7 @@
     <h1>{page.title}</h1>
     <p>{page.description}</p>
     <ul class="feed">
-        {#each page.items as item (item.id)}<li><button onclick={() => void app.navigation.navigate(`/item/${item.id}`)}>{item.title}</button></li>{/each}
+        {#each page.items as item (item.id)}<li><button onclick={() => void app.perform({ kind: "flow", url: `/item/${item.id}` })}>{item.title}</button></li>{/each}
     </ul>
     <section class="locale-info" aria-label="Locale">
         <p><strong>{locale.label}:</strong> {locale.lang}</p>

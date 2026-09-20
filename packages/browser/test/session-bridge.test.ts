@@ -8,7 +8,7 @@ import {
     createSessionBridge,
     defaultShouldRestore,
     SESSION_DEFAULT_DEBOUNCE_MS,
-    type SessionHandle,
+    type BrowserSession,
 } from "../src/session-bridge";
 
 // =====================================================================
@@ -109,7 +109,7 @@ function build(opts: {
     subscribeNavigation?: (onChange: () => void) => () => void;
     debounceMs?: number;
     shouldRestore?: (snapshot: SessionSnapshot, currentUrl: string) => boolean;
-}): SessionHandle {
+}): BrowserSession {
     return createSessionBridge({
         ...opts,
         store: opts.store as unknown as SessionStore,
@@ -281,7 +281,7 @@ describe("createSessionBridge — auto-capture", async () => {
 describe("createSessionBridge — restore gate", async () => {
     function bridgeWith(loaded: SessionSnapshot | undefined): {
         store: ReturnType<typeof makeStore>;
-        bridge: SessionHandle;
+        bridge: BrowserSession;
     } {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
@@ -292,7 +292,7 @@ describe("createSessionBridge — restore gate", async () => {
 
     test("no persisted snapshot → restore not called", async () => {
         const { store, bridge } = bridgeWith(undefined);
-        await bridge.restore("/anything");
+        await bridge.restoreFromUrl("/anything");
         expect(store.restore).not.toHaveBeenCalled();
         await bridge.dispose();
     });
@@ -303,7 +303,7 @@ describe("createSessionBridge — restore gate", async () => {
             url: "/posts/7",
         });
         const { store, bridge } = bridgeWith(s);
-        await bridge.restore("/posts/7");
+        await bridge.restoreFromUrl("/posts/7");
         expect(store.restore).toHaveBeenCalledWith(s);
         await bridge.dispose();
     });
@@ -314,7 +314,7 @@ describe("createSessionBridge — restore gate", async () => {
             url: "/posts/7",
         });
         const { store, bridge } = bridgeWith(s);
-        await bridge.restore("/posts/99");
+        await bridge.restoreFromUrl("/posts/99");
         expect(store.restore).not.toHaveBeenCalled();
         await bridge.dispose();
     });
@@ -325,7 +325,7 @@ describe("createSessionBridge — restore gate", async () => {
             url: "/posts/7",
         });
         const { store, bridge } = bridgeWith(s);
-        await bridge.restore("/?ref=x#frag");
+        await bridge.restoreFromUrl("/?ref=x#frag");
         expect(store.restore).toHaveBeenCalledWith(s);
         await bridge.dispose();
     });
@@ -335,7 +335,7 @@ describe("createSessionBridge — restore gate", async () => {
             navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
         });
         const { store, bridge } = bridgeWith(s);
-        await bridge.restore("/");
+        await bridge.restoreFromUrl("/");
         expect(store.restore).toHaveBeenCalledWith(s);
         await bridge.dispose();
     });
@@ -345,7 +345,7 @@ describe("createSessionBridge — restore gate", async () => {
             navigation: { kind: "leaf", entryId: "fixture-home", intent: "home", params: {} },
         });
         const { store, bridge } = bridgeWith(s);
-        await bridge.restore("/x");
+        await bridge.restoreFromUrl("/x");
         expect(store.restore).not.toHaveBeenCalled();
         await bridge.dispose();
     });
@@ -361,7 +361,7 @@ describe("createSessionBridge — restore gate", async () => {
             url: "/item/1",
         });
         const { store, bridge } = bridgeWith(s);
-        await bridge.restore("/item/1");
+        await bridge.restoreFromUrl("/item/1");
         expect(store.restore).toHaveBeenCalledWith(s);
         await bridge.dispose();
     });
@@ -377,7 +377,7 @@ describe("createSessionBridge — restore gate", async () => {
             url: "/item/1",
         });
         const { store, bridge } = bridgeWith(s);
-        await bridge.restore("/item/2");
+        await bridge.restoreFromUrl("/item/2");
         expect(store.restore).not.toHaveBeenCalled();
         await bridge.dispose();
     });
@@ -385,7 +385,7 @@ describe("createSessionBridge — restore gate", async () => {
     test("slices-only snapshot (no navigation) → restored regardless of url", async () => {
         const s = snap({ slices: { theme: "dark" } });
         const { store, bridge } = bridgeWith(s);
-        await bridge.restore("/deep/link");
+        await bridge.restoreFromUrl("/deep/link");
         expect(store.restore).toHaveBeenCalledWith(s);
         await bridge.dispose();
     });
@@ -403,7 +403,7 @@ describe("createSessionBridge — restore gate", async () => {
             navigation: makeNavigation(() => []),
             shouldRestore: () => true, // 始终恢复，即便深链不匹配
         });
-        await bridge.restore("/posts/99");
+        await bridge.restoreFromUrl("/posts/99");
         expect(store.restore).toHaveBeenCalledWith(s);
         await bridge.dispose();
     });
@@ -420,7 +420,7 @@ describe("createSessionBridge — restore gate", async () => {
             },
         });
         const bridge = build({ store, navigation: makeNavigation(() => []) });
-        await bridge.restore("/");
+        await bridge.restoreFromUrl("/");
         expect(resolved).toBe(true);
         await bridge.dispose();
     });
@@ -431,16 +431,18 @@ describe("createSessionBridge — restore gate", async () => {
 // =====================================================================
 
 describe("createSessionBridge — handle + dispose", async () => {
-    test("save/clear delegate to the store", async () => {
+    test("uses the store itself and cancels scheduled saves on clear", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore();
+        const clear = store.clear;
         const bridge = build({ store, navigation: makeNavigation(() => []) });
+        expect(bridge).toBe(store);
 
         await bridge.save();
         expect(store.save).toHaveBeenCalledTimes(1);
         await bridge.clear();
-        expect(store.clear).toHaveBeenCalledTimes(1);
+        expect(clear).toHaveBeenCalledTimes(1);
 
         await bridge.dispose();
     });
@@ -608,7 +610,7 @@ test("startup pause prevents hydration events from overwriting persisted drafts 
     navigation();
     win.dispatch("pagehide");
     expect(set).not.toHaveBeenCalled();
-    expect(await bridge.restore("/")).toEqual({ status: "missing" });
+    expect(await bridge.restoreFromUrl("/")).toEqual({ status: "missing" });
     navigation();
     let closed = false;
     const closing = bridge.dispose().then(() => {

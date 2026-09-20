@@ -30,7 +30,10 @@ describe("typed page references", () => {
             runtime = createRuntime({ app: plan.app });
         try {
             expect(
-                await runtime.execute(plan.operations.get(page.id)!, { id: "one" }),
+                await runtime.execute(plan.operations.get(page.id)!, {
+                    params: { id: "one" },
+                    query: {},
+                }),
             ).toMatchObject({ id: "one", pageType: "product" });
         } finally {
             await runtime.dispose();

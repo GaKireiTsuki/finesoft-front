@@ -17,10 +17,10 @@ test("immutable route declarations decode path and query through the definition 
             [
                 {
                     id: "product",
-                    handler: (params) => ({
+                    handler: (params, _context, query) => ({
                         id: String(params.id),
                         pageType: "product",
-                        title: String(params.sort),
+                        title: String(query.sort),
                     }),
                 },
             ],
@@ -32,7 +32,8 @@ test("immutable route declarations decode path and query through the definition 
     const framework = createWebRuntime({ definition });
     try {
         const match = await framework.router.resolve("/product/42?sort=desc");
-        expect(match?.intent.params).toEqual({ id: 42, sort: "desc" });
+        expect(match?.intent.params).toEqual({ id: 42 });
+        expect(match?.intent.query).toEqual({ sort: "desc" });
         expect(await loadPage({ web: framework, target: "/product/42?sort=desc" })).toMatchObject({
             kind: "page",
             page: { id: "42", title: "desc" },

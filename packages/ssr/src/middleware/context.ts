@@ -1,5 +1,5 @@
-import type { Container, Intent } from "@finesoft/core";
-import type { NavigationContext } from "@finesoft/web";
+import type { Container } from "@finesoft/core";
+import type { RouteIntent as Intent, NavigationContext } from "@finesoft/web";
 import { parseCookieString } from "@finesoft/web";
 export interface ServerContextOptions {
     url: string;
@@ -21,6 +21,7 @@ export function createServerContext(options: ServerContextOptions): NavigationCo
         url,
         path: parsed.pathname,
         params: intent.params ?? {},
+        query: intent.query ?? {},
         intent,
         isServer: true,
         container,

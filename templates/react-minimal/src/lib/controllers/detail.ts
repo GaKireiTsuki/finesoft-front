@@ -1,9 +1,10 @@
 import { BaseController } from "@finesoft/front";
 import { markPublic } from "@finesoft/front/web";
 import type { DetailPage } from "../models/page";
+import type { DetailControllerInput as Input } from "../../../.finesoft/controller-types";
 
-export class DetailController extends BaseController<{ id?: string }, DetailPage> {
-    execute(params: { id?: string }): DetailPage {
+export class DetailController extends BaseController<Input, DetailPage> {
+    execute({ params }: Input): DetailPage {
         const id = params.id ?? "?";
         return markPublic(
             {

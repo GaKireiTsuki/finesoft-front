@@ -1,7 +1,10 @@
-import { BaseController } from "@finesoft/front";
+import { BaseController, type ControllerInput } from "@finesoft/front";
 import type { BasePage } from "@finesoft/front/web";
 
-export class HomeController extends BaseController<Record<string, string>, BasePage> {
+export class HomeController extends BaseController<
+    ControllerInput<Record<string, string>>,
+    BasePage
+> {
     execute(): BasePage {
         return {
             id: "home",

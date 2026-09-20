@@ -1,26 +1,26 @@
 import { describe, expect, test } from "vite-plus/test";
-import { makeSchema, runStandard, type ParamSchema } from "../../src/schema/standard";
+import { makeSchema, type ParamSchema } from "../../src/schema/standard";
 
-describe("makeSchema / runStandard", () => {
+describe("Standard Schema", () => {
     const upper: ParamSchema<string> = makeSchema<string>((v) =>
         typeof v === "string" ? { value: v.toUpperCase() } : { issues: [{ message: "no" }] },
     );
 
     test("runs a sync schema and returns the transformed value", async () => {
-        const r = await runStandard(upper, "abc");
-        expect(r).toEqual({ ok: true, value: "ABC" });
+        const r = await upper["~standard"].validate("abc");
+        expect(r).toEqual({ value: "ABC" });
     });
 
     test("reports issues on failure", async () => {
-        const r = await runStandard(upper, undefined);
-        expect(r).toEqual({ ok: false, issues: [{ message: "no" }] });
+        const r = await upper["~standard"].validate(undefined);
+        expect(r).toEqual({ issues: [{ message: "no" }] });
     });
 
     test("awaits an async schema", async () => {
         const asyncUpper: ParamSchema<string> = makeSchema<string>(async (v) => ({
             value: String(v).toUpperCase(),
         }));
-        const r = await runStandard(asyncUpper, "abc");
-        expect(r).toEqual({ ok: true, value: "ABC" });
+        const r = await asyncUpper["~standard"].validate("abc");
+        expect(r).toEqual({ value: "ABC" });
     });
 });

@@ -7,6 +7,7 @@ import {
     implementController,
     BaseController,
     type ExecutionContext,
+    type ControllerInput,
 } from "../../src/index";
 
 test("plain data and nested execution use the same scoped dispatcher and policies", async () => {
@@ -154,12 +155,12 @@ test("validation, safe errors and observers preserve results without exposing in
 test("controller bindings instantiate per invocation and cancellation bypasses fallback", async () => {
     let instances = 0;
     const fallback = vi.fn(() => 99);
-    class Controller extends BaseController<{ n: number }, number> {
+    class Controller extends BaseController<ControllerInput<{ n: number }>, number> {
         constructor() {
             super();
             instances++;
         }
-        execute(params: { n: number }, context: ExecutionContext) {
+        execute({ params, context }: { params: { n: number }; context: ExecutionContext }) {
             context.signal.throwIfAborted();
             return params.n;
         }
@@ -183,10 +184,10 @@ test("controller bindings instantiate per invocation and cancellation bypasses f
 test("controller request state stays separate and late cancellation never falls back", async () => {
     const gates: (() => void)[] = [];
     const fallback = vi.fn(() => "fallback");
-    class Stateful extends BaseController<{ user: string }, string> {
+    class Stateful extends BaseController<ControllerInput<{ user: string }>, string> {
         intentId = "state";
         user = "";
-        async execute(params: { user: string }) {
+        async execute({ params }: { params: { user: string } }) {
             this.user = params.user;
             await new Promise<void>((resolve) => gates.push(resolve));
             return this.user;

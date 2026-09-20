@@ -1,4 +1,4 @@
-import type { BaseController } from "../intents/base-controller";
+import type { BaseController, ControllerInput } from "../intents/base-controller";
 import type { Operation, OperationHandler, Implementation } from "./types";
 export function defineOperation<I = undefined, O = unknown>(
     operation: Operation<I, O>,
@@ -24,7 +24,7 @@ export function implementOperation<I, O>(
 /** A fresh controller owns each call; reusable definitions never retain request state. */
 export function implementController<I extends Record<string, unknown>, O>(
     operation: Operation<I, O>,
-    create: () => BaseController<I, O>,
+    create: () => BaseController<ControllerInput<I>, O>,
 ): Implementation<I, O> {
     return implementOperation(operation, (input, context) => create().perform(input, context));
 }

@@ -1,3 +1,4 @@
+import { ACTION_KINDS } from "../../src/actions/types";
 import { routePages } from "../helpers/definition";
 import { fixtureEntryId } from "../helpers/navigation";
 import { leaf, treeShape } from "../helpers/navigation";
@@ -18,7 +19,6 @@ import type { BasePage } from "../../src/models/page";
 import { PrefetchedIntents } from "../../src/prefetched-intents/prefetched-intents";
 import { Router } from "../../src/router/router";
 import {
-    NAVIGATION_OP_KINDS,
     createWebSession,
     type WebSessionOptions,
     type NavigationDispatchContext,
@@ -63,7 +63,7 @@ test("one queued redirect chain disposes each execution before following and com
     const commits = vi.fn();
     controller.subscribe(commits);
     try {
-        const snapshot = await controller.apply({ kind: "replaceTop", intent: "home" });
+        const snapshot = await controller.perform({ kind: "replaceTop", intent: "home" });
         expect(snapshot.historyMode).toBe("replace");
         expect(commits).toHaveBeenCalledOnce();
         expect(events).toEqual([
@@ -186,7 +186,7 @@ describe("single leaf (backward-compatible flat page)", () => {
             makeOptions({ controllers: dispatcher, initial: leaf("home", { a: 1 }) }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         expect(calls).toEqual(["home"]);
         expect(snap.destinations).toHaveLength(1);
@@ -207,7 +207,7 @@ describe("single leaf (backward-compatible flat page)", () => {
         expect(controller.getTree()).toMatchObject(treeShape(leaf("home")));
         expect(controller.getSnapshot().destinations).toEqual([]);
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(controller.getSnapshot()).toBe(snap);
         expect(controller.getTree()).toBe(snap.tree);
     });
@@ -235,9 +235,13 @@ describe("stack operations", () => {
     test("push appends a new leaf on the active stack and dispatches it", async () => {
         const calls: string[] = [];
         const controller = stackController(calls);
-        await controller.resolve(); // ["root"]
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // ["root"]
 
-        const snap = await controller.push("detail", { id: 7 });
+        const snap = await controller.perform({
+            kind: "push",
+            intent: "detail",
+            params: { id: 7 },
+        });
 
         expect(calls).toEqual(["root", "detail"]);
         // 栈顶 detail 是唯一可见目标
@@ -253,10 +257,10 @@ describe("stack operations", () => {
     test("pop reveals the still-present root from cache without re-dispatching", async () => {
         const calls: string[] = [];
         const controller = stackController(calls);
-        await controller.resolve();
-        await controller.push("detail");
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
+        await controller.perform({ kind: "push", intent: "detail" });
 
-        const snap = await controller.pop();
+        const snap = await controller.perform({ kind: "pop" });
 
         // root 自始至终在树中（stack 底）→ 首屏已 dispatch 并缓存 → pop 复用、不重 fetch。
         expect(calls).toEqual(["root", "detail"]);
@@ -277,19 +281,19 @@ describe("stack operations", () => {
                 initial: split([{ id: "list", content: leaf("list") }, { id: "detail" }]),
             }),
         );
-        await controller.resolve(); // list dispatched
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // list dispatched
 
         // 设置 detail 列：list 列在上一快照里未变 → 复用，仅 detail 新 dispatch
-        await controller.selectColumn("detail", "detail");
+        await controller.perform({ kind: "selectColumn", columnId: "detail", intent: "detail" });
         expect(calls).toEqual(["list", "detail"]);
     });
 
     test("pop never drops below root entry", async () => {
         const calls: string[] = [];
         const controller = stackController(calls);
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
-        const snap = await controller.pop(5);
+        const snap = await controller.perform({ kind: "pop", count: 5 });
 
         expect(snap.tree).toMatchObject(treeShape(stack([leaf("root")])));
         expect(snap.destinations[0].intent).toBe("root");
@@ -298,10 +302,14 @@ describe("stack operations", () => {
     test("replaceTop swaps the top entry", async () => {
         const calls: string[] = [];
         const controller = stackController(calls);
-        await controller.resolve();
-        await controller.push("detail");
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
+        await controller.perform({ kind: "push", intent: "detail" });
 
-        const snap = await controller.replaceTop("edit", { id: 1 });
+        const snap = await controller.perform({
+            kind: "replaceTop",
+            intent: "edit",
+            params: { id: 1 },
+        });
 
         expect(snap.tree).toMatchObject(treeShape(stack([leaf("root"), leaf("edit", { id: 1 })])));
         expect(snap.destinations[0].intent).toBe("edit");
@@ -311,11 +319,11 @@ describe("stack operations", () => {
     test("popToRoot via generic apply", async () => {
         const calls: string[] = [];
         const controller = stackController(calls);
-        await controller.resolve();
-        await controller.push("detail");
-        await controller.push("edit");
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
+        await controller.perform({ kind: "push", intent: "detail" });
+        await controller.perform({ kind: "push", intent: "edit" });
 
-        const snap = await controller.apply({ kind: NAVIGATION_OP_KINDS.POP_TO_ROOT });
+        const snap = await controller.perform({ kind: ACTION_KINDS.POP_TO_ROOT });
 
         expect(snap.tree).toMatchObject(treeShape(stack([leaf("root")])));
         expect(snap.destinations[0].intent).toBe("root");
@@ -333,9 +341,9 @@ describe("stack operations", () => {
                 initial: stack([leaf("a"), leaf("b"), leaf("c")]),
             }),
         );
-        await controller.resolve(); // only top "c" is visible → ["c"]
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // only top "c" is visible → ["c"]
 
-        const snap = await controller.apply({ kind: NAVIGATION_OP_KINDS.POP_TO, index: 0 });
+        const snap = await controller.perform({ kind: ACTION_KINDS.POP_TO, index: 0 });
 
         expect(snap.tree).toMatchObject(treeShape(stack([leaf("a")])));
         expect(snap.destinations[0].intent).toBe("a");
@@ -360,12 +368,12 @@ describe("stack operations", () => {
                 beforeLoad: [guard],
             }),
         );
-        await controller.resolve(); // dispatch root；guard[root]
-        await controller.push("detail"); // dispatch detail；guard[detail]
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // dispatch root；guard[root]
+        await controller.perform({ kind: "push", intent: "detail" }); // dispatch detail；guard[detail]
         dispatchCalls.length = 0;
         guardCalls.length = 0;
 
-        await controller.pop(); // 揭示 root
+        await controller.perform({ kind: "pop" }); // 揭示 root
 
         expect(guardCalls).toEqual(["root"]); // 守卫照常跑（安全语义不变）
         expect(dispatchCalls).toEqual([]); // 但不重 fetch（复用缓存页）
@@ -380,9 +388,9 @@ describe("stack operations", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("home")) }),
         );
-        await controller.resolve(); // [home]
-        await controller.replaceTop("other"); // home 离树 → 缓存 prune；[other]
-        await controller.replaceTop("home"); // home 重新入树、未缓存 → 重新 dispatch
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // [home]
+        await controller.perform({ kind: "replaceTop", intent: "other" }); // home 离树 → 缓存 prune；[other]
+        await controller.perform({ kind: "replaceTop", intent: "home" }); // home 重新入树、未缓存 → 重新 dispatch
 
         expect(calls).toEqual(["home", "other", "home"]);
     });
@@ -409,7 +417,7 @@ describe("tabs", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         expect(calls).toEqual(["home"]);
         expect(snap.destinations).toHaveLength(1);
@@ -431,15 +439,15 @@ describe("tabs", () => {
                 }),
             }),
         );
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
-        const snap = await controller.selectTab("profile");
+        const snap = await controller.perform({ kind: "selectTab", key: "profile" });
 
         expect(calls).toEqual(["home", "profile"]);
         expect(snap.destinations[0].intent).toBe("profile");
 
         // 切回 home：home 分支自始至终在 tabs 树中 → 缓存复用、不重 dispatch。
-        const back = await controller.selectTab("home");
+        const back = await controller.perform({ kind: "selectTab", key: "home" });
         expect(calls).toEqual(["home", "profile"]);
         expect(back.destinations[0].intent).toBe("home");
     });
@@ -466,7 +474,7 @@ describe("split", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         expect(snap.destinations.map((d) => d.intent)).toEqual(["list", "detail"]);
         // dispatch 顺序 = 可见顺序
@@ -489,9 +497,14 @@ describe("split", () => {
                 initial: split([{ id: "list", content: leaf("list") }, { id: "detail" }]),
             }),
         );
-        await controller.resolve(); // ["list"]
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // ["list"]
 
-        const snap = await controller.selectColumn("detail", "detail", { id: 9 });
+        const snap = await controller.perform({
+            kind: "selectColumn",
+            columnId: "detail",
+            intent: "detail",
+            params: { id: 9 },
+        });
 
         expect(snap.destinations.map((d) => d.intent)).toEqual(["list", "detail"]);
         // list 复用首屏，仅 detail 新 dispatch
@@ -520,9 +533,13 @@ describe("split", () => {
                 ]),
             }),
         );
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
-        const snap = await controller.selectColumn("detail", undefined);
+        const snap = await controller.perform({
+            kind: "selectColumn",
+            columnId: "detail",
+            intent: undefined,
+        });
 
         expect(snap.destinations.map((d) => d.intent)).toEqual(["list"]);
         expect(snap.tree).toMatchObject(
@@ -548,7 +565,7 @@ describe("beforeLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(calls).toEqual(["home"]);
         expect(snap.destinations[0].status).toBeUndefined();
     });
@@ -565,7 +582,7 @@ describe("beforeLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         expect(calls).toEqual([]); // 未 dispatch
         expect(snap.destinations).toHaveLength(1);
@@ -592,7 +609,7 @@ describe("beforeLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(getErrorPage).toHaveBeenCalledWith(401, "login");
         expect(snap.destinations[0].page.pageType).toBe("custom-error");
     });
@@ -611,7 +628,7 @@ describe("beforeLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         expect(onRedirect).toHaveBeenCalledWith({ url: "/login", status: 302 }, snap);
         expect(calls).toEqual([]);
@@ -638,7 +655,7 @@ describe("beforeLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         // alias 没 dispatch；canonical 被 dispatch
         expect(calls).toEqual(["canonical"]);
@@ -661,7 +678,7 @@ describe("beforeLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         // A failed rewrite must not load the original destination.
         expect(calls).toEqual([]);
         expect(snap.destinations[0].status).toBe(404);
@@ -689,7 +706,7 @@ describe("afterLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(seen).toHaveLength(1);
         expect(seen[0].pageType).toBe("home");
         expect(snap.destinations[0].status).toBeUndefined();
@@ -706,7 +723,7 @@ describe("afterLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(snap.destinations[0].status).toBe(403);
         // 与现有 runner 一致：afterLoad deny 保留已加载页
         expect(snap.destinations[0].page.pageType).toBe("error");
@@ -725,7 +742,7 @@ describe("afterLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(onRedirect).toHaveBeenCalledWith(
             { url: "/elsewhere", status: 302 },
             expect.anything(),
@@ -745,7 +762,7 @@ describe("afterLoad guards (primary destination)", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(snap.destinations[0].page.pageType).toBe("home");
         expect(snap.destinations[0].status).toBeUndefined();
     });
@@ -771,7 +788,7 @@ describe("afterLoad guards (primary destination)", () => {
             }),
         );
 
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         // 激活路径末端 = 最后一个非空列 detail → 仅它跑守卫
         expect(guardCalls).toEqual(["list", "detail"]);
     });
@@ -789,7 +806,7 @@ describe("dispatch failure handling", () => {
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         expect(calls).toEqual(["home"]);
         expect(snap.destinations).toHaveLength(1);
@@ -823,7 +840,7 @@ describe("dispatch failure handling", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(snap.destinations.map((d) => d.intent)).toEqual(["ok", "bad"]);
         expect(snap.destinations[0].status).toBeUndefined();
         expect(snap.destinations[1].status).toBe(500);
@@ -835,7 +852,7 @@ describe("dispatch failure handling", () => {
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(snap.destinations[0].status).toBe(404);
         expect(snap.destinations[0].page.pageType).toBe("error");
     });
@@ -861,7 +878,7 @@ describe("prefetched reuse", () => {
             makeOptions({ controllers: dispatcher, initial: leaf("home"), prefetched }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         expect(calls).toEqual([]); // 命中预取缓存，未走 controller
         expect(snap.destinations[0].page.title).toBe("from-ssr");
@@ -896,7 +913,7 @@ describe("prefetched reuse", () => {
             }),
         );
 
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(calls).toEqual([]);
         expect(snap.destinations.map((d) => d.page.title)).toEqual(["L", "D"]);
     });
@@ -922,9 +939,9 @@ describe("prefetched reuse", () => {
             }),
         );
 
-        await controller.resolve(); // home 来自预取（消费 + 缓存），calls=[]
-        await controller.push("other"); // calls=[other]；home 仍在树（栈底）
-        const snap = await controller.pop(); // 揭示 home：复用缓存、不重 dispatch
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // home 来自预取（消费 + 缓存），calls=[]
+        await controller.perform({ kind: "push", intent: "other" }); // calls=[other]；home 仍在树（栈底）
+        const snap = await controller.perform({ kind: "pop" }); // 揭示 home：复用缓存、不重 dispatch
 
         expect(calls).toEqual(["other"]);
         expect(snap.destinations[0].intent).toBe("home");
@@ -946,10 +963,10 @@ describe("hydrate", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         const incoming: NavigationNode = stack([leaf("home"), leaf("detail", { id: 3 })]);
-        const snap = await controller.hydrate(incoming);
+        const snap = await controller.perform({ kind: "hydrate", tree: incoming });
 
         expect(snap.tree).toMatchObject(incoming);
         expect(snap.destinations[0].intent).toBe("detail");
@@ -976,13 +993,13 @@ describe("subscribe", () => {
             received.push(snap.destinations.map((d) => d.intent));
         });
 
-        await controller.resolve(); // [home]
-        await controller.push("detail"); // [detail]
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // [home]
+        await controller.perform({ kind: "push", intent: "detail" }); // [detail]
 
         expect(received).toEqual([["home"], ["detail"]]);
 
         unsubscribe();
-        await controller.pop(); // listener removed → no new entry
+        await controller.perform({ kind: "pop" }); // listener removed → no new entry
         expect(received).toHaveLength(2);
     });
 
@@ -995,7 +1012,7 @@ describe("subscribe", () => {
         controller.subscribe((snap) => {
             last = snap;
         });
-        const snap = await controller.resolve();
+        const snap = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(last).toBe(snap);
         expect(last).toBe(controller.getSnapshot());
     });
@@ -1013,10 +1030,10 @@ describe("immutability", () => {
         });
         const initial = stack(leaf("root"));
         const controller = createWebSession(makeOptions({ controllers: dispatcher, initial }));
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         const before = controller.getTree();
 
-        await controller.push("detail");
+        await controller.perform({ kind: "push", intent: "detail" });
 
         // 原 committed 树未被改动（结构共享，新树是新引用）
         expect(before).toMatchObject(treeShape(stack([leaf("root")])));
@@ -1034,9 +1051,11 @@ describe("invalid operations propagate NavigationError", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
-        await expect(controller.selectTab("whatever")).rejects.toThrow(/没有 tabs/);
+        await expect(controller.perform({ kind: "selectTab", key: "whatever" })).rejects.toThrow(
+            /没有 tabs/,
+        );
     });
 
     test("push with no stack on the active path throws", async () => {
@@ -1044,9 +1063,11 @@ describe("invalid operations propagate NavigationError", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
-        await expect(controller.push("x")).rejects.toThrow(/没有可用的 stack/);
+        await expect(controller.perform({ kind: "push", intent: "x" })).rejects.toThrow(
+            /没有可用的 stack/,
+        );
     });
 });
 
@@ -1088,11 +1109,11 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
-        await controller.resolve(); // stack([root])
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // stack([root])
 
         // 不 await 第一次：两次 push 同步并发触发。
-        const p1 = controller.push("a");
-        const p2 = controller.push("b");
+        const p1 = controller.perform({ kind: "push", intent: "a" });
+        const p2 = controller.perform({ kind: "push", intent: "b" });
         const [snap1, snap2] = await Promise.all([p1, p2]);
 
         // 串行化后：第一次提交 stack([root, a])，第二次在其之上提交 stack([root, a, b])。
@@ -1109,9 +1130,11 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
-        const pending = [0, 1, 2, 3, 4].map((i) => controller.push(`x${i}`));
+        const pending = [0, 1, 2, 3, 4].map((i) =>
+            controller.perform({ kind: "push", intent: `x${i}` }),
+        );
         await Promise.all(pending);
 
         // 全部按提交顺序叠加，无丢失、无错序。
@@ -1128,11 +1151,11 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
 
         // 第一次操作非法（对 stack 顶 leaf selectTab）→ reject；紧接着的合法 push 必须仍然成功。
-        const bad = controller.selectTab("nope");
-        const good = controller.push("ok");
+        const bad = controller.perform({ kind: "selectTab", key: "nope" });
+        const good = controller.perform({ kind: "push", intent: "ok" });
 
         await expect(bad).rejects.toThrow(/没有 tabs/);
         const snap = await good;
@@ -1147,8 +1170,8 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
         );
 
         // 首屏 resolve 与一次 push 并发：串行队列保证 push 基于 resolve 后的树。
-        const r = controller.resolve();
-        const p = controller.push("next");
+        const r = controller.perform({ kind: "hydrate", tree: controller.getTree() });
+        const p = controller.perform({ kind: "push", intent: "next" });
         await Promise.all([r, p]);
 
         expect(controller.getTree()).toMatchObject(treeShape(stack([leaf("root"), leaf("next")])));
@@ -1180,7 +1203,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
             }),
         );
 
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         // Node 测试环境无 window → isServer 推断为 true。
         expect(seen).toEqual([true]);
     });
@@ -1197,7 +1220,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
             }),
         );
 
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         // 显式 isServer:false → 兜底上下文报告浏览器侧，守卫据此走客户端分支。
         expect(seen).toEqual([false]);
     });
@@ -1214,7 +1237,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
             }),
         );
 
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(seen).toEqual([true]);
     });
 
@@ -1233,6 +1256,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
                 createContext: ({ intent, params }): NavigationDispatchContext => ({
                     container,
                     navigation: {
+                        query: {},
                         url: "/home",
                         path: "/home",
                         params,
@@ -1246,7 +1270,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
             }),
         );
 
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         // 应用提供的 navigation 优先：minimalContext 不生效。
         expect(seen).toEqual([false]);
     });
@@ -1278,11 +1302,14 @@ describe("setVisibility 影响可见集与派发", () => {
             makeOptions({ controllers: dispatcher, initial: threeColumns() }),
         );
 
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(calls).toEqual(["folders", "list", "message"]);
         calls.length = 0;
 
-        const snap = await controller.setVisibility(SPLIT_VISIBILITIES.DETAIL_ONLY);
+        const snap = await controller.perform({
+            kind: "setVisibility",
+            visibility: SPLIT_VISIBILITIES.DETAIL_ONLY,
+        });
         expect(snap.destinations.map((d) => d.intent)).toEqual(["message"]);
         expect(snap.tree).toMatchObject({ kind: "split", visibility: "detailOnly" });
         // message 在上轮已解析 → 复用；sidebar/content 不在可见集 → 不派发。
@@ -1309,11 +1336,14 @@ describe("setVisibility 影响可见集与派发", () => {
         );
         const controller = createWebSession(makeOptions({ controllers: dispatcher, initial }));
 
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         expect(calls).toEqual(["message"]); // detailOnly：只预取 detail
         calls.length = 0;
 
-        const snap = await controller.setVisibility(SPLIT_VISIBILITIES.ALL);
+        const snap = await controller.perform({
+            kind: "setVisibility",
+            visibility: SPLIT_VISIBILITIES.ALL,
+        });
         expect(snap.destinations.map((d) => d.intent)).toEqual(["folders", "list", "message"]);
         // 新变可见的 folders/list 派发；message 复用。
         expect(calls).toEqual(["folders", "list"]);
@@ -1333,9 +1363,9 @@ describe("setVisibility 影响可见集与派发", () => {
                 ]),
             }),
         );
-        await controller.resolve();
-        const snap = await controller.apply({
-            kind: NAVIGATION_OP_KINDS.SET_VISIBILITY,
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
+        const snap = await controller.perform({
+            kind: ACTION_KINDS.SET_VISIBILITY,
             visibility: SPLIT_VISIBILITIES.DETAIL_ONLY,
         });
         expect(snap.destinations.map((d) => d.intent)).toEqual(["message"]);
@@ -1353,9 +1383,9 @@ describe("invalidate / refresh", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("home")) }),
         );
-        await controller.resolve(); // [home]
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // [home]
 
-        const snap = await controller.refresh();
+        const snap = await controller.perform({ kind: "refresh" });
 
         expect(calls).toEqual(["home", "home"]); // active leaf 重新 dispatch
         expect(snap.destinations[0].intent).toBe("home");
@@ -1370,11 +1400,11 @@ describe("invalidate / refresh", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
-        await controller.resolve();
-        await controller.push("detail");
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
+        await controller.perform({ kind: "push", intent: "detail" });
 
         controller.invalidate(fixtureEntryId("root", {})); // 清 root 缓存
-        await controller.pop(); // root 被 invalidate → 重新 dispatch（而非复用）
+        await controller.perform({ kind: "pop" }); // root 被 invalidate → 重新 dispatch（而非复用）
 
         expect(calls).toEqual(["root", "detail", "root"]);
     });
@@ -1388,11 +1418,11 @@ describe("invalidate / refresh", () => {
         const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
-        await controller.resolve();
-        await controller.push("detail");
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
+        await controller.perform({ kind: "push", intent: "detail" });
 
         controller.invalidate(); // 清全部
-        await controller.pop();
+        await controller.perform({ kind: "pop" });
 
         expect(calls).toEqual(["root", "detail", "root"]);
     });
@@ -1428,12 +1458,12 @@ test("cancelled handlers cannot block a new generation, and release their own sc
         }),
     });
     const nav = createWebSession({ web, initial: leaf("slow") });
-    const old = nav.resolve();
+    const old = nav.perform({ kind: "hydrate", tree: nav.getTree() });
     const rejected = expect(old).rejects.toMatchObject({ code: "cancelled" });
     await entered;
     nav.cancel();
     try {
-        const latest = await nav.hydrate(leaf("fast"));
+        const latest = await nav.perform({ kind: "hydrate", tree: leaf("fast") });
         expect(latest.destinations[0].intent).toBe("fast");
         expect(events).toEqual([]);
         release();
@@ -1447,7 +1477,7 @@ test("cancelled handlers cannot block a new generation, and release their own sc
     }
 });
 
-test.each(["resolve", "refresh"] as const)(
+test.each(["hydrate", "refresh"] as const)(
     "queued %s is invalidated by cancel and disposal at submission generation",
     async (method) => {
         const { createWebRuntime, defineWebApp } = await import("../../src/index");
@@ -1485,9 +1515,11 @@ test.each(["resolve", "refresh"] as const)(
             nav.subscribe(() => {
                 commits++;
             });
-            const first = nav.resolve();
+            const first = nav.perform({ kind: "hydrate", tree: nav.getTree() });
             await started;
-            const second = nav[method]();
+            const second = nav.perform(
+                method === "hydrate" ? { kind: method, tree: nav.getTree() } : { kind: method },
+            );
             const outcomes = Promise.allSettled([first, second]);
             const stopping = nav[stop]();
             release();

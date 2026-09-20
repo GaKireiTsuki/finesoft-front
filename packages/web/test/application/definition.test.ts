@@ -100,7 +100,9 @@ test("prefetch is consumed inside operation after app policies", async () => {
         invocation: { bindings: { denied: true } },
     });
     await expect(
-        fw.createExecution().execute(getWebPlan(web).operations.get("home")!, {}),
+        fw
+            .createExecution()
+            .execute(getWebPlan(web).operations.get("home")!, { params: {}, query: {} }),
     ).rejects.toMatchObject({ code: "denied" });
     expect(prefetch.get({ id: "home", params: {} }, "cached-entry")).toBe(cached);
     await fw.dispose();
@@ -157,22 +159,25 @@ test("Split secondary guards block transaction commits and same target pushes re
     });
     const fw = createWebRuntime({ definition: web });
     const controller = createWebSession({ web: fw, initial: stack(leaf("edit")) });
-    const first = await controller.resolve();
-    const second = await controller.push("edit");
+    const first = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
+    const second = await controller.perform({ kind: "push", intent: "edit" });
     expect(second.destinations[0].entryId).not.toBe(first.destinations[0].entryId);
     expect(second.destinations[0].page).not.toBe(first.destinations[0].page);
-    expect((await controller.pop()).destinations[0].page).toBe(first.destinations[0].page);
+    expect((await controller.perform({ kind: "pop" })).destinations[0].page).toBe(
+        first.destinations[0].page,
+    );
     let commits = 0;
     controller.subscribe(() => {
         commits++;
     });
     denied = true;
-    await controller.hydrate(
-        split([
+    await controller.perform({
+        kind: "hydrate",
+        tree: split([
             { id: "left", content: leaf("edit") },
             { id: "right", content: leaf("edit") },
         ]),
-    );
+    });
     expect(commits).toBe(0);
     expect(controller.getSnapshot().destinations[0].entryId).toBe(first.destinations[0].entryId);
     await fw.dispose();
@@ -271,7 +276,7 @@ test("cancelling a transaction during guards prevents later guards, controllers 
     nav.subscribe(() => {
         calls.push("commit");
     });
-    const pending = nav.resolve();
+    const pending = nav.perform({ kind: "hydrate", tree: nav.getTree() });
     await started;
     nav.cancel();
     release();
@@ -310,9 +315,8 @@ test("disposed navigation rejects new work even when its shared facade is still 
     const fw = createWebRuntime({ definition: fixtureDefinition() });
     const nav = createWebSession({ web: fw, initial: stack(leaf("home")) });
     await nav.dispose();
-    await expect(nav.resolve()).rejects.toMatchObject({
+    await expect(nav.perform({ kind: "hydrate", tree: nav.getTree() })).rejects.toMatchObject({
         code: "configuration",
-        message: "Navigation is closed",
     });
     await fw.dispose();
 });
@@ -352,7 +356,7 @@ test("before-load rewrite preserves the destination EntryId across tree, data an
     const fw = createWebRuntime({ definition: web });
     const initial = leaf("home", {}, { url: "/old" });
     const nav = createWebSession({ web: fw, initial: stack(initial) });
-    const snapshot = await nav.resolve();
+    const snapshot = await nav.perform({ kind: "hydrate", tree: nav.getTree() });
     expect(snapshot.destinations[0].entryId).toBe(initial.entryId);
     expect(serializeNavigation(snapshot.tree)).toMatchObject({
         entries: [{ entryId: initial.entryId, url: "/new" }],
@@ -431,7 +435,7 @@ test.each(["loader", "tree"] as const)(
                       execution,
                       signal: abort.signal,
                   })
-                : nav.resolve();
+                : nav.perform({ kind: "hydrate", tree: nav.getTree() });
         const outcome = pending.then(
             () => "fulfilled",
             (error: unknown) => (error as ExecutionError).code,
@@ -493,7 +497,7 @@ test.each(["loader", "tree"] as const)(
         const run = (signal: AbortSignal) =>
             producer === "loader"
                 ? loadPage({ web: framework, execution, target, signal })
-                : nav.apply({ kind: "hydrate", tree: target }, { signal });
+                : nav.perform({ kind: "hydrate", tree: target }, { signal });
         const completed = new AbortController();
         await run(completed.signal);
         completed.abort();

@@ -45,12 +45,12 @@ test("a single leaf tree renders through the shared app view and serializes its 
     expect(result.html).toBe("Home");
     expect(result.serverData.pages).toHaveLength(1);
     expect(result.serverData.pages[0]).toMatchObject({
-        intent: { id: "home", params: { from: "test" } },
+        intent: { id: "home", params: {}, query: { from: "test" } },
         data: home,
     });
     expect(result.serverData.tree).toMatchObject({
         kind: "stack",
-        entries: [{ kind: "leaf", intent: "home", params: { from: "test" } }],
+        entries: [{ kind: "leaf", intent: "home", params: {}, query: { from: "test" } }],
     });
     expect(result.serverData.pages[0]!.data).not.toBe(home);
     await render.dispose();
@@ -219,7 +219,7 @@ test("SSR pages hydrate the same composed tree without refetching", async () => 
         initial: deserializeNavigation(output.serverData.tree!),
         isServer: false,
     });
-    const snapshot = await controller.resolve();
+    const snapshot = await controller.perform({ kind: "hydrate", tree: controller.getTree() });
     expect(snapshot.destinations.map((entry) => entry.page.id)).toEqual(["left-1", "right-2"]);
     expect(calls).toBe(2);
     await controller.dispose();

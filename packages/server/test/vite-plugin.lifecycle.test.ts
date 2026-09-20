@@ -197,6 +197,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         });
         const server = {
             close: vi.fn(async () => {}),
+            watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
             transformRequest,
             moduleGraph: { getModuleByUrl },
@@ -295,6 +296,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         const setupFn = vi.fn(async () => {});
         const server = {
             close: vi.fn(async () => {}),
+            watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
             ssrLoadModule: vi.fn(async () => ({ utility: setupFn })),
             middlewares: { use: vi.fn() },
@@ -358,6 +360,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         }) as VitePluginShape;
         const server = {
             close: vi.fn(async () => {}),
+            watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
             ssrLoadModule: vi.fn(),
             middlewares: { use: vi.fn() },
@@ -398,6 +401,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         }) as VitePluginShape;
         const server = {
             close: vi.fn(async () => {}),
+            watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
             ssrLoadModule: vi.fn(async () => ({
                 default: defaultSetup,
@@ -442,6 +446,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         const middlewares = { use: vi.fn() };
         const server = {
             close: vi.fn(async () => {}),
+            watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
             middlewares,
         };
@@ -595,6 +600,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         }) as VitePluginShape;
         const server = {
             close: vi.fn(async () => {}),
+            watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
             middlewares: { use: vi.fn() },
         };
@@ -670,6 +676,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         }) as VitePluginShape;
         const server = {
             close: vi.fn(async () => {}),
+            watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
             middlewares: { use: vi.fn() },
         };
@@ -748,6 +755,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         }) as VitePluginShape;
         const server = {
             close: vi.fn(async () => {}),
+            watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
             middlewares: { use: vi.fn() },
         };

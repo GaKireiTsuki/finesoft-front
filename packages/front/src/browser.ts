@@ -24,9 +24,9 @@ export type {
     DomRestore,
     DomRestoreOptions,
     NavigationBridgeDependencies,
-    NavigationHandle,
+    NavigationBridge,
     SessionBridgeOptions,
-    SessionHandle,
+    BrowserSession,
 } from "@finesoft/browser";
 
 export * from "@finesoft/web";

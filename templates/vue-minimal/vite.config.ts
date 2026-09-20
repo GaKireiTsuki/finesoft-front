@@ -2,12 +2,13 @@ import { finesoftFrontViteConfig } from "@finesoft/front/vite";
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, lazyPlugins } from "vite-plus";
 
+const front = finesoftFrontViteConfig({
+    controllerTypes: { root: import.meta.dirname },
+    ssr: { entry: "src/ssr.ts" },
+    i18n: { messagesDir: "src/locales" },
+});
+
 export default defineConfig({
-    plugins: lazyPlugins(() => [
-        vue(),
-        finesoftFrontViteConfig({
-            ssr: { entry: "src/ssr.ts" },
-            i18n: { messagesDir: "src/locales" },
-        }),
-    ]),
+    lint: { options: { typeAware: true, typeCheck: true } },
+    plugins: lazyPlugins(() => [front, vue()]),
 });

@@ -1,4 +1,4 @@
-export { makeSchema, runStandard } from "./standard";
+export { makeSchema } from "./standard";
 export type {
     InferOutput,
     ParamSchema,

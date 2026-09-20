@@ -25,12 +25,13 @@ import {
 export function leaf(
     intent: string,
     params: RouteParams = {},
-    options: { entryId?: string; url?: string } = {},
+    options: { entryId?: string; url?: string; query?: RouteParams } = {},
 ): LeafNode {
     return {
         kind: NAVIGATION_NODE_KINDS.LEAF,
         intent,
         params,
+        ...(options.query && Object.keys(options.query).length ? { query: options.query } : {}),
         entryId: options.entryId ?? generateUuid(),
         ...(options.url ? { url: options.url } : {}),
     };

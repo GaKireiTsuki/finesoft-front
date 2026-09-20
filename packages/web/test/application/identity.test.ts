@@ -1,5 +1,6 @@
 import { routePages } from "../helpers/definition";
 import { expect, test } from "vite-plus/test";
+import { str, list } from "@finesoft/core";
 import { leaf, stack, serializeNavigation, deserializeNavigation } from "../../src/navigation";
 import { collectLeafKeys } from "../../src/session/scoped-state";
 
@@ -18,6 +19,62 @@ test("serialized duplicate EntryIds are rejected", () => {
     expect(() => deserializeNavigation(serializeNavigation(stack([a, a])))).toThrow(
         /duplicate.*entry/i,
     );
+});
+
+test("query survives restore and participates in retained-page and prefetch identity", async () => {
+    const {
+        createWebRuntime,
+        definePage,
+        defineWebApp,
+        createWebSession,
+        PrefetchedIntents,
+        loadPage,
+    } = await import("../../src/index");
+    const search = definePage({
+        id: "search",
+        routes: [{ path: "/search", query: { q: str(), tags: list(str()) } }],
+        handler: (_params, _context, query) => ({
+            id: "search",
+            pageType: "search",
+            title: query.q,
+        }),
+    });
+    const target = search.leaf({}, { query: { q: "first", tags: ["a", "b"] } });
+    const restored = deserializeNavigation(JSON.parse(JSON.stringify(serializeNavigation(target))));
+    expect(restored).toEqual(target);
+    expect(() => deserializeNavigation({ ...serializeNavigation(target), query: [] })).toThrow(
+        /query/,
+    );
+    const definition = defineWebApp({
+        id: "query-identity",
+        pages: [search],
+        getErrorPage: (_, title) => ({ id: "error", pageType: "error", title }),
+    });
+    const prefetched = PrefetchedIntents.fromArray([
+        {
+            entryId: target.entryId,
+            intent: { id: "search", params: {}, query: { q: "first", tags: ["a", "b"] } },
+            data: { id: "cached", pageType: "search", title: "Cached" },
+        },
+    ]);
+    const web = createWebRuntime({ definition, prefetchedIntents: prefetched });
+    const session = createWebSession({ web, initial: stack(restored) });
+    try {
+        // A different query must not consume this entry's prefetched result.
+        expect(
+            await loadPage({ web, target: { ...target, query: { q: "second", tags: [] } } }),
+        ).toMatchObject({ kind: "page", page: { title: "second" } });
+        expect(prefetched.size).toBe(1);
+        expect((await session.start()).destinations[0].page.title).toBe("Cached");
+        await session.perform({
+            kind: "hydrate",
+            tree: stack({ ...target, query: { q: "second", tags: [] } }),
+        });
+        expect(session.getSnapshot().destinations[0].page.title).toBe("second");
+    } finally {
+        await session.dispose();
+        await web.dispose();
+    }
 });
 
 test("same-target prefetch values hydrate their own EntryIds without overwriting", async () => {
@@ -102,8 +159,9 @@ test("equal targets own separate drafts while sharing an opt-in query result; ex
         web: fw,
         initial: stack(leaf("edit", { id: 7 })),
     });
-    const first = (await nav.resolve()).destinations[0];
-    const second = (await nav.push("edit", { id: 7 })).destinations[0];
+    const first = (await nav.perform({ kind: "hydrate", tree: nav.getTree() })).destinations[0];
+    const second = (await nav.perform({ kind: "push", intent: "edit", params: { id: 7 } }))
+        .destinations[0];
     const state = createNavigationScopedState();
     state.set(first.entryId, { draft: "one" });
     state.set(second.entryId, { draft: "two" });
@@ -115,6 +173,8 @@ test("equal targets own separate drafts while sharing an opt-in query result; ex
         (second.page as unknown as { product: object }).product,
     );
     expect(calls).toBe(1);
-    expect((await nav.reuseEntry(first.entryId)).destinations[0].page).toBe(first.page);
+    expect(
+        (await nav.perform({ kind: "reuseEntry", entryId: first.entryId })).destinations[0].page,
+    ).toBe(first.page);
     await fw.dispose();
 });

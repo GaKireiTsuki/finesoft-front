@@ -42,19 +42,21 @@ describe("createActiveLeafCodec — encode (reverse active leaf)", () => {
         expect(codec.encode(leaf("home"), realRouter())).toBe("/");
     });
 
-    test("leftover (non-path) params become a sorted query string", () => {
+    test("query is encoded separately from path params with stable key order", () => {
         const codec = createActiveLeafCodec();
-        // id consumed by path; sort + page stay as query, sorted by key for stability.
-        expect(codec.encode(leaf("product", { id: 7, sort: "asc", page: 2 }), realRouter())).toBe(
-            "/products/7?page=2&sort=asc",
-        );
+        expect(
+            codec.encode(
+                leaf("product", { id: 7 }, { query: { sort: "asc", page: 2 } }),
+                realRouter(),
+            ),
+        ).toBe("/products/7?page=2&sort=asc");
     });
 
-    test("static route carries all params as query (sorted)", () => {
+    test("static route carries its separate query (sorted)", () => {
         const codec = createActiveLeafCodec();
-        expect(codec.encode(leaf("search", { q: "hi", page: 3 }), realRouter())).toBe(
-            "/search?page=3&q=hi",
-        );
+        expect(
+            codec.encode(leaf("search", {}, { query: { q: "hi", page: 3 } }), realRouter()),
+        ).toBe("/search?page=3&q=hi");
     });
 
     test("optional path segment is omitted when the param is missing", () => {
@@ -83,7 +85,7 @@ describe("createActiveLeafCodec — encode (reverse active leaf)", () => {
     test("split active leaf = last non-empty column's visible leaf", () => {
         const codec = createActiveLeafCodec();
         const tree: NavigationNode = split([
-            { id: "list", content: leaf("search", { q: "x" }) },
+            { id: "list", content: leaf("search", {}, { query: { q: "x" } }) },
             { id: "detail", content: leaf("product", { id: 5 }) },
         ]);
         expect(codec.encode(tree, realRouter())).toBe("/products/5");

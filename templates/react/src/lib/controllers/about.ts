@@ -1,8 +1,11 @@
-import { BaseController } from "@finesoft/front";
+import { BaseController, type ControllerInput } from "@finesoft/front";
 import { markPublic } from "@finesoft/front/web";
 import type { AboutPage } from "../models/product";
 
-export class AboutController extends BaseController<Record<string, string>, AboutPage> {
+export class AboutController extends BaseController<
+    ControllerInput<Record<string, string>>,
+    AboutPage
+> {
     execute(): AboutPage {
         return markPublic(
             {

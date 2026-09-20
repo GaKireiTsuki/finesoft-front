@@ -9,7 +9,7 @@ interface DomState {
 }
 
 export interface DomRestoreOptions {
-    /** Session scope; state is stored in `scope[entryKey].__dom`. */
+    /** Session scope; use a getter when restoration can replace the scope object. */
     readonly scope: NavigationScopedState;
     /** Optional scheduling for independent callers. Browser commits pass `cb => cb()` explicitly. */
     readonly schedule?: (cb: () => void) => void;
@@ -71,7 +71,6 @@ function keyedElements<T extends Element>(
 }
 
 export function createDomRestore(options: DomRestoreOptions): DomRestore {
-    const { scope } = options;
     const schedule = options.schedule ?? ((callback: () => void) => callback());
     let disposed = false;
     let boundOutlet: HTMLElement | undefined;
@@ -114,8 +113,8 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
         if (!belongsToBoundApp(entry)) return;
         const key = entryKey(entry);
         if (!key) return;
-        const bag = (scope.get(key) as Record<string, unknown> | undefined) ?? {};
-        scope.set(key, { ...bag, __dom: collect(entry) });
+        const bag = (options.scope.get(key) as Record<string, unknown> | undefined) ?? {};
+        options.scope.set(key, { ...bag, __dom: collect(entry) });
     }
 
     function apply(entry: HTMLElement, dom: DomState): void {
@@ -181,7 +180,9 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
     function restoreEntry(entry: HTMLElement): void {
         if (!belongsToBoundApp(entry)) return;
         const key = entryKey(entry);
-        const dom = key ? (scope.get(key) as { __dom?: DomState } | undefined)?.__dom : undefined;
+        const dom = key
+            ? (options.scope.get(key) as { __dom?: DomState } | undefined)?.__dom
+            : undefined;
         if (!dom) return;
         schedule(() => {
             if (!disposed) apply(entry, dom);

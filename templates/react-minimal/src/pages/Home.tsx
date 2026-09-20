@@ -16,7 +16,11 @@ export default function Home({
             <ul className="feed">
                 {page.items.map((item) => (
                     <li key={item.id}>
-                        <button onClick={() => void app.navigation.navigate(`/item/${item.id}`)}>
+                        <button
+                            onClick={() =>
+                                void app.perform({ kind: "flow", url: `/item/${item.id}` })
+                            }
+                        >
                             {item.title}
                         </button>
                     </li>

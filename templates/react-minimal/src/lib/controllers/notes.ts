@@ -1,8 +1,11 @@
-import { BaseController } from "@finesoft/front";
+import { BaseController, type ControllerInput } from "@finesoft/front";
 import type { NotesPage } from "../models/page";
 
 /** Notes 页面：第二个 tab，演示切 tab 保活该分支的作用域状态。 */
-export class NotesController extends BaseController<Record<string, string>, NotesPage> {
+export class NotesController extends BaseController<
+    ControllerInput<Record<string, string>>,
+    NotesPage
+> {
     execute(): NotesPage {
         return {
             id: "notes",

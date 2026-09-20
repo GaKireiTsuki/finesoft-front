@@ -12,9 +12,11 @@ export type ExtractParamNames<Path extends string> = Path extends `${infer _Head
     : never;
 
 /** path 参数 codec map 的形状：key 只能是 path 中出现的参数名（均可选声明） */
-export type ParamsFor<Path extends string> = {
-    [K in ExtractParamNames<Path>]?: ParamSchema;
-};
+export type ParamsFor<Path extends string> = string extends Path
+    ? Record<string, ParamSchema>
+    : {
+          [K in ExtractParamNames<Path>]?: ParamSchema;
+      };
 
 /** query 参数 codec map：key 自由开放；值可为单值 codec 或多值（list）codec */
 export type QuerySchemaMap = Record<
@@ -38,13 +40,10 @@ type RequiredOutKeys<M extends Record<string, StandardSchemaV1>> = {
  * optional() 让输出含 undefined 的 key 渲染为可选属性（`tab?: T`，并剥掉冗余的 `| undefined`）；
  * withDefault() 始终有值，key 保持必选。
  */
-export type InferParams<P extends Record<string, ParamSchema>> = Prettify<
-    { [K in RequiredOutKeys<P>]: InferOutput<P[K]> } & {
-        [K in OptionalOutKeys<P>]?: Exclude<InferOutput<P[K]>, undefined>;
+type InferSchemaMap<M extends Record<string, StandardSchemaV1>> = Prettify<
+    { [K in RequiredOutKeys<M>]: InferOutput<M[K]> } & {
+        [K in OptionalOutKeys<M>]?: Exclude<InferOutput<M[K]>, undefined>;
     }
 >;
-export type InferQuery<Q extends QuerySchemaMap> = Prettify<
-    { [K in RequiredOutKeys<Q>]: InferOutput<Q[K]> } & {
-        [K in OptionalOutKeys<Q>]?: Exclude<InferOutput<Q[K]>, undefined>;
-    }
->;
+export type InferParams<P extends Record<string, ParamSchema>> = InferSchemaMap<P>;
+export type InferQuery<Q extends QuerySchemaMap> = InferSchemaMap<Q>;

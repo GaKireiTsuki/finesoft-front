@@ -1,0 +1,13 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "jsx": "react-jsx",
+        "paths": {
+            "@finesoft/front": ["../packages/core/src/index.ts"],
+            "@finesoft/front/web": ["../packages/front/src/web.ts"],
+            "@finesoft/core": ["../packages/core/src/index.ts"],
+            "@finesoft/web": ["../packages/web/src/index.ts"]
+        }
+    },
+    "include": ["*/src/app-definition.ts"]
+}

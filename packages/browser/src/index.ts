@@ -10,7 +10,7 @@ export {
 export {
     createNavigationBridge,
     type NavigationBridgeDependencies,
-    type NavigationHandle,
+    type NavigationBridge,
 } from "./navigation-bridge";
 
 // ===== Session =====
@@ -19,7 +19,7 @@ export {
     defaultShouldRestore,
     SESSION_DEFAULT_DEBOUNCE_MS,
     type SessionBridgeOptions,
-    type SessionHandle,
+    type BrowserSession,
 } from "./session-bridge";
 export { createWebStorage, type WebStorageKind } from "./web-storage";
 

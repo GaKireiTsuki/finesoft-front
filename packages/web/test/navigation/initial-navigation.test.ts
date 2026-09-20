@@ -29,14 +29,14 @@ function runtime() {
     });
 }
 test.each([
-    ["/item/7", "detail", { id: "7" }],
-    ["/user/42/post/99", "userPost", { userId: "42", postId: "99" }],
-    ["/home", "home", {}],
-    ["/search?q=hello", "search", { q: "hello" }],
-])("initial navigation resolves %s using the page's router", async (url, intent, params) => {
+    ["/item/7", "detail", { id: "7" }, undefined],
+    ["/user/42/post/99", "userPost", { userId: "42", postId: "99" }, undefined],
+    ["/home", "home", {}, undefined],
+    ["/search?q=hello", "search", {}, { q: "hello" }],
+])("initial navigation resolves %s using the page's router", async (url, intent, params, query) => {
     const web = runtime();
     expect(await resolveInitialNavigation(web, url)).toMatchObject({
-        tree: { kind: "stack", entries: [{ intent, params }] },
+        tree: { kind: "stack", entries: [{ intent, params, ...(query ? { query } : {}) }] },
     });
     await web.dispose();
 });

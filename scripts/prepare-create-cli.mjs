@@ -15,7 +15,7 @@ const root = path.resolve(__dirname, "..");
 const srcDir = path.join(root, "templates");
 const destDir = path.join(root, "packages", "create-app", "templates");
 
-const SKIP = new Set(["node_modules", "dist", ".turbo"]);
+const SKIP = new Set(["node_modules", "dist", ".turbo", ".finesoft"]);
 
 function copyDir(src, dest) {
     fs.mkdirSync(dest, { recursive: true });

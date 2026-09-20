@@ -3,16 +3,16 @@
 import {
     compilePath,
     isMultiValueSchema,
-    runStandard,
     type CompiledPath,
     type PathDescriptor,
 } from "@finesoft/core";
 import { makeFlowAction, type FlowAction } from "../actions/types";
-import type { Intent, ParamSchema, QuerySchemaMap } from "@finesoft/core";
+import type { ParamSchema, QuerySchemaMap } from "@finesoft/core";
+import { routeIntent, type RouteIntent, type RouteParams } from "./types";
 import type { AfterLoadGuard, BeforeLoadGuard } from "../middleware/types";
 
 export interface RouteMatch {
-    intent: Intent;
+    intent: RouteIntent;
     action: FlowAction;
     cache?: "public";
     renderMode?: string;
@@ -69,12 +69,13 @@ export class Router {
             const pathParams = route.compiled.match(path);
             if (!pathParams) continue;
             const params = createNullPrototypeRecord<unknown>(pathParams);
+            const query = createNullPrototypeRecord<unknown>(queryParams);
             let valid = true;
             for (const parameter of route.path.parameters) {
                 const codec = route.paramCodecs?.[parameter.name];
                 if (!codec) continue;
-                const result = await runStandard(codec, pathParams[parameter.name]);
-                if (!result.ok) {
+                const result = await codec["~standard"].validate(pathParams[parameter.name]);
+                if (result.issues) {
                     this.debug?.(
                         `[Router] route "${route.pattern}" skipped: path param "${parameter.name}" failed validation: ${result.issues[0]?.message ?? "invalid"}`,
                     );
@@ -90,27 +91,19 @@ export class Router {
                     const raw = isMultiValueSchema(codec)
                         ? searchParams.getAll(name)
                         : queryParams[name];
-                    const result = await runStandard(codec, raw);
-                    if (!result.ok) {
+                    const result = await codec["~standard"].validate(raw);
+                    if (result.issues) {
                         this.debug?.(
                             `[Router] route "${route.pattern}" skipped: query param "${name}" failed validation: ${result.issues[0]?.message ?? "invalid"}`,
                         );
                         valid = false;
                         break;
                     }
-                    params[name] = result.value;
+                    query[name] = result.value;
                 }
             if (!valid) continue;
-            Object.assign(
-                params,
-                Object.fromEntries(
-                    Object.entries(queryParams).filter(
-                        ([key]) => !(key in params) && !route.queryCodecs?.[key],
-                    ),
-                ),
-            );
             return {
-                intent: { id: route.intentId, params },
+                intent: routeIntent(route.intentId, params, query),
                 action: makeFlowAction(urlOrPath),
                 renderMode: route.renderMode,
                 cache: route.cache,
@@ -132,7 +125,11 @@ export class Router {
     getRoutes(): string[] {
         return this.routes.map((route) => `${route.pattern} → ${route.intentId}`);
     }
-    reverse(intentId: string, params: Readonly<Record<string, unknown>>): string | undefined {
+    reverse(
+        intentId: string,
+        params: Readonly<RouteParams>,
+        queryParams: Readonly<RouteParams> = {},
+    ): string | undefined {
         const matches = this.routes
             .filter((route) => route.intentId === intentId)
             .map((route) => ({ route, path: route.compiled.reverse(params) }))
@@ -144,18 +141,16 @@ export class Router {
             throw new Error(`Ambiguous route for ${intentId}; provide the matched URL`);
         const match = matches[0];
         if (!match) return undefined;
-        const consumed = new Set(match.route.path.parameters.map((parameter) => parameter.name));
         const query = new URLSearchParams();
-        for (const key of Object.keys(params).sort()) {
-            if (consumed.has(key)) continue;
-            const value = params[key];
-            if (value === undefined || value === null) continue;
-            if (
-                typeof value === "string" ||
-                typeof value === "boolean" ||
-                (typeof value === "number" && Number.isFinite(value))
-            )
-                query.set(key, String(value));
+        for (const key of Object.keys(queryParams).sort()) {
+            const values = Array.isArray(queryParams[key]) ? queryParams[key] : [queryParams[key]];
+            for (const value of values)
+                if (
+                    typeof value === "string" ||
+                    typeof value === "boolean" ||
+                    (typeof value === "number" && Number.isFinite(value))
+                )
+                    query.append(key, String(value));
         }
         const serialized = query.toString();
         return serialized ? `${match.path}?${serialized}` : match.path;

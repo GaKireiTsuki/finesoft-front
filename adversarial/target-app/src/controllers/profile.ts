@@ -1,4 +1,4 @@
-import { BaseController } from "@finesoft/front";
+import { BaseController, type ControllerInput } from "@finesoft/front";
 import { markPublic, type BasePage } from "@finesoft/front/web";
 
 interface ProfileParams extends Record<string, string | undefined> {
@@ -54,8 +54,8 @@ const PUBLIC_FIELDS = [
     "avatarUrl",
 ] as const satisfies readonly (keyof ProfilePage)[];
 
-export class ProfileController extends BaseController<ProfileParams, ProfilePage> {
-    execute(params: ProfileParams): ProfilePage {
+export class ProfileController extends BaseController<ControllerInput<ProfileParams>, ProfilePage> {
+    execute({ params }: { params: ProfileParams }): ProfilePage {
         const userId = (params.userId ?? "").toLowerCase();
         const user = USER_DB[userId];
         if (!user) {

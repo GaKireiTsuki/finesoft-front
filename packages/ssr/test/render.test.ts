@@ -346,8 +346,8 @@ test("passes decoded path and query parameters to the typed page handler", async
             [
                 {
                     id: "product",
-                    handler: (params) => {
-                        seen.push(params);
+                    handler: (params, _context, query) => {
+                        seen.push({ params, query });
                         return markPublic(
                             { id: "product", pageType: "product", title: String(params.id) },
                             true,
@@ -368,6 +368,6 @@ test("passes decoded path and query parameters to the typed page handler", async
     });
     const render = createSSRRender({ definition, render: (app) => titleRenderer(app) });
     await expect(render("/products/42?ref=nav")).resolves.toMatchObject({ html: "42" });
-    expect(seen).toEqual([{ id: "42", ref: "nav" }]);
+    expect(seen).toEqual([{ params: { id: "42" }, query: { ref: "nav" } }]);
     await render.dispose();
 });

@@ -1,5 +1,5 @@
 import { appId } from "./config";
-import { definePage, defineWebApp, int } from "@finesoft/front/web";
+import { definePage, defineWebApp, int, str, withDefault } from "@finesoft/front/web";
 import { AboutController } from "./lib/controllers/about";
 import { HomeController } from "./lib/controllers/home";
 import { ProductDetailController } from "./lib/controllers/product-detail";
@@ -14,13 +14,13 @@ export const homePage = definePage({
 });
 export const productDetailPage = definePage({
     id: "product-detail",
-    create: () => new ProductDetailController(),
     routes: [{ path: "/products/:id", params: { id: int() } }],
+    create: () => new ProductDetailController(),
 });
 export const searchPage = definePage({
     id: "search",
     create: () => new SearchController(),
-    routes: ["/search"],
+    routes: [{ path: "/search", query: { q: withDefault(str(), "") } }],
 });
 export const aboutPage = definePage({
     id: "about",

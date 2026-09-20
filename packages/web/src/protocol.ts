@@ -63,7 +63,8 @@ export function decodeWireEnvelope(
         if (
             !leaf ||
             leaf.intent !== page.intent.id ||
-            (page.intent.params !== undefined && !record(page.intent.params))
+            (page.intent.params !== undefined && !record(page.intent.params)) ||
+            (page.intent.query !== undefined && !record(page.intent.query))
         )
             return invalid;
         if (typeof page.data.pageType !== "string" || !page.data.pageType) return invalid;

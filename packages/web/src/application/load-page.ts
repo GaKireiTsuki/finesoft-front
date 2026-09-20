@@ -1,4 +1,5 @@
-import { ExecutionError, type ExecutionHandle, type Intent } from "@finesoft/core";
+import { ExecutionError, type ExecutionHandle } from "@finesoft/core";
+import { routeIntent, type RouteIntent } from "../router/types";
 import { getWebPlan, WEB_EXECUTION, type WebExecutionState } from "./definition";
 import { runBeforeLoadGuards, runAfterLoadGuards } from "../middleware/pipeline";
 import { bindExecutionCancellation } from "./execution";
@@ -19,7 +20,7 @@ export interface LoadPageOptions {
     readonly entryId?: string;
     readonly createContext?: (input: {
         url: string;
-        intent: Intent;
+        intent: RouteIntent;
         execution: ExecutionHandle;
     }) => NavigationContext;
     readonly beforeLoad?: readonly BeforeLoadGuard[];
@@ -62,7 +63,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
             const match: RouteMatch | null =
                 direct && !direct.url && !hasRoutes
                     ? {
-                          intent: { id: direct.intent, params: direct.params },
+                          intent: routeIntent(direct.intent, direct.params, direct.query),
                           action: { kind: "flow" as const, url: "" },
                       }
                     : await web.router.resolve(url);
@@ -74,6 +75,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                 typeof target === "string"
                     ? leaf(match.intent.id, match.intent.params ?? {}, {
                           url,
+                          query: match.intent.query,
                           entryId: entryId ?? web.prefetchedIntents.entryIdFor(match.intent),
                       })
                     : !hasRoutes && !target.url
@@ -82,6 +84,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                             ...target,
                             intent: match.intent.id,
                             params: match.intent.params ?? {},
+                            query: match.intent.query,
                             url,
                         };
             entryId = destination.entryId;
@@ -90,6 +93,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                 path: new URL(url, "http://localhost").pathname,
                 intent: match.intent,
                 params: match.intent.params ?? {},
+                query: match.intent.query ?? {},
                 container: execution.context.container,
                 isServer: true,
                 getCookie: () => undefined,
@@ -97,6 +101,8 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
             };
             const navContext = {
                 ...context,
+                params: match.intent.params ?? {},
+                query: match.intent.query ?? {},
                 container: execution.context.container,
                 signal: options.signal
                     ? AbortSignal.any([execution.context.signal, options.signal])
@@ -121,11 +127,14 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
             try {
                 const operation = getWebPlan(web.definition).operations.get(match.intent.id);
                 if (!operation) throw new ExecutionError("not_found");
-                const params = { ...match.intent.params };
+                const input = {
+                    params: { ...match.intent.params },
+                    query: { ...match.intent.query },
+                };
                 const state = execution.context.bindings[WEB_EXECUTION] as WebExecutionState;
-                state.entryIds.set(params, destination.entryId);
-                if (retained) state.retained.set(params, retained);
-                page = await execution.execute(operation, params);
+                state.entryIds.set(input, destination.entryId);
+                if (retained) state.retained.set(input, retained);
+                page = await execution.execute(operation, input);
             } catch (error) {
                 if (error instanceof ExecutionError && error.code === "cancelled") throw error;
                 return {

@@ -1,4 +1,9 @@
 export { finesoftFrontViteConfig, type FinesoftFrontViteOptions } from "./vite-plugin";
+export {
+    generateControllerTypes,
+    type ControllerTypeOptions,
+    type ControllerTypeResult,
+} from "./controller-types";
 export { autoAdapter } from "./adapters/auto";
 export { cloudflareAdapter } from "./adapters/cloudflare";
 export { netlifyAdapter } from "./adapters/netlify";

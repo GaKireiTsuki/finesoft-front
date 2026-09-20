@@ -1,13 +1,10 @@
 import { type LocaleAttributes, type RuntimeHandle, type Translator } from "@finesoft/core";
-import type { Action } from "../actions/types";
+import type { ActionDispatcher } from "../actions/dispatcher";
 import type { BasePage } from "../models/page";
-import type { WebSession } from "../application/session";
 import type { NavigationSnapshot, ResolvedDestination } from "../navigation/types";
-import type {
-    NavigationScopedState,
-    SessionStateProvider,
-    SessionWriteResult,
-} from "../session/types";
+import type { SessionStore } from "../session/types";
+import type { Action, ActionInvocation } from "../actions/types";
+import type { AppQueries, AppParams, WebAppDefinition } from "./types";
 
 export interface NavigationSummary {
     readonly canGoBack: boolean;
@@ -22,42 +19,30 @@ export interface AppSnapshot extends NavigationSnapshot {
     readonly entries: readonly ViewEntry[];
     readonly navigation: NavigationSummary;
 }
-export interface NavigationCommands extends Pick<
-    WebSession,
-    | "push"
-    | "pop"
-    | "popToRoot"
-    | "replaceTop"
-    | "selectTab"
-    | "selectColumn"
-    | "setVisibility"
-    | "reuseEntry"
-    | "refresh"
-    | "hydrate"
-> {
-    navigate(url: string): Promise<void>;
-}
-export interface SessionAccess {
-    readonly scope: NavigationScopedState;
-    register<T>(provider: SessionStateProvider<T>): () => void;
-    save(): Promise<SessionWriteResult>;
-    clear(): Promise<SessionWriteResult>;
-}
 /** Native roots consume the same view during SSR and in the browser. */
-export interface WebAppView {
+export interface WebAppView<Definition extends WebAppDefinition = WebAppDefinition> extends Pick<
+    ActionDispatcher<NavigationSnapshot>,
+    "onAction" | "removeAction"
+> {
+    perform(
+        this: void,
+        action: Action<AppParams<Definition>, AppQueries<Definition>>,
+        invocation?: ActionInvocation,
+    ): Promise<NavigationSnapshot>;
     readonly runtime: RuntimeHandle;
-    readonly navigation: NavigationCommands;
-    readonly session?: SessionAccess;
+    readonly session?: SessionStore;
     readonly locale?: LocaleAttributes;
     readonly translator?: Translator;
-    perform(this: void, action: Action): Promise<void>;
     getSnapshot(this: void): AppSnapshot;
     subscribe(this: void, listener: () => void): () => void;
     /** Called by a native post-commit hook; it never waits for session restore. */
     commit(this: void, revision: number): void;
 }
-export interface ViewProps<P extends BasePage = BasePage> {
+export interface ViewProps<
+    P extends BasePage = BasePage,
+    Definition extends WebAppDefinition = WebAppDefinition,
+> {
     readonly page: P;
-    readonly app: WebAppView;
+    readonly app: WebAppView<Definition>;
     readonly entry: ViewEntry;
 }

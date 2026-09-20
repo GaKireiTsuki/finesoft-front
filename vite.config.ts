@@ -1,6 +1,21 @@
 import { defineConfig } from "vite-plus";
 import { configDefaults } from "vite-plus/test/config";
 import type { CoverageV8Options } from "vite-plus/test/node";
+import { generateControllerTypes } from "./packages/server/src/controller-types";
+import { syncTemplateSources } from "./scripts/sync-template-sources.mjs";
+
+// Generate from source before checks, including fresh checkouts without built packages.
+for (const name of ["react", "react-minimal"])
+    generateControllerTypes({
+        root: new URL(`./templates/${name}/`, import.meta.url).pathname,
+        tsconfig: "../tsconfig.controller-types.json",
+    });
+syncTemplateSources();
+for (const name of ["vue", "svelte", "vue-minimal", "svelte-minimal"])
+    generateControllerTypes({
+        root: new URL(`./templates/${name}/`, import.meta.url).pathname,
+        tsconfig: "../tsconfig.controller-types.json",
+    });
 
 const coverage: CoverageV8Options = {
     reporter: ["text", "html", "lcov", "json-summary"],

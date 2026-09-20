@@ -1,4 +1,4 @@
-import { BaseController } from "@finesoft/front";
+import { BaseController, type ControllerInput } from "@finesoft/front";
 import { markPublic } from "@finesoft/front/web";
 import type { FeedItem, HomePage } from "../models/page";
 
@@ -8,7 +8,10 @@ const ITEMS: readonly FeedItem[] = [
     { id: "3", title: "Navigation-scoped state" },
 ];
 
-export class HomeController extends BaseController<Record<string, string>, HomePage> {
+export class HomeController extends BaseController<
+    ControllerInput<Record<string, string>>,
+    HomePage
+> {
     execute(): HomePage {
         return markPublic(
             {

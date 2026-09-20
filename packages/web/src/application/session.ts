@@ -18,9 +18,11 @@ import type { AfterLoadGuard, BeforeLoadGuard, NavigationContext } from "../midd
 import { bindExecutionCancellation } from "../application/execution";
 import { notifyObservers } from "../utils/notify-observers";
 import { deserializeNavigation, serializeNavigation } from "../navigation/serialization";
-import { SessionError, type SessionNavigation } from "../session/types";
-import type { Action } from "../actions/types";
-import type { AppSnapshot, NavigationSummary, SessionAccess, ViewEntry, WebAppView } from "./view";
+import { SessionError, type SessionNavigation, type SessionStore } from "../session/types";
+import { ActionDispatcher } from "../actions/dispatcher";
+import { ACTION_KINDS, type ActionInvocation, type TreeAction } from "../actions/types";
+import type { WebAppDefinition } from "./types";
+import type { AppSnapshot, NavigationSummary, ViewEntry, WebAppView } from "./view";
 import { resourceKey } from "../navigation/keys";
 import type { RouteParams } from "../router/types";
 import { leaf, stack } from "../navigation/nodes";
@@ -48,109 +50,7 @@ import type {
     NavigationSnapshot,
     Page,
     ResolvedDestination,
-    SplitVisibility,
 } from "../navigation/types";
-
-// =====================================================================
-// NavigationOperation — 声明式操作（可辨识联合）
-// =====================================================================
-
-/** 导航操作 Kind 常量 */
-export const NAVIGATION_OP_KINDS = {
-    PUSH: "push",
-    POP: "pop",
-    POP_TO_ROOT: "popToRoot",
-    POP_TO: "popTo",
-    REPLACE_TOP: "replaceTop",
-    SELECT_TAB: "selectTab",
-    SELECT_COLUMN: "selectColumn",
-    SET_VISIBILITY: "setVisibility",
-    HYDRATE: "hydrate",
-    REUSE_ENTRY: "reuseEntry",
-} as const;
-
-/** 所有导航操作 Kind 的联合类型 */
-export type NavigationOpKind = (typeof NAVIGATION_OP_KINDS)[keyof typeof NAVIGATION_OP_KINDS];
-
-/** push：在目标栈顶压入一个新 leaf（intent + params）。 */
-export interface PushOperation {
-    readonly kind: typeof NAVIGATION_OP_KINDS.PUSH;
-    readonly intent: string;
-    readonly params?: RouteParams;
-    readonly target?: NavigationPath;
-    readonly url?: string;
-}
-
-/** pop：从目标栈弹出 count 个 entry（默认 1）。 */
-export interface PopOperation {
-    readonly kind: typeof NAVIGATION_OP_KINDS.POP;
-    readonly count?: number;
-    readonly target?: NavigationPath;
-}
-
-/** popToRoot：把目标栈弹回根 entry。 */
-export interface PopToRootOperation {
-    readonly kind: typeof NAVIGATION_OP_KINDS.POP_TO_ROOT;
-    readonly target?: NavigationPath;
-}
-
-/** popTo：把目标栈弹回指定 index。 */
-export interface PopToOperation {
-    readonly kind: typeof NAVIGATION_OP_KINDS.POP_TO;
-    readonly index: number;
-    readonly target?: NavigationPath;
-}
-
-/** replaceTop：替换目标栈的栈顶为新 leaf。 */
-export interface ReplaceTopOperation {
-    readonly url?: string;
-    readonly kind: typeof NAVIGATION_OP_KINDS.REPLACE_TOP;
-    readonly intent: string;
-    readonly params?: RouteParams;
-    readonly target?: NavigationPath;
-}
-
-/** selectTab：切换 tabs 节点的激活分支。 */
-export interface SelectTabOperation {
-    readonly kind: typeof NAVIGATION_OP_KINDS.SELECT_TAB;
-    readonly key: string;
-    readonly target?: NavigationPath;
-}
-
-/** selectColumn：设置 split 某列内容（intent 为 undefined 表示清空该列）。 */
-export interface SelectColumnOperation {
-    readonly kind: typeof NAVIGATION_OP_KINDS.SELECT_COLUMN;
-    readonly columnId: string;
-    readonly intent: string | undefined;
-    readonly params?: RouteParams;
-    readonly target?: NavigationPath;
-}
-
-/** setVisibility：设置 split 节点的列可见性（对标 NavigationSplitViewVisibility）。 */
-export interface SetVisibilityOperation {
-    readonly kind: typeof NAVIGATION_OP_KINDS.SET_VISIBILITY;
-    readonly visibility: SplitVisibility;
-    readonly target?: NavigationPath;
-}
-
-/** hydrate：用外部给定的整棵树替换当前树（来自 history/URL 还原）。 */
-export interface HydrateOperation {
-    readonly kind: typeof NAVIGATION_OP_KINDS.HYDRATE;
-    readonly tree: NavigationNode;
-}
-
-/** 所有导航操作的可辨识联合。 */
-export type NavigationOperation =
-    | { readonly kind: "reuseEntry"; readonly entryId: string }
-    | PushOperation
-    | PopOperation
-    | PopToRootOperation
-    | PopToOperation
-    | ReplaceTopOperation
-    | SelectTabOperation
-    | SelectColumnOperation
-    | SetVisibilityOperation
-    | HydrateOperation;
 
 // =====================================================================
 // 上下文构建回调
@@ -174,6 +74,7 @@ export interface NavigationContextInput {
     readonly execution: ExecutionContext;
     readonly intent: string;
     readonly params: RouteParams;
+    readonly query?: RouteParams;
     readonly signal?: AbortSignal;
     readonly url?: string;
 }
@@ -217,15 +118,13 @@ export type BeforeCommitPolicy = (
     context: NavigationCommitContext,
 ) => BeforeCommitResult | Promise<BeforeCommitResult>;
 
-export interface WebSessionOptions {
-    readonly navigate?: (url: string) => Promise<void>;
-    readonly perform?: (action: Action) => Promise<void>;
+export interface WebSessionOptions<Definition extends WebAppDefinition = WebAppDefinition> {
     readonly commit?: (revision: number) => void;
-    readonly session?: () => SessionAccess | undefined;
+    readonly session?: () => SessionStore | undefined;
     readonly captureUrl?: () => string | undefined;
     readonly beforeNavigate?: readonly BeforeNavigatePolicy[];
     readonly beforeCommit?: readonly BeforeCommitPolicy[];
-    readonly web: WebRuntime;
+    readonly web: WebRuntime<Definition>;
     readonly execution?: ExecutionHandle;
     readonly viewReady?: (
         snapshot: NavigationSnapshot,
@@ -263,76 +162,27 @@ export interface WebSessionOptions {
 }
 
 /** Shared navigation, native view and persistence owner. */
-export interface WebSession extends WebAppView, SessionNavigation {
-    navigate(this: void, url: string): Promise<void>;
+export interface WebSession<Definition extends WebAppDefinition = WebAppDefinition>
+    extends WebAppView<Definition>, SessionNavigation {
     /** Initial host presentation; rejected candidates are sanitized without committing them. */
-    start(this: void): Promise<AppSnapshot>;
+    start(this: void, invocation?: ActionInvocation): Promise<AppSnapshot>;
     /** 当前导航树。 */
     getTree(this: void): NavigationNode;
-    getEntries(this: void): readonly ResolvedDestination[];
     onCommit(
         this: void,
         listener: (snapshot: AppSnapshot, previous: AppSnapshot) => void,
     ): () => void;
     /** 当前快照（树 + 已解析的可见目标）。 */
     getSnapshot(this: void): AppSnapshot;
-    /** 应用一个声明式操作，重解析并提交，返回新快照。 */
-    apply(
-        this: void,
-        op: NavigationOperation,
-        options?: { signal?: AbortSignal },
-    ): Promise<NavigationSnapshot>;
-    cancel(this: void): void;
+    cancel(this: void, invocation?: ActionInvocation): void;
     dispose(this: void): Promise<void>;
-    reuseEntry(this: void, entryId: string): Promise<NavigationSnapshot>;
-    /** 便捷：在激活栈压入新目标。 */
-    push(
-        this: void,
-        intent: string,
-        params?: RouteParams,
-        options?: PushOptions,
-    ): Promise<NavigationSnapshot>;
-    /** 便捷：从激活栈弹出。 */
-    pop(this: void, count?: number): Promise<NavigationSnapshot>;
-    /** 便捷：激活栈弹回根。 */
-    popToRoot(this: void): Promise<NavigationSnapshot>;
-    /** 便捷：替换激活栈栈顶。 */
-    replaceTop(this: void, intent: string, params?: RouteParams): Promise<NavigationSnapshot>;
-    /** 便捷：切换 tabs 激活分支。 */
-    selectTab(this: void, key: string, target?: NavigationPath): Promise<NavigationSnapshot>;
-    /** 便捷：设置 split 列内容（intent=undefined 清空）。 */
-    selectColumn(
-        this: void,
-        columnId: string,
-        intent: string | undefined,
-        params?: RouteParams,
-        target?: NavigationPath,
-    ): Promise<NavigationSnapshot>;
-    /** 便捷：设置 split 列可见性（对标 NavigationSplitViewVisibility）；改变可见集会触发新可见列的派发。 */
-    setVisibility(
-        this: void,
-        visibility: SplitVisibility,
-        target?: NavigationPath,
-    ): Promise<NavigationSnapshot>;
-    /** 用外部树替换当前树并重解析（history/URL 还原）。 */
-    hydrate(this: void, tree: NavigationNode): Promise<NavigationSnapshot>;
     /**
      * 清除页面缓存：给 `entryId` 清单个，
      * 不传清全部。仅清缓存、不触发重解析——该条目下次被解析时重新 dispatch。
      */
     invalidate(this: void, entryKey?: string): void;
-    /** 清当前激活叶子的缓存并重解析当前树（「下拉刷新」式：守卫跑、数据重 fetch）。 */
-    refresh(this: void): Promise<NavigationSnapshot>;
     /** 订阅快照变更；返回取消订阅函数。 */
     subscribe(this: void, listener: (snapshot: AppSnapshot) => void): () => void;
-    /** 解析当前树（首屏 SSR/CSR），提交并返回快照。 */
-    resolve(this: void): Promise<NavigationSnapshot>;
-}
-
-/** `push` 便捷方法的可选项。 */
-export interface PushOptions {
-    readonly url?: string;
-    readonly target?: NavigationPath;
 }
 
 // =====================================================================
@@ -343,8 +193,16 @@ function defaultErrorPage(status: number, message: string): Page {
     return { id: `error-${status}`, pageType: "error", title: message };
 }
 
+const TREE_ACTION_KINDS = Object.values(ACTION_KINDS).filter(
+    (kind) => kind !== "flow" && kind !== "externalUrl" && kind !== "compound",
+);
+
+export function createWebSession<Definition extends WebAppDefinition>(
+    options: WebSessionOptions<Definition>,
+): WebSession<Definition>;
 export function createWebSession(options: WebSessionOptions): WebSession {
     const web = options.web;
+    let locale: WebAppView["locale"], translator: WebAppView["translator"];
     const beforeNavigate = [
         ...(web.definition?.beforeNavigate ?? []),
         ...(options.beforeNavigate ?? []),
@@ -358,7 +216,9 @@ export function createWebSession(options: WebSessionOptions): WebSession {
         revision: 0,
         navigation: summarize(options.initial),
     });
-    // Initial failure is presentation only; commands and persistence still target the
+    const actions = new ActionDispatcher<NavigationSnapshot>(() => snapshot);
+    const cancelActions = actions.cancel;
+    // Initial failure is presentation only; actions and persistence still target the
     // original input until the first successful transaction commits.
     let retryInitial = false;
     const navigationTree = () => (retryInitial ? options.initial : snapshot.tree);
@@ -376,14 +236,14 @@ export function createWebSession(options: WebSessionOptions): WebSession {
     let inflight: Promise<unknown> = Promise.resolve();
     const settling = new Set<Promise<unknown>>();
     let current: AbortController | undefined;
-    let generation = 0;
     let closed = false;
     function enqueue(produce: () => Promise<NavigationSnapshot>): Promise<NavigationSnapshot> {
         if (closed)
             return Promise.reject(new ExecutionError("configuration", "Navigation is closed"));
-        const submittedGeneration = generation;
+        const submittedGeneration = actions.generation;
         const runCurrent = () => {
-            if (closed || submittedGeneration !== generation) throw new ExecutionError("cancelled");
+            if (closed || submittedGeneration !== actions.generation)
+                throw new ExecutionError("cancelled");
             return produce();
         };
         const run = inflight.then(runCurrent, runCurrent);
@@ -401,13 +261,14 @@ export function createWebSession(options: WebSessionOptions): WebSession {
         historyMode?: "push" | "replace",
         refreshEntryId?: string,
     ): Promise<NavigationSnapshot> {
-        const ownGeneration = generation;
+        const ownGeneration = actions.generation;
         const check = () => {
             if (signal?.aborted) {
                 options.execution?.cancel(signal.reason);
                 throw new ExecutionError("cancelled");
             }
-            if (closed || ownGeneration !== generation) throw new ExecutionError("cancelled");
+            if (closed || ownGeneration !== actions.generation)
+                throw new ExecutionError("cancelled");
         };
         const transaction = {
             from: retryInitial ? { tree: options.initial, destinations: [] } : snapshot,
@@ -446,7 +307,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
         historyMode?: "push" | "replace",
         refreshEntryId?: string,
     ): Promise<{ snapshot: NavigationSnapshot; redirect?: { url: string; status: number } }> {
-        const ownGeneration = generation;
+        const ownGeneration = actions.generation;
         const ownInvalidation = invalidationVersion;
         const ids = new Set<string>();
         for (const dest of collectAllLeaves(nextTree)) {
@@ -461,7 +322,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
             if (
                 combined.aborted ||
                 execution.context.signal.aborted ||
-                ownGeneration !== generation ||
+                ownGeneration !== actions.generation ||
                 ownInvalidation !== invalidationVersion
             )
                 throw new ExecutionError("cancelled");
@@ -510,7 +371,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                 }
             for (const dest of collectVisibleDestinations(nextTree)) {
                 check();
-                const key = resourceKey(dest.intent, dest.params, execution.context);
+                const key = resourceKey(dest.intent, dest.params, execution.context, dest.query);
                 const retained =
                     retryInitial || dest.entryId === refreshEntryId || stale.has(dest.entryId)
                         ? undefined
@@ -528,6 +389,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                             execution: active.context,
                             intent: intent.id,
                             params: intent.params ?? {},
+                            query: intent.query ?? {},
                             signal: combined,
                             url,
                         });
@@ -536,6 +398,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                                 url,
                                 path: new URL(url, "http://localhost").pathname,
                                 params: intent.params ?? {},
+                                query: intent.query ?? {},
                                 intent,
                                 isServer: options.isServer ?? true,
                                 container: active.context.container,
@@ -568,10 +431,12 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                                   result.target.intent,
                                   result.target.params,
                                   execution.context,
+                                  result.target.query,
                               )
                             : key,
                     intent: result.kind === "page" ? result.target.intent : dest.intent,
                     params: result.kind === "page" ? result.target.params : dest.params,
+                    query: result.kind === "page" ? result.target.query : dest.query,
                     page:
                         result.kind === "page"
                             ? result.page
@@ -691,34 +556,46 @@ export function createWebSession(options: WebSessionOptions): WebSession {
     // 内部：声明式操作 → 下一棵树（纯）
     // ---------------------------------------------------------------
 
-    function computeNextTree(op: NavigationOperation): NavigationNode {
+    function computeNextTree(op: TreeAction): NavigationNode {
         const tree = navigationTree();
         switch (op.kind) {
-            case NAVIGATION_OP_KINDS.REUSE_ENTRY:
+            case ACTION_KINDS.REUSE_ENTRY:
                 return reuseEntry(tree, op.entryId);
-            case NAVIGATION_OP_KINDS.PUSH:
-                return push(tree, leaf(op.intent, op.params, { url: op.url }), op.target);
-            case NAVIGATION_OP_KINDS.POP:
+            case ACTION_KINDS.PUSH:
+                return push(
+                    tree,
+                    leaf(op.intent, op.params, { url: op.url, query: op.query }),
+                    op.target,
+                );
+            case ACTION_KINDS.POP:
                 return pop(tree, op.count, op.target);
-            case NAVIGATION_OP_KINDS.POP_TO_ROOT:
+            case ACTION_KINDS.POP_TO_ROOT:
                 return popToRoot(tree, op.target);
-            case NAVIGATION_OP_KINDS.POP_TO:
+            case ACTION_KINDS.POP_TO:
                 return popTo(tree, op.index, op.target);
-            case NAVIGATION_OP_KINDS.REPLACE_TOP:
-                return replaceTop(tree, leaf(op.intent, op.params, { url: op.url }), op.target);
-            case NAVIGATION_OP_KINDS.SELECT_TAB:
+            case ACTION_KINDS.REPLACE_TOP:
+                return replaceTop(
+                    tree,
+                    leaf(op.intent, op.params, { url: op.url, query: op.query }),
+                    op.target,
+                );
+            case ACTION_KINDS.SELECT_TAB:
                 return selectTab(tree, op.key, op.target);
-            case NAVIGATION_OP_KINDS.SELECT_COLUMN:
+            case ACTION_KINDS.SELECT_COLUMN:
                 return selectColumn(
                     tree,
                     op.columnId,
-                    op.intent === undefined ? undefined : leaf(op.intent, op.params),
+                    op.intent === undefined
+                        ? undefined
+                        : leaf(op.intent, op.params, { query: op.query }),
                     op.target,
                 );
-            case NAVIGATION_OP_KINDS.SET_VISIBILITY:
+            case ACTION_KINDS.SET_VISIBILITY:
                 return setVisibility(tree, op.visibility, op.target);
-            case NAVIGATION_OP_KINDS.HYDRATE:
+            case ACTION_KINDS.HYDRATE:
                 return op.tree;
+            case ACTION_KINDS.REFRESH:
+                return tree;
         }
     }
 
@@ -726,43 +603,24 @@ export function createWebSession(options: WebSessionOptions): WebSession {
     // 公共 API
     // ---------------------------------------------------------------
 
-    function apply(
-        op: NavigationOperation,
-        invocation?: { signal?: AbortSignal },
+    function performTree(
+        op: TreeAction,
+        invocation?: ActionInvocation,
     ): Promise<NavigationSnapshot> {
         return enqueue(() => {
             return resolveTree(
                 computeNextTree(op),
                 invocation?.signal,
-                op.kind === "replaceTop" ? "replace" : "push",
+                op.kind === "refresh" ? undefined : op.kind === "replaceTop" ? "replace" : "push",
+                op.kind === "refresh" ? findActiveLeaf(navigationTree())?.entryId : undefined,
             );
         });
     }
 
-    const session: WebSession = {
+    for (const kind of TREE_ACTION_KINDS) actions.onAction<TreeAction>(kind, performTree);
+    // Preserve live getters while giving the action executor its state and lifecycle.
+    const session = Object.assign(actions, {
         runtime: web.runtime,
-        get navigation() {
-            return session;
-        },
-        navigate:
-            options.navigate ??
-            (async () => {
-                throw new ExecutionError("configuration", "This host cannot navigate URLs");
-            }),
-        perform:
-            options.perform ??
-            (async () => {
-                throw new ExecutionError("configuration", "This host cannot perform actions");
-            }),
-        get session() {
-            return options.session?.();
-        },
-        get locale() {
-            return web.getLocale();
-        },
-        get translator() {
-            return web.getTranslator();
-        },
         commit(revision) {
             if (revision === snapshot.revision) options.commit?.(revision);
         },
@@ -771,15 +629,27 @@ export function createWebSession(options: WebSessionOptions): WebSession {
         presentKeys: () => presentIds.values(),
         async restoreNavigation(navigation) {
             if (navigation === undefined) return;
-            const candidate = await session.hydrate(deserializeNavigation(navigation));
+            const candidate = await session.perform({
+                kind: "hydrate",
+                tree: deserializeNavigation(navigation),
+            });
             if (candidate !== snapshot) throw new SessionError("navigation-uncommitted");
         },
-        async start() {
+        async start(invocation) {
             if (snapshot.revision)
                 throw new ExecutionError("configuration", "Web session already started");
-            const ownGeneration = generation;
-            const candidate = await session.resolve();
-            if (closed || ownGeneration !== generation) throw new ExecutionError("cancelled");
+            const ownGeneration = actions.generation;
+            [locale, translator] = await Promise.all([
+                web.getLocale(options.execution),
+                web.getTranslator(options.execution),
+            ]);
+            if (closed || ownGeneration !== actions.generation || invocation?.signal?.aborted)
+                throw new ExecutionError("cancelled");
+            const candidate = await enqueue(() =>
+                resolveTree(navigationTree(), invocation?.signal),
+            );
+            if (closed || ownGeneration !== actions.generation)
+                throw new ExecutionError("cancelled");
             if (candidate !== snapshot) {
                 let result = candidate;
                 if (candidate.rejection) {
@@ -805,9 +675,6 @@ export function createWebSession(options: WebSessionOptions): WebSession {
             }
             return snapshot;
         },
-        getEntries() {
-            return snapshot.entries;
-        },
         onCommit(listener) {
             commitSteps.add(listener);
             return () => {
@@ -820,13 +687,9 @@ export function createWebSession(options: WebSessionOptions): WebSession {
         getSnapshot() {
             return snapshot;
         },
-        apply,
-        reuseEntry(entryId) {
-            return apply({ kind: "reuseEntry", entryId });
-        },
         async dispose() {
             closed = true;
-            generation++;
+            actions.close();
             current?.abort();
             await Promise.allSettled(settling);
             unsubscribeInvalidation();
@@ -835,48 +698,12 @@ export function createWebSession(options: WebSessionOptions): WebSession {
             entries.clear();
             stale.clear();
         },
-        cancel() {
-            generation++;
+        cancel(invocation) {
+            cancelActions(invocation);
             current?.abort();
             // A cancelled handler may still be settling. Its generation cannot commit,
             // but it must not hold the next navigation behind its ignored abort signal.
             inflight = Promise.resolve();
-        },
-        push(intent, params, opts) {
-            return apply({
-                kind: NAVIGATION_OP_KINDS.PUSH,
-                intent,
-                params,
-                target: opts?.target,
-                url: opts?.url,
-            });
-        },
-        pop(count) {
-            return apply({ kind: NAVIGATION_OP_KINDS.POP, count });
-        },
-        popToRoot() {
-            return apply({ kind: NAVIGATION_OP_KINDS.POP_TO_ROOT });
-        },
-        replaceTop(intent, params) {
-            return apply({ kind: NAVIGATION_OP_KINDS.REPLACE_TOP, intent, params });
-        },
-        selectTab(key, target) {
-            return apply({ kind: NAVIGATION_OP_KINDS.SELECT_TAB, key, target });
-        },
-        selectColumn(columnId, intent, params, target) {
-            return apply({
-                kind: NAVIGATION_OP_KINDS.SELECT_COLUMN,
-                columnId,
-                intent,
-                params,
-                target,
-            });
-        },
-        setVisibility(visibility, target) {
-            return apply({ kind: NAVIGATION_OP_KINDS.SET_VISIBILITY, visibility, target });
-        },
-        hydrate(nextTree) {
-            return apply({ kind: NAVIGATION_OP_KINDS.HYDRATE, tree: nextTree });
         },
         invalidate(entryKey) {
             if (entryKey === undefined) {
@@ -885,27 +712,21 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                 stale.add(entryKey);
             }
         },
-        refresh() {
-            return enqueue(async () => {
-                const tree = navigationTree();
-                const active = findActiveLeaf(tree);
-                return resolveTree(tree, undefined, undefined, active?.entryId);
-            });
-        },
         subscribe(listener) {
             listeners.add(listener);
             return () => {
                 listeners.delete(listener);
             };
         },
-        resolve() {
-            // resolve() 对当前树做解析；缓存为空时全部 dispatch，非空时复用仍在树中的条目。
-            // 与 apply 共用串行队列，避免 resolve 与并发 apply 互相覆盖。
-            return enqueue(async () => {
-                return resolveTree(navigationTree());
-            });
-        },
-    };
+    } satisfies Omit<
+        WebSession,
+        "perform" | "onAction" | "removeAction"
+    >) as ActionDispatcher<NavigationSnapshot> & WebSession;
+    Object.defineProperties(session, {
+        session: { get: () => options.session?.(), enumerable: true },
+        locale: { get: () => locale, enumerable: true },
+        translator: { get: () => translator, enumerable: true },
+    });
     return session;
 }
 

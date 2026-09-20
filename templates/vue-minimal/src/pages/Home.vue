@@ -18,7 +18,7 @@ const locale = computed(() => getHomeLocale(app));
         <p>{{ page.description }}</p>
         <ul class="feed">
             <li v-for="item in page.items" :key="item.id">
-                <button @click="app.navigation.navigate(`/item/${item.id}`)">
+                <button @click="app.perform({ kind: 'flow', url: `/item/${item.id}` })">
                     {{ item.title }}
                 </button>
             </li>

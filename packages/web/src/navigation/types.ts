@@ -41,6 +41,7 @@ export interface LeafNode {
     readonly kind: typeof NAVIGATION_NODE_KINDS.LEAF;
     readonly intent: string;
     readonly params: RouteParams;
+    readonly query?: RouteParams;
 }
 
 /** 栈：有序路径，entries[0]=根，末尾=栈顶（可见） */
@@ -118,6 +119,7 @@ export interface ResolvedDestination {
     readonly resourceKey: ResourceKey;
     readonly intent: string;
     readonly params: RouteParams;
+    readonly query?: RouteParams;
     readonly page: Page;
     readonly status?: number;
 }

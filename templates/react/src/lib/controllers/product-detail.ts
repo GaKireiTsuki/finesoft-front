@@ -1,15 +1,13 @@
-import {
-    BaseController,
-    DEP_KEYS,
-    type ExecutionContext,
-    type Logger,
-    type LoggerFactory,
-} from "@finesoft/front";
+import { BaseController, DEP_KEYS, type Logger, type LoggerFactory } from "@finesoft/front";
 import { markPublic } from "@finesoft/front/web";
 import type { ProductPage } from "../models/product";
+import type {
+    ProductDetailControllerFailure as Failure,
+    ProductDetailControllerInput as Input,
+} from "../../../.finesoft/controller-types";
 
-export class ProductDetailController extends BaseController<{ id: number }, ProductPage> {
-    async execute(params: { id: number }, context: ExecutionContext): Promise<ProductPage> {
+export class ProductDetailController extends BaseController<Input, ProductPage> {
+    async execute({ params, context }: Input): Promise<ProductPage> {
         const loggerFactory = await context.get<LoggerFactory>(DEP_KEYS.LOGGER_FACTORY);
         const log: Logger = loggerFactory.loggerFor("ProductDetailController");
         log.info(`Loading product ${params.id}`);
@@ -27,15 +25,23 @@ export class ProductDetailController extends BaseController<{ id: number }, Prod
                     name: `Product ${params.id}`,
                     price: 29.99,
                     description:
-                        "This is a demo product showcasing BaseController with typed params and DI container usage.",
+                        "This is a demo product showcasing route-inferred params and DI container usage.",
                     imageUrl: `/img/product-${params.id}.svg`,
                 },
             },
-            { product: { id: true, name: true, price: true, description: true, imageUrl: true } },
+            {
+                product: {
+                    id: true,
+                    name: true,
+                    price: true,
+                    description: true,
+                    imageUrl: true,
+                },
+            },
         );
     }
 
-    fallback(params: { id: number }, error: Error): ProductPage {
+    fallback({ params, error }: Failure): ProductPage {
         return markPublic(
             {
                 id: `product-${params.id}`,
@@ -51,7 +57,15 @@ export class ProductDetailController extends BaseController<{ id: number }, Prod
                     imageUrl: "/img/placeholder.svg",
                 },
             },
-            { product: { id: true, name: true, price: true, description: true, imageUrl: true } },
+            {
+                product: {
+                    id: true,
+                    name: true,
+                    price: true,
+                    description: true,
+                    imageUrl: true,
+                },
+            },
         );
     }
 }

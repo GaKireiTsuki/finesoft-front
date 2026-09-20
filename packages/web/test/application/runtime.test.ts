@@ -6,6 +6,7 @@ import {
     createToken,
     defineApp,
     provide,
+    SimpleTranslator,
 } from "@finesoft/core";
 import { createWebRuntime, defineWebApp, loadPage, leaf, PrefetchedIntents } from "../../src";
 const definition = () =>
@@ -108,6 +109,88 @@ test("typed provider overrides and request fetch stay scoped without string regi
     ).toBe("a");
     expect((await b.context.get(DEP_KEYS.STORAGE)).get("x")).toBe("custom");
     await web.dispose();
+});
+
+test("Web getters resolve injected services from the supplied execution", async () => {
+    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const factory = { loggerFor: vi.fn(() => log) };
+    const locale = { lang: "fr", dir: "rtl" };
+    const translator = new SimpleTranslator({ locale: "fr", messages: { greeting: "Bonjour" } });
+    const dispose = vi.fn();
+    const web = createWebRuntime({
+        definition: defineWebApp({
+            ...definition(),
+            app: defineApp({
+                id: "overrides",
+                providers: [
+                    provide({
+                        token: DEP_KEYS.LOCALE,
+                        lifetime: "scope",
+                        create: async () => locale,
+                    }),
+                    provide({
+                        token: DEP_KEYS.TRANSLATOR,
+                        lifetime: "scope",
+                        create: async () => translator,
+                        dispose,
+                    }),
+                    provide({
+                        token: DEP_KEYS.LOGGER_FACTORY,
+                        lifetime: "runtime",
+                        value: factory,
+                    }),
+                ],
+            }),
+        }),
+        locale: "en",
+    });
+    const execution = web.createExecution();
+    expect(await web.getLocale(execution)).toBe(await execution.context.get(DEP_KEYS.LOCALE));
+    expect(await web.getLocale(execution)).toBe(locale);
+    expect(await web.getTranslator(execution)).toBe(
+        await execution.context.get(DEP_KEYS.TRANSLATOR),
+    );
+    expect(await web.getTranslator(execution)).toBe(translator);
+    (await web.getLogger(execution)).info("host");
+    expect(await web.getLogger()).toBe(await execution.context.get(DEP_KEYS.LOGGER));
+    expect(factory.loggerFor).toHaveBeenCalledTimes(1);
+    expect(log.info).toHaveBeenCalledWith("host");
+    expect(dispose).not.toHaveBeenCalled();
+    await execution.dispose();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    await web.dispose();
+    expect(dispose).toHaveBeenCalledTimes(1);
+});
+
+test("optional Web getters preserve absence without hiding provider failures", async () => {
+    const web = createWebRuntime({ definition: definition() });
+    expect(await web.getLocale()).toBeUndefined();
+    expect(await web.getTranslator()).toBeUndefined();
+    await expect(web.createExecution().context.get(DEP_KEYS.LOCALE)).rejects.toMatchObject({
+        code: "configuration",
+    });
+    await web.dispose();
+
+    const error = Error("provider failed");
+    const broken = createWebRuntime({
+        definition: defineWebApp({
+            ...definition(),
+            app: defineApp({
+                id: "broken",
+                providers: [
+                    provide({
+                        token: DEP_KEYS.LOCALE,
+                        lifetime: "scope",
+                        create() {
+                            throw error;
+                        },
+                    }),
+                ],
+            }),
+        }),
+    });
+    await expect(broken.getLocale()).rejects.toBe(error);
+    await broken.dispose();
 });
 test("safe fetch keeps its configured host resolver and blocks private destinations", async () => {
     const fetch = vi.fn(async () => new Response("ok"));

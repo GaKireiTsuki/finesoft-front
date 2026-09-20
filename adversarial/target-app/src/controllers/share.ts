@@ -1,4 +1,5 @@
-import { BaseController, DEP_KEYS, HostGuardError, type ExecutionContext } from "@finesoft/front";
+import type { ControllerInput } from "@finesoft/front";
+import { BaseController, DEP_KEYS, HostGuardError } from "@finesoft/front";
 import type { BasePage } from "@finesoft/front/web";
 
 interface ShareParams extends Record<string, string | undefined> {
@@ -9,9 +10,15 @@ interface SharePage extends BasePage {
     preview?: string;
 }
 
-export class ShareController extends BaseController<ShareParams, SharePage> {
-    async execute(params: ShareParams, context: ExecutionContext): Promise<SharePage> {
-        const target = params.next ?? "https://example.com";
+export class ShareController extends BaseController<
+    ControllerInput<Record<string, unknown>, ShareParams>,
+    SharePage
+> {
+    async execute({
+        query,
+        context,
+    }: ControllerInput<Record<string, unknown>, ShareParams>): Promise<SharePage> {
+        const target = query.next ?? "https://example.com";
 
         // SAFE_FETCH wraps DEP_KEYS.FETCH with SSRF defense (refuses loopback /
         // private / reserved hosts, including IPv4-mapped IPv6 and DNS-resolves

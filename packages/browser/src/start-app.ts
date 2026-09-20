@@ -1,7 +1,6 @@
 import { detectPlatform, ExecutionError } from "@finesoft/core";
 import {
     ACTION_KINDS,
-    ActionDispatcher,
     collectVisibleDestinations,
     createWebRuntime,
     createWebSession,
@@ -25,11 +24,13 @@ import {
     type NavigationContextInput,
     type FlowAction,
     type ExternalUrlAction,
+    type ActionInvocation,
+    type TreeAction,
     type BasePage,
 } from "@finesoft/web";
-import { createNavigationBridge, type NavigationHandle } from "./navigation-bridge";
+import { createNavigationBridge, type NavigationBridge } from "./navigation-bridge";
 import { deserializeServerData } from "./server-data";
-import { createSessionBridge, type SessionHandle } from "./session-bridge";
+import { createSessionBridge, type BrowserSession } from "./session-bridge";
 import { createWebStorage } from "./web-storage";
 import { createDomRestore, type DomRestore } from "./dom-restore";
 import { createBrowserContext } from "./middleware/context";
@@ -42,8 +43,8 @@ export interface BrowserSessionConfig {
     readonly debounceMs?: number;
     readonly shouldRestore?: (snapshot: SessionSnapshot, currentUrl: string) => boolean;
 }
-export interface BrowserAppConfig {
-    readonly definition: WebAppDefinition;
+export interface BrowserAppConfig<Definition extends WebAppDefinition = WebAppDefinition> {
+    readonly definition: Definition;
     readonly target: HTMLElement;
     readonly history?: "browser" | "memory";
     readonly url?: string;
@@ -54,11 +55,12 @@ export interface BrowserAppConfig {
     readonly serverDataSource?: HTMLScriptElement | null;
     readonly onModal?: (
         page: BasePage,
-        context: { readonly app: WebAppView; readonly snapshot: NavigationSnapshot },
+        context: { readonly app: WebAppView<Definition>; readonly snapshot: NavigationSnapshot },
     ) => void | Promise<void>;
 }
-export interface BrowserAppHandle extends WebAppView {
-    readonly actionDispatcher: ActionDispatcher;
+export interface BrowserAppHandle<
+    Definition extends WebAppDefinition = WebAppDefinition,
+> extends WebAppView<Definition> {
     readonly shouldHydrate: boolean;
     /** Resolves after the first native commit and optional session restore. Mount before awaiting. */
     readonly ready: Promise<void>;
@@ -66,6 +68,9 @@ export interface BrowserAppHandle extends WebAppView {
 }
 const targets = new WeakSet<HTMLElement>();
 const windows = new WeakSet<Window>();
+export function createBrowserApp<Definition extends WebAppDefinition>(
+    config: BrowserAppConfig<Definition>,
+): Promise<BrowserAppHandle<Definition>>;
 export async function createBrowserApp(config: BrowserAppConfig): Promise<BrowserAppHandle> {
     const { target, definition } = config;
     if (!target) throw Error("A browser target is required");
@@ -83,8 +88,8 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
     if (browserHistory) windows.add(win);
     let web: WebRuntime | undefined, controller: WebSession | undefined;
     let disposeSession: WebSession["dispose"] | undefined;
-    let bridge: NavigationHandle | undefined,
-        session: SessionHandle | undefined,
+    let bridge: NavigationBridge | undefined,
+        session: BrowserSession | undefined,
         dom: DomRestore | undefined;
     let closed = false,
         mounted = false,
@@ -100,7 +105,6 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
     void ready.catch(() => {});
     const pending = new Map<number, { resolve: () => void; reject: (error: unknown) => void }>();
     const domResets = new Set<string>();
-    const actionDispatcher = new ActionDispatcher();
     const modalControllers = new Set<WebSession>();
     const modalWork = new Set<Promise<void>>();
     const cleanups: (() => void)[] = [];
@@ -191,8 +195,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                     : PrefetchedIntents.empty(),
         });
         const activeWeb = web;
-        const log = web.getLogger();
-        const attributes = web.getLocale();
+        const [log, attributes] = await Promise.all([web.getLogger(), web.getLocale()]);
         if (attributes) {
             target.setAttribute("lang", attributes.lang);
             target.setAttribute("dir", attributes.dir);
@@ -220,7 +223,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 ? deserializeNavigation(wire.data.tree)
                 : ((await resolveUrl(initialUrl)) ??
                   stack(leaf("@finesoft/not-found", {}, { url: initialUrl })));
-        async function navigate(url: string) {
+        async function navigate(url: string, invocation?: ActionInvocation) {
             if (closed) throw new ExecutionError("configuration", "Browser application is closed");
             const parsed = browserUrl(url);
             if (parsed.origin !== win.location.origin) {
@@ -228,7 +231,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 return;
             }
             const sequence = ++navigationSequence;
-            controller!.cancel();
+            controller!.cancel(invocation);
             const path = parsed.pathname + parsed.search + parsed.hash;
             const tree = controller!.getTree();
             const recovering =
@@ -241,22 +244,49 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 (recovering ? await resolveUrl(path) : undefined) ??
                 codec.decode(path, activeWeb.router);
             const match = overlay ? undefined : await activeWeb.router.resolve(path);
-            if (closed || sequence !== navigationSequence) throw new ExecutionError("cancelled");
-            const result = overlay
-                ? await controller!.hydrate(overlay)
-                : await controller!.push(
-                      match?.intent.id ?? "@finesoft/not-found",
-                      match?.intent.params,
-                      { url: path },
-                  );
+            if (closed || sequence !== navigationSequence || invocation?.signal?.aborted)
+                throw new ExecutionError("cancelled");
+            const sameUrl =
+                !recovering &&
+                parsed.href ===
+                    new URL(codec.encode(tree, activeWeb.router), win.location.href).href;
+            const action: TreeAction = sameUrl
+                ? { kind: "refresh" }
+                : overlay
+                  ? { kind: "hydrate", tree: overlay }
+                  : definition.navigation || definition.navigationCodec
+                    ? {
+                          kind: "push",
+                          intent: match?.intent.id ?? "@finesoft/not-found",
+                          params: match?.intent.params,
+                          query: match?.intent.query,
+                          url: path,
+                      }
+                    : {
+                          kind: "hydrate",
+                          tree: stack(
+                              leaf(
+                                  match?.intent.id ?? "@finesoft/not-found",
+                                  match?.intent.params,
+                                  { url: path, query: match?.intent.query },
+                              ),
+                          ),
+                      };
+            const result = await controller!.perform(action, invocation);
             if (result !== controller!.getSnapshot())
                 throw new ExecutionError("denied", "Navigation was not committed");
         }
-        const createContext = ({ intent, params, url, execution }: NavigationContextInput) => ({
+        const createContext = ({
+            intent,
+            params,
+            query,
+            url,
+            execution,
+        }: NavigationContextInput) => ({
             container: execution.container,
             navigation: createBrowserContext({
                 url: url ?? initialUrl,
-                intent: { id: intent, params },
+                intent: { id: intent, params, query },
                 container: execution.container,
             }),
         });
@@ -272,6 +302,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
             const match = await activeWeb.router.resolve(path);
             const target = leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
                 url: path,
+                query: match?.intent.query,
             });
             const redirected =
                 candidate.destinations.find(
@@ -309,14 +340,6 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 });
         };
         controller = createWebSession({
-            navigate,
-            perform: (action) => {
-                if (closed)
-                    return Promise.reject(
-                        new ExecutionError("configuration", "Browser application is closed"),
-                    );
-                return actionDispatcher.perform(action);
-            },
             session: () => session,
             commit(revision) {
                 if (closed) return;
@@ -339,7 +362,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 queueMicrotask(() => {
                     if (closed) return;
                     void (async () => {
-                        await session?.restore(initialUrl);
+                        await session?.restoreFromUrl(initialUrl);
                         if (closed) return;
                         restoring = false;
                         restore();
@@ -381,28 +404,22 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 getScrollablePageElement: () =>
                     target.querySelector<HTMLElement>("[data-fs-scroll]") ?? target,
             });
-        actionDispatcher.onAction<FlowAction>(ACTION_KINDS.FLOW, async (action) => {
+        controller.onAction<FlowAction>(ACTION_KINDS.FLOW, async (action, invocation) => {
             if (closed) throw new ExecutionError("configuration", "Browser application is closed");
-            if (action.presentationContext !== "modal") {
-                if (!action.entryId) return navigate(action.url);
-                navigationSequence++;
-                controller!.cancel();
-                const result = await controller!.reuseEntry(action.entryId);
-                if (result !== controller!.getSnapshot())
-                    throw new ExecutionError("denied", "Navigation was not committed");
-                return;
-            }
+            if (invocation?.signal?.aborted) throw new ExecutionError("cancelled");
+            if (action.presentationContext !== "modal") return navigate(action.url, invocation);
             if (!config.onModal)
                 throw new ExecutionError("configuration", "Modal actions require onModal");
             const work = (async () => {
                 const match = await activeWeb.router.resolve(action.url);
-                if (closed) throw new ExecutionError("cancelled");
+                if (closed || invocation?.signal?.aborted) throw new ExecutionError("cancelled");
                 let handedOff = false;
                 const modal = createWebSession({
                     web: activeWeb,
                     initial: stack(
                         leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
                             url: action.url,
+                            query: match?.intent.query,
                         }),
                     ),
                     isServer: false,
@@ -415,7 +432,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 });
                 modalControllers.add(modal);
                 try {
-                    const snapshot = await modal.start();
+                    const snapshot = await modal.start(invocation);
                     if (closed || handedOff) return;
                     const page = snapshot.destinations.at(-1)?.page;
                     if (page) await config.onModal!(page, { app: controller!, snapshot });
@@ -431,8 +448,9 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 modalWork.delete(work);
             }
         });
-        actionDispatcher.onAction<ExternalUrlAction>(ACTION_KINDS.EXTERNAL_URL, (action) => {
+        controller.onAction<ExternalUrlAction>(ACTION_KINDS.EXTERNAL_URL, (action, invocation) => {
             if (closed) throw new ExecutionError("configuration", "Browser application is closed");
+            if (invocation?.signal?.aborted) throw new ExecutionError("cancelled");
             win.open(browserUrl(action.url, true).href, "_blank", "noopener,noreferrer");
         });
         cleanups.push(
@@ -458,7 +476,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
             session = createSessionBridge({
                 store,
                 navigation: controller,
-                subscribeNavigation: (listener) => controller!.subscribe(listener),
+                subscribeNavigation: controller.subscribe,
                 debounceMs: config.session.debounceMs,
                 shouldRestore: config.session.shouldRestore,
                 deferPersistenceUntilRestore: true,
@@ -466,12 +484,8 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
             if (config.domRestore) {
                 dom = createDomRestore({
                     schedule: (callback) => callback(),
-                    scope: {
-                        get: (key) => session!.scope.get(key),
-                        set: (key, value) => session!.scope.set(key, value),
-                        delete: (key) => session!.scope.delete(key),
-                        keys: () => session!.scope.keys(),
-                        prune: (ids) => session!.scope.prune(ids),
+                    get scope() {
+                        return session!.scope;
                     },
                 });
                 dom.attach(target);
@@ -510,7 +524,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
             )
                 return;
             event.preventDefault();
-            void navigate(url.href).catch((error) => {
+            void controller!.perform({ kind: "flow", url: url.href }).catch((error) => {
                 if (!(error instanceof ExecutionError && error.code === "cancelled"))
                     log.error("Navigation failed", error);
             });
@@ -518,7 +532,6 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
         target.addEventListener("click", onClick);
         cleanups.push(() => target.removeEventListener("click", onClick));
         return Object.assign(controller, {
-            actionDispatcher,
             shouldHydrate: wire.status === "ready" && target.hasChildNodes(),
             ready,
             dispose,

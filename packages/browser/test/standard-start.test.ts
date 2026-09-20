@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vite-plus/test";
 import { defineWebApp, deny, leaf, next, stack, tabs } from "@finesoft/web";
 import { createBrowserApp } from "../src/index";
 import { routePages } from "../../web/test/helpers/definition";
+import { DEP_KEYS, defineApp, provide, SimpleTranslator } from "@finesoft/core";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -43,6 +44,59 @@ function targetFixture() {
     return { target, attributes };
 }
 
+test("browser attributes and views use the injected asynchronous services", async () => {
+    const { target, attributes } = targetFixture();
+    const locale = { lang: "fr", dir: "rtl" };
+    const translator = new SimpleTranslator({ locale: "fr", messages: { title: "Bonjour" } });
+    const disposed = vi.fn();
+    const definition = defineWebApp({
+        id: "injected-browser",
+        configuration: { locale: "en" },
+        app: defineApp({
+            id: "injected-browser",
+            providers: [
+                provide({
+                    token: DEP_KEYS.LOCALE,
+                    lifetime: "runtime",
+                    create: async () => locale,
+                }),
+                provide({
+                    token: DEP_KEYS.TRANSLATOR,
+                    lifetime: "runtime",
+                    create: async () => translator,
+                    dispose: disposed,
+                }),
+            ],
+        }),
+        pages: [
+            {
+                id: "home",
+                routes: ["/"],
+                handler: async (_input, context) => {
+                    expect(await context.get(DEP_KEYS.LOCALE)).toBe(locale);
+                    expect(await context.get(DEP_KEYS.TRANSLATOR)).toBe(translator);
+                    return { id: "home", pageType: "home", title: translator.t("title") };
+                },
+            },
+        ],
+        getErrorPage: (_status, title) => ({ id: "error", pageType: "error", title }),
+    });
+    const app = await createBrowserApp({ definition, target, history: "memory" });
+    try {
+        app.commit(app.getSnapshot().revision);
+        await app.ready;
+        expect(app.locale).toBe(locale);
+        expect(app.translator).toBe(translator);
+        expect(attributes.get("lang")).toBe("fr");
+        expect(attributes.get("dir")).toBe("rtl");
+        expect(app.getSnapshot().entries[0].page.title).toBe("Bonjour");
+        expect(disposed).not.toHaveBeenCalled();
+    } finally {
+        await app.dispose();
+    }
+    expect(disposed).toHaveBeenCalledTimes(1);
+});
+
 test("a native root acknowledges the first committed browser view", async () => {
     const { target, attributes } = targetFixture();
     const recorder = { record: vi.fn(), flush: vi.fn() };
@@ -58,7 +112,8 @@ test("a native root acknowledges the first committed browser view", async () => 
 
     const handle = await createBrowserApp({ definition, target, history: "memory" });
     expect(handle.shouldHydrate).toBe(false);
-    expect(typeof handle.navigation.hydrate).toBe("function");
+    expect(typeof handle.perform).toBe("function");
+    expect("navigation" in handle).toBe(false);
     const snapshot = handle.getSnapshot();
     expect(snapshot.entries).toHaveLength(1);
     expect(attributes.get("data-fs-app")).toBe("native-start");
@@ -109,7 +164,7 @@ test("page type reset discards unmount change events after the native acknowledg
             app.commit(app.getSnapshot().revision);
         });
         pageType = "replacement";
-        await app.navigation.refresh();
+        await app.perform({ kind: "refresh" });
         expect(app.session!.scope.get(id)).toEqual({ business: "keep" });
     } finally {
         await app.dispose();
@@ -155,12 +210,14 @@ test.each(["beforeNavigate", "beforeCommit"] as const)(
             await app.ready;
             app.subscribe(() => app.commit(app.getSnapshot().revision));
             blocked = false;
-            await app.navigation.navigate("/other");
+            await app.perform({ kind: "flow", url: "/other" });
             expect(app.getSnapshot().tree.kind).toBe("tabs");
             expect(app.getSnapshot().destinations[0].page.title).toBe("Other");
             const recovered = app.getSnapshot();
             blocked = true;
-            await expect(app.navigation.navigate("/")).rejects.toMatchObject({ code: "denied" });
+            await expect(app.perform({ kind: "flow", url: "/" })).rejects.toMatchObject({
+                code: "denied",
+            });
             expect(app.getSnapshot()).toBe(recovered);
         } finally {
             await app.dispose();

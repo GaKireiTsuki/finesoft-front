@@ -13,25 +13,28 @@ import {
 } from "@finesoft/web";
 import { materializeServerData } from "./server-data";
 import type { SSRAppResult, SSRContext, SSRRenderResult } from "./render";
-import { ownRender } from "./render-owner";
 import { parseCookieString } from "@finesoft/web";
+import { ExecutionError, type LocaleAttributes } from "@finesoft/core";
 
-export interface SSRRenderConfig {
-    readonly definition: WebAppDefinition;
+export interface SSRRenderConfig<Definition extends WebAppDefinition = WebAppDefinition> {
+    readonly definition: Definition;
     readonly configuration?: WebConfiguration;
-    readonly render: (app: WebAppView) => string | SSRAppResult | Promise<string | SSRAppResult>;
-    readonly resolveLocale?: (
-        url: string,
-        request?: Request,
-    ) => { lang: string; dir: string } | undefined;
+    readonly render: (
+        app: WebAppView<Definition>,
+    ) => string | SSRAppResult | Promise<string | SSRAppResult>;
+    readonly resolveLocale?: (url: string, request?: Request) => LocaleAttributes | undefined;
 }
 /** One request scope and one native root serve ordinary and composed navigation. */
-export function createSSRRender(config: SSRRenderConfig) {
+export function createSSRRender<Definition extends WebAppDefinition>(
+    config: SSRRenderConfig<Definition>,
+) {
     const owner = createWebRuntime({
         ...config.configuration,
         definition: config.definition,
         storageScope: "execution",
     });
+    const active = new Set<Promise<SSRRenderResult>>();
+    let closing: Promise<void> | undefined;
     const render = async (url: string, context: SSRContext = {}): Promise<SSRRenderResult> => {
         const configuration = { ...config.definition.configuration, ...config.configuration };
         const resolvedLocale = config.resolveLocale?.(url, context.request);
@@ -50,6 +53,7 @@ export function createSSRRender(config: SSRRenderConfig) {
             runtime: owner.runtime,
             storageScope: "execution",
             locale,
+            localeAttributes: resolvedLocale,
             messages,
             fetch,
             safeFetch: { ...context.safeFetch, ...configuration.safeFetch },
@@ -61,7 +65,7 @@ export function createSSRRender(config: SSRRenderConfig) {
                 bindings: { ...context.bindings, request: context.request },
             },
         });
-        let controller: ReturnType<typeof createWebSession> | undefined;
+        let controller: ReturnType<typeof createWebSession<Definition>> | undefined;
         const execution = web.createExecution();
         let failed = false;
         try {
@@ -72,15 +76,12 @@ export function createSSRRender(config: SSRRenderConfig) {
                 css: "",
                 html: "",
                 serverData: { pages: [] },
-                locale: resolvedLocale ?? web.getLocale(),
+                locale: await web.getLocale(execution),
             } satisfies SSRRenderResult;
             if (resolved?.renderMode === "csr") return { ...base, renderMode: "csr" };
             let redirect: { url: string; status: number } | undefined;
             const cookies = parseCookieString(context.request?.headers.get("cookie") ?? "");
             controller = createWebSession({
-                navigate: async () => {
-                    throw Error("SSR views cannot initiate navigation");
-                },
                 web,
                 execution,
                 initial,
@@ -88,13 +89,14 @@ export function createSSRRender(config: SSRRenderConfig) {
                 onRedirect: (value) => {
                     redirect ??= value;
                 },
-                createContext: ({ intent, params, url: matchedUrl }) => ({
+                createContext: ({ intent, params, query, url: matchedUrl }) => ({
                     container: execution.context.container,
                     navigation: {
                         url: matchedUrl ?? url,
                         path: new URL(matchedUrl ?? url, "http://localhost").pathname,
-                        intent: { id: intent, params },
+                        intent: { id: intent, params, query },
                         params,
+                        query: query ?? {},
                         container: execution.context.container,
                         isServer: true,
                         getCookie: (name) => cookies.get(name),
@@ -102,6 +104,13 @@ export function createSSRRender(config: SSRRenderConfig) {
                     },
                 }),
             });
+            for (const kind of ["flow", "externalUrl"])
+                controller.onAction(kind, () => {
+                    throw new ExecutionError(
+                        "configuration",
+                        "SSR views cannot initiate browser actions",
+                    );
+                });
             const candidate = await controller.start();
             if (redirect || candidate.redirect)
                 return { ...base, redirect: redirect ?? candidate.redirect };
@@ -116,7 +125,11 @@ export function createSSRRender(config: SSRRenderConfig) {
                           tree: serializeNavigation(snapshot.tree),
                           pages: snapshot.destinations.map((entry) => ({
                               entryId: entry.entryId,
-                              intent: { id: entry.intent, params: entry.params },
+                              intent: {
+                                  id: entry.intent,
+                                  params: entry.params,
+                                  ...(entry.query ? { query: entry.query } : {}),
+                              },
                               data: entry.page,
                           })),
                       },
@@ -131,7 +144,6 @@ export function createSSRRender(config: SSRRenderConfig) {
                 css: output.css ?? "",
                 serverData,
                 renderMode: snapshot.destinations.at(-1)?.renderMode ?? resolved?.renderMode,
-                locale: resolvedLocale ?? web.getLocale(),
                 status,
                 rewriteUrl: snapshot.destinations.at(-1)?.rewriteUrl,
                 ...(!status &&
@@ -158,7 +170,23 @@ export function createSSRRender(config: SSRRenderConfig) {
         }
     };
     return Object.assign(
-        ownRender(render, () => owner.dispose()),
-        { routes: getWebPlan(config.definition).routes },
+        (url: string, context?: SSRContext) => {
+            if (closing) return Promise.reject(Error("SSR renderer disposed"));
+            const work = render(url, context);
+            active.add(work);
+            void work.then(
+                () => active.delete(work),
+                () => active.delete(work),
+            );
+            return work;
+        },
+        {
+            routes: getWebPlan(config.definition).routes,
+            dispose: () =>
+                (closing ??= (async () => {
+                    while (active.size) await Promise.allSettled(active);
+                    await owner.dispose();
+                })()),
+        },
     );
 }

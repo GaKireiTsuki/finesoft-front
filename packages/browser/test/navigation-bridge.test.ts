@@ -64,9 +64,10 @@ import {
     stack,
     tabs,
     type WebSession,
+    type Action,
+    type RouteParams,
     type NavigationNode,
     type NavigationRouterLike,
-    type RouteParams,
     type SerializedNavigation,
 } from "@finesoft/web";
 import { type BasePage } from "@finesoft/web";
@@ -111,7 +112,7 @@ describe("createNavigationBridge", () => {
         createNavigationBridge({ controller, codec, router, log });
 
         // 首屏快照 → replaceState（first-page），URL 反查为激活叶子 /home。
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         const history = HistoryMock.latest<NavigationHistoryState>();
         expect(history.replaceState).toHaveBeenCalledTimes(1);
         expect(history.replaceState.mock.calls[0][1]).toBe("/home");
@@ -121,7 +122,7 @@ describe("createNavigationBridge", () => {
         expect(history.pushState).not.toHaveBeenCalled();
 
         // 后续导航（URL 变化）→ pushState。
-        await controller.push("product", { id: "42" });
+        await controller.perform({ kind: "push", intent: "product", params: { id: "42" } });
         expect(history.pushState).toHaveBeenCalledTimes(1);
         expect(history.pushState.mock.calls[0][1]).toBe("/products/42");
         const pushedTree = (history.pushState.mock.calls[0][0] as NavigationHistoryState).tree;
@@ -137,17 +138,17 @@ describe("createNavigationBridge", () => {
         const log = makeLogger();
 
         createNavigationBridge({ controller, codec, router, log });
-        await controller.resolve(); // first → replace /home
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() }); // first → replace /home
         const history = HistoryMock.latest<NavigationHistoryState>();
 
         // window.location 当前是 /home；replaceTop 到 about 后 encode=/about ≠ /home → push。
-        await controller.replaceTop("about");
+        await controller.perform({ kind: "replaceTop", intent: "about" });
         expect(history.replaceState).toHaveBeenCalledTimes(2);
         expect(history.replaceState.mock.calls[1][1]).toBe("/about");
 
         // 再 replaceTop 回 home：encode=/home == window.location /home → replaceState（不新增条目）。
         history.replaceState.mockClear();
-        await controller.replaceTop("home");
+        await controller.perform({ kind: "replaceTop", intent: "home" });
         expect(history.replaceState).toHaveBeenCalledTimes(1);
         expect(history.replaceState.mock.calls[0][1]).toBe("/home");
     });
@@ -159,7 +160,7 @@ describe("createNavigationBridge", () => {
         const log = makeLogger();
 
         createNavigationBridge({ controller, codec, router, log });
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         const history = HistoryMock.latest<NavigationHistoryState>();
         dispatch.mockClear();
 
@@ -185,7 +186,7 @@ describe("createNavigationBridge", () => {
         const log = makeLogger();
 
         createNavigationBridge({ controller, codec, router, log });
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         const history = HistoryMock.latest<NavigationHistoryState>();
 
         const deepTree = tabs({
@@ -208,7 +209,7 @@ describe("createNavigationBridge", () => {
         const log = makeLogger();
 
         createNavigationBridge({ controller, codec, router, log });
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         const before = controller.getTree();
         const history = HistoryMock.latest<NavigationHistoryState>();
 
@@ -230,7 +231,7 @@ describe("createNavigationBridge", () => {
         const log = makeLogger();
 
         createNavigationBridge({ controller, codec, router, log });
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         const history = HistoryMock.latest<NavigationHistoryState>();
 
         const fallbackTree = leaf("reports");
@@ -260,7 +261,7 @@ describe("createNavigationBridge", () => {
         const log = makeLogger();
 
         createNavigationBridge({ controller, codec: throwingCodec, router, log });
-        await controller.resolve();
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
         const before = controller.getTree();
         const history = HistoryMock.latest<NavigationHistoryState>();
 
@@ -275,42 +276,15 @@ describe("createNavigationBridge", () => {
         );
     });
 
-    test("exposes a handle that delegates every operation to the controller", async () => {
+    test("returns only the history lifecycle binding", () => {
         const controller = makeFakeController();
-        const codec = createActiveLeafCodec();
-        const router = makeRouter(["/home → home"]);
-        const log = makeLogger();
-
-        const handle = createNavigationBridge({
+        const bridge = createNavigationBridge({
             controller: controller as unknown as WebSession,
-            codec,
-            router,
-            log,
+            codec: createActiveLeafCodec(),
+            router: makeRouter(["/home → home"]),
+            log: makeLogger(),
         });
-
-        const snap = handle.getSnapshot();
-        expect(snap).toBe(controller.getSnapshot());
-
-        await handle.push("a", { x: 1 }, { target: [] });
-        await handle.pop(2);
-        await handle.popToRoot();
-        await handle.replaceTop("b");
-        await handle.selectTab("k", []);
-        await handle.selectColumn("c", "intent", { y: 2 }, []);
-        await handle.hydrate(leaf("z"));
-        const listener = vi.fn();
-        const unsub = handle.subscribe(listener);
-
-        expect(controller.push).toHaveBeenCalledWith("a", { x: 1 }, { target: [] });
-        expect(controller.pop).toHaveBeenCalledWith(2);
-        expect(controller.popToRoot).toHaveBeenCalledTimes(1);
-        expect(controller.replaceTop).toHaveBeenCalledWith("b");
-        expect(handle.replaceTop).toBe(controller.replaceTop);
-        expect(controller.selectTab).toHaveBeenCalledWith("k", []);
-        expect(controller.selectColumn).toHaveBeenCalledWith("c", "intent", { y: 2 }, []);
-        expect(controller.hydrate).toHaveBeenCalledWith(leaf("z"));
-        expect(controller.subscribe).toHaveBeenCalledWith(listener);
-        expect(typeof unsub).toBe("function");
+        expect(Object.keys(bridge)).toEqual(["dispose"]);
     });
 
     test("registers a popstate listener on construction", () => {
@@ -336,7 +310,7 @@ describe("createNavigationBridge", () => {
 
 /** A native host owns admission and page commits.  The bridge only needs this boundary. */
 function makeController(initial: NavigationNode): {
-    controller: WebSession & { resolve(): Promise<unknown> };
+    controller: WebSession;
     dispatch: ReturnType<typeof vi.fn>;
 } {
     const dispatch = vi.fn(async (intent: Intent<BasePage>) => makePage(intent.id));
@@ -367,57 +341,31 @@ function makeController(initial: NavigationNode): {
             listeners.add(listener);
             return () => listeners.delete(listener);
         },
-        resolve: commit,
-        refresh: commit,
-        push: async (intent: string, params: RouteParams = {}) => {
-            tree = stack([tree, leaf(intent, params)]);
-            return commit();
-        },
-        replaceTop: async (intent: string, params: RouteParams = {}) => {
-            tree = stack([leaf(intent, params)]);
-            historyMode = "replace";
-            return commit();
-        },
-        pop: commit,
-        popToRoot: commit,
-        selectTab: commit,
-        selectColumn: commit,
-        reuseEntry: commit,
-        hydrate: async (next: NavigationNode) => {
-            tree = next;
+        perform: async (action: Action) => {
+            if (action.kind === "push") tree = stack([tree, leaf(action.intent, action.params)]);
+            else if (action.kind === "replaceTop") {
+                tree = stack([leaf(action.intent, action.params)]);
+                historyMode = "replace";
+            } else if (action.kind === "hydrate") tree = action.tree;
             return commit();
         },
         cancel: vi.fn(),
     };
     return {
-        controller: controller as unknown as WebSession & { resolve(): Promise<unknown> },
+        controller: controller as unknown as WebSession,
         dispatch,
     };
 }
 
-/**
- * 纯 fake controller：每个方法都是 vi.fn，用于验证 handle 委派。
- *
- * 刻意返回**对象字面量类型**（不标注成 `WebSession` 接口），这样在 `expect(fake.push)`
- * 上是普通属性访问而非接口方法引用，避开 `unbound-method` 警告（同 flow-action.test 的
- * `framework.didEnterPage` 写法）。传入 bridge 时在调用点 `as` 成 controller。
- */
+/** Only the host boundary is faked; navigation actions are tested on real sessions. */
 function makeFakeController() {
     const snapshot = { tree: leaf("home"), destinations: [] };
     return {
         getTree: vi.fn(() => leaf("home")),
         getSnapshot: vi.fn(() => snapshot),
-        apply: vi.fn(async () => snapshot),
-        push: vi.fn(async () => snapshot),
-        pop: vi.fn(async () => snapshot),
-        popToRoot: vi.fn(async () => snapshot),
-        replaceTop: vi.fn(async () => snapshot),
-        selectTab: vi.fn(async () => snapshot),
-        selectColumn: vi.fn(async () => snapshot),
-        hydrate: vi.fn(async () => snapshot),
+        perform: vi.fn(async () => snapshot),
         onCommit: vi.fn(() => () => undefined),
         subscribe: vi.fn(() => () => undefined),
-        resolve: vi.fn(async () => snapshot),
     };
 }
 

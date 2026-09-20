@@ -22,7 +22,7 @@ describe("ActionDispatcher", () => {
         dispatcher.onAction(ACTION_KINDS.FLOW, handler);
         await dispatcher.perform(action);
 
-        expect(handler).toHaveBeenCalledWith(action);
+        expect(handler).toHaveBeenCalledWith(action, expect.any(Object));
     });
 
     test("keeps the first handler when the same kind is registered twice", async () => {

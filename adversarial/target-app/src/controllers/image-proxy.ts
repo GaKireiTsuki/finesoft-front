@@ -1,10 +1,5 @@
-import {
-    BaseController,
-    type ExecutionContext,
-    DEP_KEYS,
-    HostGuardError,
-    HttpClient,
-} from "@finesoft/front";
+import type { ControllerInput } from "@finesoft/front";
+import { BaseController, DEP_KEYS, HostGuardError, HttpClient } from "@finesoft/front";
 import type { BasePage } from "@finesoft/front/web";
 
 class GenericHttpClient extends HttpClient {
@@ -21,9 +16,15 @@ interface ImageProxyPage extends BasePage {
     proxyResult?: unknown;
 }
 
-export class ImageProxyController extends BaseController<ImageProxyParams, ImageProxyPage> {
-    async execute(params: ImageProxyParams, context: ExecutionContext): Promise<ImageProxyPage> {
-        if (!params.url) {
+export class ImageProxyController extends BaseController<
+    ControllerInput<Record<string, unknown>, ImageProxyParams>,
+    ImageProxyPage
+> {
+    async execute({
+        query,
+        context,
+    }: ControllerInput<Record<string, unknown>, ImageProxyParams>): Promise<ImageProxyPage> {
+        if (!query.url) {
             return {
                 id: "image-proxy",
                 pageType: "image-proxy",
@@ -36,7 +37,7 @@ export class ImageProxyController extends BaseController<ImageProxyParams, Image
         // a loopback / private / reserved host or a non-http(s) scheme makes the
         // request throw HostGuardError before any network call.
         const client = new GenericHttpClient({
-            baseUrl: params.url,
+            baseUrl: query.url,
             fetch: await context.get(DEP_KEYS.SAFE_FETCH),
             validateDns: false,
         });

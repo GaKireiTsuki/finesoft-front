@@ -1,4 +1,4 @@
-import { BaseController, type ExecutionContext } from "@finesoft/front";
+import { BaseController, type ExecutionContext, type ControllerInput } from "@finesoft/front";
 import { markPublic, type BasePage } from "@finesoft/front/web";
 import { timingSafeEqual } from "node:crypto";
 
@@ -19,10 +19,10 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 export class AdminSecretsController extends BaseController<
-    Record<string, string>,
+    ControllerInput<Record<string, string>>,
     AdminSecretsPage
 > {
-    execute(_params: Record<string, string>, context: ExecutionContext): AdminSecretsPage {
+    execute({ context }: { context: ExecutionContext }): AdminSecretsPage {
         const token = context.bindings["adminToken"];
         const user = typeof token === "string" ? { name: token, seenAt: Date.now() } : null;
 

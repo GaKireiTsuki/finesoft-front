@@ -3,8 +3,9 @@ import type { AppDefinition, ExecutionContext, Operation } from "@finesoft/core"
 import type { BasePage } from "../models/page";
 import type { PrefetchedIntents } from "../prefetched-intents/prefetched-intents";
 import { Router } from "../router/router";
-import type { RouteParams } from "../router/types";
-import type { WebAppDefinition } from "./types";
+import { routeIntent, type RouteInput } from "../router/types";
+import type { PageControllerDefinition, WebAppDefinition } from "./types";
+import type { RouteDefinition } from "../bootstrap/define-routes";
 
 export interface WebExecutionState {
     prefetched: PrefetchedIntents;
@@ -15,22 +16,22 @@ export const WEB_EXECUTION = "@finesoft/web/execution";
 export function consumePage(
     context: ExecutionContext,
     id: string,
-    params: RouteParams,
+    input: RouteInput,
 ): BasePage | undefined {
     const state = context.bindings[WEB_EXECUTION] as WebExecutionState | undefined;
     return (
-        state?.retained.get(params) ??
-        state?.prefetched.get<BasePage>({ id, params }, state.entryIds.get(params))
+        state?.retained.get(input) ??
+        state?.prefetched.get<BasePage>(
+            routeIntent<BasePage>(id, input.params, input.query),
+            state.entryIds.get(input),
+        )
     );
 }
 interface WebPlan {
     readonly app: AppDefinition;
     readonly router: Router;
-    readonly routes: readonly Omit<
-        import("../bootstrap/define-routes").RouteDefinition,
-        "controller"
-    >[];
-    readonly operations: ReadonlyMap<string, Operation<RouteParams, BasePage>>;
+    readonly routes: readonly RouteDefinition[];
+    readonly operations: ReadonlyMap<string, Operation<RouteInput, BasePage>>;
 }
 const plans = new WeakMap<WebAppDefinition, WebPlan>();
 export function getWebPlan(definition: WebAppDefinition): WebPlan {
@@ -49,6 +50,9 @@ function freezeSnapshot<T>(value: T): T {
     }
     return value;
 }
+export function defineWebApp<const Pages extends readonly PageControllerDefinition[]>(
+    input: WebAppDefinition<Pages>,
+): WebAppDefinition<Pages>;
 export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
     const routes = Object.freeze(
         input.pages
@@ -89,7 +93,7 @@ export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
         afterLoad: input.afterLoad && Object.freeze([...input.afterLoad]),
         configuration: input.configuration && Object.freeze({ ...input.configuration }),
     });
-    const operations = new Map<string, Operation<RouteParams, BasePage>>();
+    const operations = new Map<string, Operation<RouteInput, BasePage>>();
     for (const controller of pages) {
         if (operations.has(controller.id) || !!controller.create === !!controller.handler)
             throw new ExecutionError("configuration", `Invalid page controller: ${controller.id}`);
@@ -98,13 +102,16 @@ export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
             defineOperation({
                 id: controller.id,
                 kind: "query",
-                policies: controller.policies,
-                handler: (params, context) => {
-                    const cached = consumePage(context, controller.id, params);
+                policies: controller.policies?.map(
+                    (policy) => (input: RouteInput, context: ExecutionContext) =>
+                        policy(input.params, context),
+                ),
+                handler: (input, context) => {
+                    const cached = consumePage(context, controller.id, input);
                     if (cached !== undefined) return cached;
-                    return controller.handler
-                        ? controller.handler(params, context)
-                        : controller.create!().perform(params, context);
+                    if (controller.handler)
+                        return controller.handler(input.params, context, input.query);
+                    return controller.create!().perform(input.params, context, input.query);
                 },
             }),
         );

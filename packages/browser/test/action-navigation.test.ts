@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import {
     ACTION_KINDS,
+    ActionDispatcher,
     collectAllLeaves,
     defineWebApp,
     deny,
@@ -14,6 +15,42 @@ import {
     type WebAppDefinition,
 } from "@finesoft/web";
 import { createBrowserApp, type BrowserAppConfig } from "../src/start-app";
+
+test("ordinary and modal URL actions retain separate query values", async () => {
+    const pages: string[] = [];
+    const { app } = await start(
+        {
+            onModal: (page) => {
+                pages.push(page.title);
+            },
+        },
+        {
+            pages: [
+                {
+                    id: "home",
+                    routes: ["/"],
+                    handler: () => ({ id: "home", pageType: "home", title: "Home" }),
+                },
+                {
+                    id: "search",
+                    routes: ["/search"],
+                    handler: (_params, _context, query) => ({
+                        id: "search",
+                        pageType: "search",
+                        title: String(query.q),
+                    }),
+                },
+            ],
+        },
+    );
+    await app.perform(makeFlowAction("/search?q=first"));
+    expect(app.getSnapshot().destinations[0].page.title).toBe("first");
+    await app.perform(makeFlowAction("/search?q=second"));
+    expect(app.getSnapshot().destinations[0].page.title).toBe("second");
+    await app.perform(makeFlowAction("/search?q=modal", "modal"));
+    expect(pages).toEqual(["modal"]);
+    expect(app.getSnapshot().destinations[0].page.title).toBe("second");
+});
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -85,7 +122,46 @@ async function start(
     return { app, win };
 }
 
-test("ordinary URL pushes retain inactive branches and existing page identities", async () => {
+test("ordinary URL navigation releases departed entries across a long session", async () => {
+    const { app } = await start();
+    for (let index = 0; index < 100; index++) {
+        const previous = app.getSnapshot().entries[0].entryId;
+        await app.perform({ kind: "flow", url: `/detail?visit=${index}` });
+        expect(app.getSnapshot().entries).toHaveLength(1);
+        expect(collectAllLeaves(app.getSnapshot().tree)).toHaveLength(1);
+        expect(app.getSnapshot().entries[0].entryId).not.toBe(previous);
+        expect(app.getSnapshot().entries[0].page.title).toBe("Detail");
+    }
+});
+
+test("same URL navigation reloads data in the existing page entry", async () => {
+    let loads = 0;
+    const { app } = await start(
+        {},
+        {
+            pages: [
+                {
+                    id: "home",
+                    routes: ["/"],
+                    handler: () => ({ id: "home", pageType: "home", title: String(++loads) }),
+                },
+            ],
+        },
+    );
+    const id = app.getSnapshot().entries[0].entryId;
+    for (let index = 0; index < 3; index++) await app.perform({ kind: "flow", url: "/" });
+    expect(app.getSnapshot().entries).toHaveLength(1);
+    expect(app.getSnapshot().entries[0]).toMatchObject({ entryId: id, page: { title: "4" } });
+});
+
+test("explicit same-target pushes retain independent page entries", async () => {
+    const { app } = await start();
+    for (let index = 0; index < 3; index++) await app.perform({ kind: "push", intent: "home" });
+    expect(app.getSnapshot().entries).toHaveLength(4);
+    expect(new Set(app.getSnapshot().entries.map((entry) => entry.entryId)).size).toBe(4);
+});
+
+test("URL pushes in declared navigation retain inactive branches and existing page identities", async () => {
     let arrangements = 0;
     const { app } = await start(
         {},
@@ -99,11 +175,11 @@ test("ordinary URL pushes retain inactive branches and existing page identities"
             },
         },
     );
-    await app.navigation.selectTab("notes");
+    await app.perform({ kind: "selectTab", key: "notes" });
     const notes = app.getSnapshot().entries.find((entry) => entry.intent === "notes")!;
-    await app.navigation.selectTab("home");
+    await app.perform({ kind: "selectTab", key: "home" });
     const home = app.getSnapshot().entries.find((entry) => entry.intent === "home")!;
-    await app.navigation.navigate("/detail");
+    await app.perform({ kind: "flow", url: "/detail" });
     expect(arrangements).toBe(1);
     expect(collectAllLeaves(app.getSnapshot().tree).map((entry) => entry.entryId)).toContain(
         notes.entryId,
@@ -111,7 +187,7 @@ test("ordinary URL pushes retain inactive branches and existing page identities"
     expect(app.getSnapshot().entries.find((entry) => entry.entryId === home.entryId)?.page).toBe(
         home.page,
     );
-    await app.navigation.selectTab("notes");
+    await app.perform({ kind: "selectTab", key: "notes" });
     expect(app.getSnapshot().entries.find((entry) => entry.visible)?.page).toBe(notes.page);
 });
 
@@ -128,14 +204,14 @@ test("returning from an initial unknown URL restores the application navigation 
         },
     );
     expect(app.getSnapshot().entries[0]?.status).toBe(404);
-    await app.navigation.navigate("/");
+    await app.perform({ kind: "flow", url: "/" });
     expect(app.getSnapshot().navigation.tabs?.order).toEqual(["home", "notes"]);
     expect(
         collectAllLeaves(app.getSnapshot().tree).some(
             (entry) => entry.intent === "@finesoft/not-found",
         ),
     ).toBe(false);
-    await app.navigation.selectTab("notes");
+    await app.perform({ kind: "selectTab", key: "notes" });
     expect(app.getSnapshot().entries.find((entry) => entry.visible)?.page.pageType).toBe("notes");
     expect(win.location.assign).not.toHaveBeenCalled();
 });
@@ -163,7 +239,7 @@ test("guard redirects preserve fragments and unrelated branch identities", async
     const notesId = collectAllLeaves(app.getSnapshot().tree).find(
         (entry) => entry.intent === "notes",
     )!.entryId;
-    await app.navigation.navigate("/protected");
+    await app.perform({ kind: "flow", url: "/protected" });
     expect(
         collectAllLeaves(app.getSnapshot().tree).find((entry) => entry.intent === "detail")?.url,
     ).toBe("/detail?tab=info#details");
@@ -174,7 +250,7 @@ test("guard redirects preserve fragments and unrelated branch identities", async
 });
 
 test("native views can perform flow and compound external actions and reuse an entry", async () => {
-    const { app, win } = await start();
+    const { app, win } = await start({}, { navigation: stack(leaf("home")) });
     const home = app.getSnapshot().entries[0]!;
     await app.perform({
         kind: "compound",
@@ -182,17 +258,224 @@ test("native views can perform flow and compound external actions and reuse an e
     });
     expect(app.getSnapshot().destinations.at(-1)?.intent).toBe("detail");
     expect(win.open).toHaveBeenCalledWith("https://other.test/", "_blank", "noopener,noreferrer");
-    await app.perform({ ...makeFlowAction("/"), entryId: home.entryId });
+    await app.perform({ kind: "reuseEntry", entryId: home.entryId });
     expect(app.getSnapshot().destinations.at(-1)?.entryId).toBe(home.entryId);
     expect(app.getSnapshot().entries.find((entry) => entry.visible)?.page).toBe(home.page);
     const handled: string[] = [];
-    app.actionDispatcher.removeAction(ACTION_KINDS.EXTERNAL_URL);
-    app.actionDispatcher.onAction(ACTION_KINDS.EXTERNAL_URL, (action) => {
+    app.removeAction(ACTION_KINDS.EXTERNAL_URL);
+    app.onAction(ACTION_KINDS.EXTERNAL_URL, (action) => {
         handled.push(action.kind);
     });
     await app.perform(makeExternalUrlAction("https://custom.test/"));
     expect(handled).toEqual(["externalUrl"]);
 });
+
+test("one action executor sequences URL, tree, modal and external navigation", async () => {
+    const presented: string[] = [];
+    const { app, win } = await start(
+        {
+            onModal: (page) => {
+                presented.push(page.title);
+            },
+        },
+        { navigation: stack(leaf("home")) },
+    );
+    const committed: string[] = [];
+    app.subscribe(() => committed.push(app.getSnapshot().destinations.at(-1)!.intent));
+    const result = await app.perform({
+        kind: "compound",
+        actions: [
+            makeFlowAction("/detail"),
+            { kind: "push", intent: "notes" },
+            { kind: "pop" },
+            makeFlowAction("/", "modal"),
+            makeExternalUrlAction("https://other.test/"),
+        ],
+    });
+    expect(app).toBeInstanceOf(ActionDispatcher);
+    expect("navigation" in app).toBe(false);
+    expect("actionDispatcher" in app).toBe(false);
+    expect(committed).toEqual(["detail", "notes", "detail"]);
+    expect(presented).toEqual(["Home"]);
+    expect(result).toBe(app.getSnapshot());
+    expect(app.getSnapshot().entries).toHaveLength(2);
+    expect(win.open).toHaveBeenCalledOnce();
+});
+
+test("a rejected tree action stops nested compound effects and preserves the committed view", async () => {
+    const { app, win } = await start(
+        {},
+        {
+            navigation: stack(leaf("home")),
+            beforeCommit: [
+                ({ candidate }) =>
+                    candidate.destinations.at(-1)?.intent === "notes"
+                        ? deny(409, "Keep draft")
+                        : next(),
+            ],
+        },
+    );
+    const before = app.getSnapshot();
+    const result = await app.perform({
+        kind: "compound",
+        actions: [
+            { kind: "compound", actions: [{ kind: "push", intent: "notes" }] },
+            makeExternalUrlAction("https://other.test/"),
+        ],
+    });
+    expect(result.rejection).toEqual(deny(409, "Keep draft"));
+    expect(app.getSnapshot()).toBe(before);
+    expect(win.open).not.toHaveBeenCalled();
+});
+
+test("a newer URL cancels an older compound without a caller AbortSignal", async () => {
+    const { app } = await start({}, { navigation: stack(leaf("home")) });
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>((resolve) => {
+        entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    app.removeAction("externalUrl");
+    app.onAction("externalUrl", async () => {
+        entered();
+        await gate;
+    });
+    const work = app.perform({
+        kind: "compound",
+        actions: [makeExternalUrlAction("https://other.test/"), { kind: "push", intent: "detail" }],
+    });
+    const rejected = expect(work).rejects.toMatchObject({ code: "cancelled" });
+    await started;
+    try {
+        await app.perform(makeFlowAction("/notes"));
+        const latest = app.getSnapshot();
+        release();
+        await rejected;
+        expect(app.getSnapshot()).toBe(latest);
+        expect(latest.destinations.at(-1)?.intent).toBe("notes");
+    } finally {
+        release();
+    }
+});
+
+test.each(["tree", "modal", "external"] as const)(
+    "delayed URL admission respects competing %s actions",
+    async (kind) => {
+        let entered!: () => void, release!: () => void;
+        const started = new Promise<void>((resolve) => {
+            entered = resolve;
+        });
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const { app } = await start(
+            { onModal: () => {} },
+            {
+                navigation: stack(leaf("home")),
+                pages: [
+                    {
+                        id: "home",
+                        routes: ["/"],
+                        handler: () => ({ id: "home", pageType: "home", title: "Home" }),
+                    },
+                    {
+                        id: "notes",
+                        routes: ["/notes"],
+                        handler: () => ({ id: "notes", pageType: "notes", title: "Notes" }),
+                    },
+                    {
+                        id: "detail",
+                        routes: [
+                            {
+                                path: "/detail",
+                                query: {
+                                    wait: {
+                                        "~standard": {
+                                            version: 1,
+                                            vendor: "action-admission-test",
+                                            validate: async (value: unknown) => {
+                                                entered();
+                                                await gate;
+                                                return { value: String(value) };
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        ],
+                        handler: () => ({ id: "detail", pageType: "detail", title: "Detail" }),
+                    },
+                ],
+            },
+        );
+        const work = app.perform(makeFlowAction("/detail?wait=1"));
+        const outcome =
+            kind === "tree" ? expect(work).rejects.toMatchObject({ code: "cancelled" }) : work;
+        await started;
+        try {
+            if (kind === "tree") await app.perform({ kind: "push", intent: "notes" });
+            else if (kind === "modal") await app.perform(makeFlowAction("/", "modal"));
+            else await app.perform(makeExternalUrlAction("https://other.test/"));
+            release();
+            await outcome;
+            expect(app.getSnapshot().destinations.at(-1)?.intent).toBe(
+                kind === "tree" ? "notes" : "detail",
+            );
+        } finally {
+            release();
+        }
+    },
+);
+
+test.each(["default", "modal"] as const)(
+    "action cancellation reaches %s page loading and stops remaining effects",
+    async (presentationContext) => {
+        let entered!: () => void;
+        const started = new Promise<void>((resolve) => {
+            entered = resolve;
+        });
+        const modal = vi.fn();
+        const { app, win } = await start(
+            { onModal: modal },
+            {
+                beforeLoad: [
+                    async (context) => {
+                        if (context.intent.id === "detail") {
+                            entered();
+                            await new Promise<void>((resolve) =>
+                                context.signal!.addEventListener("abort", () => resolve(), {
+                                    once: true,
+                                }),
+                            );
+                        }
+                        return next();
+                    },
+                ],
+            },
+        );
+        const before = app.getSnapshot();
+        const abort = new AbortController();
+        const work = app.perform(
+            {
+                kind: "compound",
+                actions: [
+                    makeFlowAction("/detail", presentationContext),
+                    makeExternalUrlAction("https://other.test/"),
+                ],
+            },
+            { signal: abort.signal },
+        );
+        const rejected = expect(work).rejects.toMatchObject({ code: "cancelled" });
+        await started;
+        abort.abort();
+        await rejected;
+        expect(app.getSnapshot()).toBe(before);
+        expect(modal).not.toHaveBeenCalled();
+        expect(win.open).not.toHaveBeenCalled();
+    },
+);
 
 test("modal actions use navigation policies and page guards without committing the background", async () => {
     const order: string[] = [];
@@ -345,7 +628,9 @@ test.each([
     await expect(app.perform(makeExternalUrlAction(url))).rejects.toMatchObject({
         code: "validation",
     });
-    await expect(app.navigation.navigate(url)).rejects.toMatchObject({ code: "validation" });
+    await expect(app.perform({ kind: "flow", url: url })).rejects.toMatchObject({
+        code: "validation",
+    });
     expect(win.open).not.toHaveBeenCalled();
     expect(win.location.assign).not.toHaveBeenCalled();
 });
@@ -371,7 +656,7 @@ test("guard redirects reject executable protocols without replacing the current 
             ],
         },
     );
-    await expect(app.navigation.navigate("/protected")).rejects.toMatchObject({
+    await expect(app.perform({ kind: "flow", url: "/protected" })).rejects.toMatchObject({
         code: "validation",
     });
     expect(app.getSnapshot().destinations.at(-1)?.intent).toBe("home");

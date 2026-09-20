@@ -5,7 +5,7 @@ import { deserializeNavigation, serializeNavigation } from "./serialization";
 import { NavigationError, type NavigationNode } from "./types";
 
 export interface NavigationRouterLike {
-    reverse(intentId: string, params: RouteParams): string | undefined;
+    reverse(intentId: string, params: RouteParams, query?: RouteParams): string | undefined;
 }
 export interface NavigationCodec {
     encode(tree: NavigationNode, router: NavigationRouterLike): string;
@@ -32,7 +32,7 @@ export function decodeNavigationTreeParam(encoded: string): NavigationNode {
 function activeUrl(tree: NavigationNode, router: NavigationRouterLike): string {
     const target = findNode(tree, resolveActivePath(tree));
     return target?.kind === "leaf"
-        ? (target.url ?? router.reverse(target.intent, target.params) ?? "/")
+        ? (target.url ?? router.reverse(target.intent, target.params, target.query) ?? "/")
         : "/";
 }
 export function createActiveLeafCodec(): NavigationCodec {

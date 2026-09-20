@@ -27,6 +27,8 @@ import {
     type LocaleAttributes,
     type Translator,
     type Storage,
+    type Token,
+    type Logger,
 } from "@finesoft/core";
 import { getWebPlan, WEB_EXECUTION } from "./definition";
 import type { WebAppDefinition } from "./types";
@@ -45,25 +47,31 @@ export interface WebConfiguration {
     /** Keep browser defaults shared; SSR supplies execution for request-local memory storage. */
     readonly storageScope?: "runtime" | "execution";
 }
-export interface WebRuntimeOptions extends WebConfiguration {
-    readonly definition: WebAppDefinition;
+export interface WebRuntimeOptions<
+    Definition extends WebAppDefinition = WebAppDefinition,
+> extends WebConfiguration {
+    readonly definition: Definition;
     readonly runtime?: RuntimeHandle;
     readonly invocation?: Invocation;
     readonly prefetchedIntents?: PrefetchedIntents;
     readonly messages?: TranslationMessages;
+    /** Host-resolved attributes used by the default locale provider. */
+    readonly localeAttributes?: LocaleAttributes;
 }
 const SERVICES = "@finesoft/web/services";
+class MissingWebServiceError extends ExecutionError {}
 interface Services {
     fetch: typeof globalThis.fetch;
     locale?: LocaleAttributes;
     translator?: Translator;
     safeFetch?: SecureFetchOptions;
 }
-export function createWebRuntime(input: WebRuntimeOptions) {
+export function createWebRuntime<Definition extends WebAppDefinition>(
+    input: WebRuntimeOptions<Definition>,
+) {
     const config = { ...input.definition.configuration, ...input };
     const plan = getWebPlan(config.definition);
     const prefetchedIntents = config.prefetchedIntents ?? PrefetchedIntents.empty();
-    const locale = config.locale ? getLocaleAttributes(config.locale) : undefined;
     let defaultTranslator: Translator | undefined;
     const getTranslatorForLocale = (locale?: string) => {
         if (!locale) return undefined;
@@ -77,7 +85,6 @@ export function createWebRuntime(input: WebRuntimeOptions) {
         const messages = config.messages && resolveMessages(config.messages, locale);
         return messages ? new SimpleTranslator({ locale, messages }) : undefined;
     };
-    const getTranslator = () => getTranslatorForLocale(config.locale);
     let loggerFactory: LoggerFactory | undefined;
     const getLoggerFactory = () =>
         (loggerFactory ??= config.reportCallback
@@ -137,7 +144,10 @@ export function createWebRuntime(input: WebRuntimeOptions) {
                 create: (c) => {
                     const value = (c.bindings[SERVICES] as Services).locale;
                     if (!value)
-                        throw new ExecutionError("configuration", "Locale is not configured");
+                        throw new MissingWebServiceError(
+                            "configuration",
+                            "Locale is not configured",
+                        );
                     return value;
                 },
             }),
@@ -147,7 +157,10 @@ export function createWebRuntime(input: WebRuntimeOptions) {
                 create: (c) => {
                     const value = (c.bindings[SERVICES] as Services).translator;
                     if (!value)
-                        throw new ExecutionError("configuration", "Messages are not configured");
+                        throw new MissingWebServiceError(
+                            "configuration",
+                            "Messages are not configured",
+                        );
                     return value;
                 },
             }),
@@ -231,14 +244,32 @@ export function createWebRuntime(input: WebRuntimeOptions) {
     const active = new Set<ExecutionHandle>();
     let closed = false,
         disposing: Promise<void> | undefined;
-    return {
+    // Browser view services live until this Web runtime closes. SSR supplies its request execution.
+    let viewExecution: ExecutionHandle | undefined;
+    const serviceContext = (execution?: ExecutionHandle) =>
+        (execution ?? (viewExecution ??= web.createExecution())).context;
+    async function optionalService<T>(
+        token: Token<T>,
+        execution?: ExecutionHandle,
+    ): Promise<T | undefined> {
+        try {
+            return await serviceContext(execution).get(token);
+        } catch (error) {
+            if (!(error instanceof MissingWebServiceError)) throw error;
+            return undefined;
+        }
+    }
+    const web = {
         definition: config.definition,
         router: plan.router,
         runtime,
         prefetchedIntents,
-        getLocale: () => locale,
-        getTranslator,
-        getLogger: () => getLoggerFactory().loggerFor("web"),
+        getLocale: (execution?: ExecutionHandle): Promise<LocaleAttributes | undefined> =>
+            optionalService(DEP_KEYS.LOCALE, execution),
+        getTranslator: (execution?: ExecutionHandle): Promise<Translator | undefined> =>
+            optionalService(DEP_KEYS.TRANSLATOR, execution),
+        getLogger: (execution?: ExecutionHandle): Promise<Logger> =>
+            serviceContext(execution).get(DEP_KEYS.LOGGER),
         createExecution(invocation: Invocation = {}): ExecutionHandle {
             if (closed) throw new ExecutionError("configuration", "Web runtime is closed");
             const base = config.invocation;
@@ -267,7 +298,9 @@ export function createWebRuntime(input: WebRuntimeOptions) {
             }
             services.fetch = execution.context.fetch;
             services.locale = execution.context.locale
-                ? getLocaleAttributes(execution.context.locale)
+                ? ((execution.context.locale === config.locale
+                      ? config.localeAttributes
+                      : undefined) ?? getLocaleAttributes(execution.context.locale))
                 : undefined;
             Object.defineProperty(services, "translator", {
                 get: () => getTranslatorForLocale(execution.context.locale),
@@ -295,5 +328,8 @@ export function createWebRuntime(input: WebRuntimeOptions) {
             })());
         },
     };
+    return web;
 }
-export type WebRuntime = ReturnType<typeof createWebRuntime>;
+export type WebRuntime<Definition extends WebAppDefinition = WebAppDefinition> = ReturnType<
+    typeof createWebRuntime<Definition>
+>;

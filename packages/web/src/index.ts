@@ -7,11 +7,17 @@ export {
     makeExternalUrlAction,
     makeFlowAction,
 } from "./actions/types";
-export type { Action, ExternalUrlAction, FlowAction } from "./actions/types";
+export type {
+    Action,
+    ActionInvocation,
+    TreeAction,
+    ExternalUrlAction,
+    FlowAction,
+} from "./actions/types";
 export type { CompoundAction } from "./actions/types";
 export { Router } from "./router/router";
 export type { RouteAddOptions, RouteMatch } from "./router/router";
-export type { RouteParams } from "./router/types";
+export type { RouteParams, RouteInput, RouteIntent } from "./router/types";
 export type { BasePage } from "./models/page";
 export {
     BASE_PAGE_FIELDS,
@@ -27,7 +33,8 @@ export { PrefetchedIntents } from "./prefetched-intents/prefetched-intents";
 export type { PrefetchedIntent } from "./prefetched-intents/prefetched-intents";
 export { route } from "./bootstrap/define-routes";
 export type { RenderMode } from "./bootstrap/define-routes";
-export type { RouteDefinition } from "./bootstrap/define-routes";
+export type { RouteDefinition, PageRoute } from "./bootstrap/define-routes";
+export type { RouteInputFor } from "./application/route-input";
 export {
     collectAllLeaves,
     collectVisibleDestinations,
@@ -48,7 +55,6 @@ export {
     isTabsNode,
     leaf,
     NAVIGATION_NODE_KINDS,
-    NAVIGATION_OP_KINDS,
     NavigationError,
     pop,
     popTo,
@@ -69,7 +75,6 @@ export {
 } from "./navigation/index";
 export type {
     FullStateCodecOptions,
-    HydrateOperation,
     LeafNode,
     NavigationCodec,
     NavigationContextInput,
@@ -84,29 +89,18 @@ export type {
     NavigationDispatchContext,
     NavigationNode,
     NavigationNodeKind,
-    NavigationOpKind,
-    NavigationOperation,
     NavigationPath,
     NavigationPathStep,
     NavigationRouterLike,
     NavigationSnapshot,
     Page,
-    PopOperation,
-    PopToOperation,
-    PopToRootOperation,
-    PushOperation,
-    PushOptions,
-    ReplaceTopOperation,
     ResolvedDestination,
-    SelectColumnOperation,
-    SelectTabOperation,
     SerializedLeaf,
     SerializedNavigation,
     SerializedSplit,
     SerializedSplitColumn,
     SerializedStack,
     SerializedTabs,
-    SetVisibilityOperation,
     SplitColumn,
     SplitColumnInit,
     SplitNode,

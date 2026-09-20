@@ -9,7 +9,6 @@ export {
     num,
     oneOf,
     optional,
-    runStandard,
     str,
     uuid,
     withDefault,
@@ -51,7 +50,11 @@ export type {
 export { classifyHost, classifyUrl, type HostCheckResult } from "./http/host-guard";
 export { secureFetch, type SecureFetchOptions } from "./http/secure-fetch";
 export { fetchWithRedirects } from "./http/redirect-fetch";
-export { BaseController } from "./intents/base-controller";
+export {
+    BaseController,
+    type ControllerInput,
+    type ControllerFailure,
+} from "./intents/base-controller";
 export { mapEach, pipe, pipeAsync } from "./data/mapper";
 export type { AsyncMapper, Mapper } from "./data/mapper";
 export { LruMap } from "./utils/lru-map";

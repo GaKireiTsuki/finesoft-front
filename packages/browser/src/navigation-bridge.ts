@@ -4,12 +4,10 @@
  * Controller 自身对内容无关、不碰 history/URL（由 Web 所有）。这里负责把它「落地」到浏览器：
  *
  * - **快照 → history**：订阅 controller，快照变更时用 `serializeNavigation(tree)` 作为
- *   HistoryState 推入 LRU、用 `codec.encode(tree, router)` 作为地址栏 URL；首屏 / 同 URL
- *   用 `replaceState`，否则 `pushState`（对齐 FlowAction handler 的 first-page 语义）。
+ *   HistoryState 推入 LRU、用 `codec.encode(tree, router)` 作为地址栏 URL；首屏、显式替换和
+ *   当前 entry 的刷新用 `replaceState`，显式 push 同址的独立 entry 仍新增历史。
  * - **popstate → controller**：先读缓存/嵌入 history.state 的树，再尝试 codec，最后由标准
  *   host 解析普通 URL。hydrate Promise 覆盖守卫、重定向链与原生视图就绪。
- * - **navigation handle**：向应用暴露 push/pop/popToRoot/replaceTop/selectTab/selectColumn
- *   + getSnapshot/subscribe，应用照常用自己的 UI 渲染。
  *
  * 关键不变量：popstate 触发的 `hydrate` 会回调订阅器，但**不可**再次写 history（否则
  * 制造冗余 entry / 循环）。用 `isApplyingHistory` 闸门把「来自 history 的提交」与「来自
@@ -42,7 +40,7 @@ export interface NavigationBridgeDependencies {
     readonly onPopStart?: () => void;
     /** Standard host fallback for uncached URLs without an encoded navigation tree. */
     readonly resolveUrl?: (url: string) => Promise<NavigationNode | undefined>;
-    /** 已构建好的导航控制器（持有 initial 树、intentDispatcher、router 等）。 */
+    /** 拥有导航事务与快照的 WebSession。 */
     readonly controller: WebSession;
     readonly viewReady?: () => void | Promise<void>;
     /** URL 编解码器（默认 `createActiveLeafCodec`）。 */
@@ -55,26 +53,8 @@ export interface NavigationBridgeDependencies {
     readonly getScrollablePageElement?: () => HTMLElement | null;
 }
 
-/**
- * 导航操作句柄 —— 向应用暴露的对外面。
- *
- * 所有写操作返回提交后的 `NavigationSnapshot`；写操作会同步把新树落到 history/URL。
- * `subscribe` 与 controller 的订阅一致（每次提交都回调，含来自 popstate 的 hydrate）。
- */
-export interface NavigationHandle extends Pick<
-    WebSession,
-    | "refresh"
-    | "getSnapshot"
-    | "push"
-    | "pop"
-    | "popToRoot"
-    | "reuseEntry"
-    | "replaceTop"
-    | "selectTab"
-    | "selectColumn"
-    | "hydrate"
-    | "subscribe"
-> {
+/** Browser history binding; actions belong to the WebSession. */
+export interface NavigationBridge {
     dispose(): void;
 }
 
@@ -88,13 +68,13 @@ function defaultGetScrollable(): HTMLElement | null {
 }
 
 /**
- * 创建 NavigationBridge：订阅 controller、装配 popstate、返回 navigation handle。
+ * 创建 NavigationBridge：订阅 controller、装配 popstate、返回历史绑定。
  *
  * 调用后 bridge 已激活（已订阅 controller + 已注册 popstate listener）。应用应在调用前/后
- * 调一次 `controller.resolve()` 完成首屏解析；首屏的快照提交会被 bridge 用 `replaceState`
+ * 调一次 `controller.start()` 完成首屏解析；首屏的快照提交会被 bridge 用 `replaceState`
  * 写入 history（first-page 语义），不会污染历史栈。
  */
-export function createNavigationBridge(deps: NavigationBridgeDependencies): NavigationHandle {
+export function createNavigationBridge(deps: NavigationBridgeDependencies): NavigationBridge {
     const { controller, codec, router, log } = deps;
 
     const history = new History<NavigationHistoryState>(log, {
@@ -156,7 +136,7 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
 
         isApplyingHistory = true;
         try {
-            const result = await controller.hydrate(tree);
+            const result = await controller.perform({ kind: "hydrate", tree });
             if (result !== controller.getSnapshot()) throw Error(`Navigation rejected for ${url}`);
             await deps.viewReady?.();
             if (pop !== popSequence) return;
@@ -196,22 +176,11 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
         }
     }
 
-    // ===== navigation handle =====
+    // ===== history lifecycle =====
     return {
         dispose() {
             unsubscribe();
             history.dispose();
         },
-        refresh: controller.refresh,
-        getSnapshot: controller.getSnapshot,
-        push: controller.push,
-        pop: controller.pop,
-        popToRoot: controller.popToRoot,
-        reuseEntry: controller.reuseEntry,
-        replaceTop: controller.replaceTop,
-        selectTab: controller.selectTab,
-        selectColumn: controller.selectColumn,
-        hydrate: controller.hydrate,
-        subscribe: controller.subscribe,
     };
 }

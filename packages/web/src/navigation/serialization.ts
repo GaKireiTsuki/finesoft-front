@@ -35,6 +35,7 @@ export interface SerializedLeaf {
     readonly kind: typeof NAVIGATION_NODE_KINDS.LEAF;
     readonly intent: string;
     readonly params: RouteParams;
+    readonly query?: RouteParams;
 }
 
 /** 序列化栈 */
@@ -83,6 +84,7 @@ export function serializeNavigation(tree: NavigationNode): SerializedNavigation 
                 kind: NAVIGATION_NODE_KINDS.LEAF,
                 intent: tree.intent,
                 params: tree.params,
+                ...(tree.query ? { query: tree.query } : {}),
                 entryId: tree.entryId,
                 ...(tree.url ? { url: tree.url } : {}),
             };
@@ -178,12 +180,15 @@ function parseLeaf(data: Record<string, unknown>, path: string): NavigationNode 
     if (!isPlainObject(data.params)) {
         throw new NavigationError(`反序列化失败：${path}.params 必须是对象`);
     }
+    if (data.query !== undefined && !isPlainObject(data.query))
+        throw new NavigationError(`Invalid query at ${path}`);
     return {
         kind: NAVIGATION_NODE_KINDS.LEAF,
         entryId: data.entryId,
         ...(typeof data.url === "string" ? { url: data.url } : {}),
         intent: data.intent,
         params: { ...data.params },
+        ...(data.query ? { query: { ...(data.query as RouteParams) } } : {}),
     };
 }
 

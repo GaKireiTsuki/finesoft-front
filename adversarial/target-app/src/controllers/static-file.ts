@@ -1,3 +1,4 @@
+import type { ControllerInput } from "@finesoft/front";
 import { BaseController } from "@finesoft/front";
 import type { BasePage } from "@finesoft/front/web";
 import { readFileSync } from "node:fs";
@@ -9,9 +10,12 @@ interface StaticFileParams extends Record<string, string | undefined> {
 
 const PUBLIC_DIR = resolve(process.cwd(), "public");
 
-export class StaticFileController extends BaseController<StaticFileParams, BasePage> {
-    execute(params: StaticFileParams): BasePage {
-        const filename = params.file ?? "welcome.txt";
+export class StaticFileController extends BaseController<
+    ControllerInput<Record<string, unknown>, StaticFileParams>,
+    BasePage
+> {
+    execute({ query }: ControllerInput<Record<string, unknown>, StaticFileParams>): BasePage {
+        const filename = query.file ?? "welcome.txt";
 
         // Reject path separators, NUL, and absolute paths up front so a
         // hostile filename can never escape PUBLIC_DIR via join/resolve.

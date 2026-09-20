@@ -51,12 +51,14 @@ onMounted(() => {
                 v-for="key in snapshot.navigation.tabs.order"
                 :key="key"
                 :aria-current="key === snapshot.navigation.tabs.active"
-                @click="app.navigation.selectTab(key)"
+                @click="app.perform({ kind: 'selectTab', key })"
             >
                 {{ TAB_LABELS[key] ?? key }}
             </button>
         </nav>
-        <button v-if="snapshot.navigation.canGoBack" @click="app.navigation.pop()">← Back</button>
+        <button v-if="snapshot.navigation.canGoBack" @click="app.perform({ kind: 'pop' })">
+            ← Back
+        </button>
         <Outlet :app="app" :views="views" />
     </div>
 </template>

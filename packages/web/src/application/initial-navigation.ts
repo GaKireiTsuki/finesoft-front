@@ -15,7 +15,9 @@ export async function resolveInitialNavigation(
     const codec = options.codec ?? web.definition.navigationCodec ?? createActiveLeafCodec();
     const overlay = codec.decode(url, web.router);
     const match = await web.router.resolve(url);
-    const target = match ? leaf(match.intent.id, match.intent.params, { url }) : undefined;
+    const target = match
+        ? leaf(match.intent.id, match.intent.params, { url, query: match.intent.query })
+        : undefined;
     const initial = options.initial ?? web.definition.navigation;
     const arranged =
         typeof initial === "function"

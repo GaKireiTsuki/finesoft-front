@@ -41,6 +41,9 @@ export function materializeServerData(
                     ...(entry.intent.params === undefined
                         ? {}
                         : { params: cloneJson(entry.intent.params, new Set()) }),
+                    ...(entry.intent.query === undefined
+                        ? {}
+                        : { query: cloneJson(entry.intent.query, new Set()) }),
                 } as PrefetchedIntent["intent"],
                 data: project(entry.data, undefined, true, new Set()),
             };

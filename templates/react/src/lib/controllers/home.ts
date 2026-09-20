@@ -1,9 +1,12 @@
 import { PRODUCTS } from "../data/products";
-import { BaseController } from "@finesoft/front";
+import { BaseController, type ControllerInput } from "@finesoft/front";
 import { markPublic, makeFlowAction } from "@finesoft/front/web";
 import type { HomePage, ProductShelf } from "../models/product";
 
-export class HomeController extends BaseController<Record<string, string>, HomePage> {
+export class HomeController extends BaseController<
+    ControllerInput<Record<string, string>>,
+    HomePage
+> {
     execute(): HomePage {
         const shelf: ProductShelf = {
             id: "featured",

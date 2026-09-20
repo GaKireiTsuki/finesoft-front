@@ -17,11 +17,18 @@ import type { Adapter } from "./adapters/types";
 import { createSSRApp, type SSRModule } from "./app";
 import { dynamicImport } from "./dynamic-import";
 import { registerProxyRoutes, type ProxyRouteConfig } from "./proxy";
+import {
+    createControllerTypeWatcher,
+    generateControllerTypes,
+    type ControllerTypeOptions,
+} from "./controller-types";
 
 const GENERATED_I18N_LOADER_ID = "virtual:finesoft-front/i18n-loader";
 const RESOLVED_GENERATED_I18N_LOADER_ID = `\0${GENERATED_I18N_LOADER_ID}`;
 
 export interface FinesoftFrontViteOptions {
+    /** Maintain route-derived class parameter types. Enabled by default for TypeScript apps. */
+    controllerTypes?: ControllerTypeOptions | false;
     /** Optional reproducible build identity; otherwise generated for each paired build. */
     buildId?: string;
     /** SSR 配置 */
@@ -144,6 +151,8 @@ async function resolveMessagesDir(root: string, messagesDir: string): Promise<st
 }
 
 export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) {
+    if (options.controllerTypes !== false && !process.env.__FINESOFT_SUB_BUILD__)
+        generateControllerTypes(options.controllerTypes);
     const ssrEntry = options.ssr?.entry ?? "src/ssr.ts";
     let root = process.cwd();
     let buildId = options.buildId ?? crypto.randomUUID();
@@ -175,6 +184,11 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         },
 
         configResolved(config: Record<string, any>) {
+            if (options.controllerTypes !== false && !process.env.__FINESOFT_SUB_BUILD__)
+                generateControllerTypes({
+                    ...options.controllerTypes,
+                    root: options.controllerTypes?.root ?? config.root,
+                });
             resolvedCommand = config.command as string;
             resolvedResolve = config.resolve;
             resolvedCss = config.css;
@@ -309,6 +323,56 @@ export async function loadMessages(locale) {
 
         // ─── Dev ───────────────────────────────────────────────
         configureServer(server: any) {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const typeWatcher =
+                options.controllerTypes === false
+                    ? undefined
+                    : createControllerTypeWatcher({
+                          ...options.controllerTypes,
+                          root: options.controllerTypes?.root ?? root,
+                      });
+            const pending = new Set<string>();
+            const refreshTypes = (event: string, file: string) => {
+                if (
+                    event !== "dependency" &&
+                    (!/\.(?:[cm]?tsx?|json)$/.test(file) || file.includes("/.finesoft/"))
+                )
+                    return;
+                clearTimeout(timer);
+                pending.add(file);
+                try {
+                    if (typeWatcher?.update([...pending], true)) {
+                        pending.clear();
+                        return;
+                    }
+                } catch (error) {
+                    server.config.logger.error(`[finesoft] ${String(error)}`);
+                    pending.clear();
+                    return;
+                }
+                timer = setTimeout(() => {
+                    const files = [...pending];
+                    pending.clear();
+                    try {
+                        typeWatcher?.update(files);
+                    } catch (error) {
+                        server.config.logger.error(`[finesoft] ${String(error)}`);
+                    }
+                }, 30);
+            };
+            if (options.controllerTypes !== false) {
+                // Vite ignores node_modules; type-only and external schema inputs still invalidate.
+                typeWatcher?.watch((file) => refreshTypes("dependency", file));
+                server.watcher.on("all", refreshTypes);
+                const close = server.close.bind(server);
+                server.close = async () => {
+                    clearTimeout(timer);
+                    pending.clear();
+                    server.watcher.off("all", refreshTypes);
+                    typeWatcher?.close();
+                    return await close();
+                };
+            }
             return async () => {
                 const { Hono: HonoClass } = await dynamicImport("hono");
                 const { getRequestListener } = await dynamicImport("@hono/node-server");

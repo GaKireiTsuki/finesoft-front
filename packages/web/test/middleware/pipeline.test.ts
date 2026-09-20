@@ -7,6 +7,7 @@ const navigationContext = {
     url: "/account?tab=profile",
     path: "/account",
     params: { tab: "profile" },
+    query: {},
     intent: { id: "account", params: { tab: "profile" } },
     isServer: false,
     container: new Container(),

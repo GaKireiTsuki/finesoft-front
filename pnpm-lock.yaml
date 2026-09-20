@@ -188,6 +188,9 @@ importers:
       svelte:
         specifier: ^5.55.1
         version: 5.56.8(@typescript-eslint/types@8.57.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       undici:
         specifier: 7.29.0
         version: 7.29.0
@@ -228,6 +231,9 @@ importers:
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vite-plus:
         specifier: 'catalog:'
         version: 0.2.8(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(svelte@5.56.8(@typescript-eslint/types@8.57.1))(typescript@6.0.3)
@@ -287,6 +293,9 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18
@@ -299,6 +308,9 @@ importers:
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -318,6 +330,9 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18
@@ -330,6 +345,9 @@ importers:
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -349,9 +367,15 @@ importers:
       '@sveltejs/vite-plugin-svelte':
         specifier: ^7.3.0
         version: 7.3.0(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(svelte@5.56.8(@typescript-eslint/types@8.57.1))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -371,9 +395,15 @@ importers:
       '@sveltejs/vite-plugin-svelte':
         specifier: ^7.3.0
         version: 7.3.0(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(svelte@5.56.8(@typescript-eslint/types@8.57.1))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -390,12 +420,18 @@ importers:
         specifier: ^3.5.41
         version: 3.5.41(typescript@6.0.3)
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
         version: 6.0.8(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(vue@3.5.41(typescript@6.0.3))
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
@@ -412,12 +448,18 @@ importers:
         specifier: ^3.5.41
         version: 3.5.41(typescript@6.0.3)
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
         version: 6.0.8(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(vue@3.5.41(typescript@6.0.3))
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.8
         version: '@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3)'
