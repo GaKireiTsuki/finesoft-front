@@ -8,4 +8,4 @@ Hidden pages retain native instances. Pop removes the entry and scoped draft. DO
 
 `app.session.save()` and `clear()` return observable results. Adjacent unstarted implicit saves coalesce; explicit snapshots, load, restore and clear are ordered boundaries. Disposal captures the current state and waits for registered storage work. Browser shutdown still cannot guarantee an asynchronous write finishes.
 
-Clean up with `try { await app.dispose(); } finally { nativeRoot.unmount(); }`, using Svelte's `unmount` function when applicable. Other instances can keep calling `other.navigation.navigate("/")`. Session protocol v2 uses a navigation tree; old URL-only snapshots are incompatible. Business slices retain independent versions and migration contracts.
+Clean up with `try { await app.dispose(); } finally { nativeRoot.unmount(); }`, using Svelte's `unmount` function when applicable. Other instances can keep calling `other.perform({ kind: "flow", url: "/" })`. Session protocol v2 uses a navigation tree; old URL-only snapshots are incompatible. Business slices retain independent versions and migration contracts.

@@ -24,7 +24,7 @@ This is `@finesoft/front`, a TypeScript framework built with Vite+ workspaces. P
 - **RuntimeHandle** owns portable execution, policy/schema validation, invocation scopes and owned providers.
 - **definePage / defineWebApp** declare reusable page factories, routes and navigation. Reference helpers reuse existing declarations; they never instantiate controllers for discovery.
 - **WebAppView** exposes stable navigation snapshots, native commit acknowledgement and optional session state. `createBrowserApp` prepares it before the application mounts a native root; `createSSRRender` renders the same root from a request-scoped session.
-- **BaseController\<TParams, TResult\>** — optional handler using `execute(input, context)` with try/catch → `fallback()` pattern
+- **BaseController\<TInput, TResult\>** — optional handler using `execute({ params, query, context })` with try/catch → `fallback()` pattern
 - **Middleware pipeline** — two-phase: `beforeLoad` (navigation guards) → `afterLoad` (post-data guards); first non-`next` result short-circuits
 - **ActionDispatcher** — handles `FlowAction` (SPA nav), `ExternalUrlAction`, `CompoundAction` (recursive)
 - **Container** — typed token/provider container; use `context.get(DEP_KEYS.X)` and explicit provider lifetimes for request isolation
@@ -99,7 +99,7 @@ Release locally with `vp run changeset` followed by `vp run release`. The automa
 - **Strict mode** everywhere; target ESNext, module ESNext
 - **Interfaces** for public contracts; **type aliases** for discriminated unions
 - **Type guards** follow `is*` naming: `isFlowAction()`, `isCompoundAction()`
-- **Generics** for reusable components: `BaseController<TParams, TResult>`, `Mapper<TInput, TOutput>`
+- **Generics** for reusable components: `BaseController<TInput, TResult>`, `Mapper<TInput, TOutput>`
 - **Readonly** properties in context interfaces
 
 ### Naming

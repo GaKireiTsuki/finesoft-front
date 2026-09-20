@@ -4,12 +4,12 @@
 
 ## 各层职责
 
-| API                                | 职责                                                              |
-| ---------------------------------- | ----------------------------------------------------------------- |
-| `BaseController<TParams, TResult>` | 实现 `execute`，通过继承的 `perform` 处理参数、取消和 `fallback`  |
-| `definePage({ id, create })`       | 声明页面加载工厂，生成可复用的 `route`、`leaf` 和 `bindView` 引用 |
-| `defineWebApp`                     | 组装页面声明、路由、守卫及可选导航结构                            |
-| 原生页面组件                       | 接收 `page` 数据，渲染 UI 和处理交互                              |
+| API                               | 职责                                                              |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `BaseController<TInput, TResult>` | 实现 `execute`，通过继承的 `perform` 处理参数、取消和 `fallback`  |
+| `definePage({ id, create })`      | 声明页面加载工厂，生成可复用的 `route`、`leaf` 和 `bindView` 引用 |
+| `defineWebApp`                    | 组装页面声明、路由、守卫及可选导航结构                            |
+| 原生页面组件                      | 接收 `page` 数据，渲染 UI 和处理交互                              |
 
 `BaseController` 来自 `@finesoft/front`；页面、路由和公开数据声明来自 `@finesoft/front/web`。
 
@@ -18,7 +18,7 @@
 `src/lib/controllers/product.ts`：
 
 ```ts
-import { BaseController, DEP_KEYS, type ExecutionContext } from "@finesoft/front";
+import { BaseController, DEP_KEYS } from "@finesoft/front";
 import { markPublic, type BasePage } from "@finesoft/front/web";
 
 export interface ProductPage extends BasePage {
@@ -26,8 +26,8 @@ export interface ProductPage extends BasePage {
     product: { id: number; name: string };
 }
 
-export class ProductController extends BaseController<{ id: number }, ProductPage> {
-    async execute(params: { id: number }, context: ExecutionContext): Promise<ProductPage> {
+export class ProductController extends BaseController {
+    async execute({ params, context }): Promise<ProductPage> {
         const logger = await context.get(DEP_KEYS.LOGGER_FACTORY);
         logger.loggerFor("ProductController").info(`Loading product ${params.id}`);
         context.record("product.load", { productId: params.id });
@@ -43,7 +43,7 @@ export class ProductController extends BaseController<{ id: number }, ProductPag
         );
     }
 
-    override fallback(params: { id: number }, _error: Error): ProductPage {
+    override fallback({ params }): ProductPage {
         return markPublic(
             {
                 id: String(params.id),
@@ -56,6 +56,10 @@ export class ProductController extends BaseController<{ id: number }, ProductPag
     }
 }
 ```
+
+框架根据下方路由声明维护类型导入、方法注解和基类泛型；这里展示首次编写时的源码，省略自动生成的引用。运行 `vp dev`、`vp check` 或构建即可生成。类型集中在 `.finesoft/controller-types.d.ts`，Controller 文件末尾不再追加声明区块。配置方式见[控制器类型自动关联](./11-navigation.md)。
+
+两个方法统一接收一个对象：`execute({ params, query, context })` 和 `fallback({ params, query, context, error })`，只解构需要的字段即可。Query 与路径参数分开，根据路由中的 `query` 声明推断类型。
 
 这个示例使用本地数据；实际业务可以在 `execute` 中调用服务。`context` 提供当前执行的 `signal`、`fetch`、`get(token)` 和 `execute(operation, input)`。执行异步请求时，将 `context.signal` 传给请求 API，取消才能传递到实际工作。
 
@@ -84,7 +88,7 @@ export const app = defineWebApp({
 });
 ```
 
-页面声明拥有唯一操作标识，控制器不再重复声明 intentId。URL `/products/42` 经 `int()` 解码后，`execute` 收到 `{ id: 42 }`；代码内的 `product.leaf({ id: 42 })` 保留同样的参数类型。
+页面声明拥有唯一操作标识，控制器不再重复声明 intentId。URL `/products/42` 经 `int()` 解码后，`execute` 收到 `params: { id: 42 }`；代码内的 `product.leaf({ id: 42 })` 保留同样的参数类型。
 
 `create` 每次实际执行时返回新控制器。声明、路由发现及引用辅助方法只读取定义；命中已预取或保留的页面结果时也无需创建控制器。请求身份放在执行上下文或有作用域的 provider 中；页面草稿放在页面实例中。
 
@@ -105,7 +109,7 @@ export const home = definePage({
 });
 ```
 
-模板采用控制器类来保持组织方式一致；函数形式适用于简短加载逻辑。继承基类是可选的，实现 `perform(input, context)` 契约也能由 `create` 工厂接入。
+模板采用控制器类来保持组织方式一致；函数形式适用于简短加载逻辑。既有函数处理器接收 `(params, context, query)`。继承基类是可选的，实现 `perform(params, context, query)` 契约也能由 `create` 工厂接入。
 
 ## 独立业务操作也可以用控制器
 
@@ -118,6 +122,7 @@ import {
     defineApp,
     defineOperation,
     implementController,
+    type ControllerInput,
 } from "@finesoft/front";
 
 type TotalInput = { unitPrice: number; quantity: number };
@@ -125,9 +130,9 @@ interface TotalResult {
     total: number;
 }
 
-class TotalController extends BaseController<TotalInput, TotalResult> {
-    execute({ unitPrice, quantity }: TotalInput): TotalResult {
-        return { total: unitPrice * quantity };
+class TotalController extends BaseController<ControllerInput<TotalInput>, TotalResult> {
+    execute({ params }: ControllerInput<TotalInput>): TotalResult {
+        return { total: params.unitPrice * params.quantity };
     }
 }
 

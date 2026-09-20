@@ -43,7 +43,7 @@ export default function App({ app }: { app: WebAppView }) {
 }
 ```
 
-页面组件接收 `{ page, app, entry }`，可以使用布局提供的原生 context。真实 `<a href>` 链接自动接入同一导航流程；组合操作使用 `app.navigation`。类式加载逻辑可选用 `BaseController.execute(input, context)`。
+页面组件接收 `{ page, app, entry }`，可以使用布局提供的原生 context。真实 `<a href>` 链接自动接入同一导航流程；组合操作使用 `app.perform(action)`。类式加载逻辑可选用 `BaseController.execute({ params, query, context })`。
 
 ## 浏览器入口
 

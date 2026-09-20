@@ -4,12 +4,12 @@ All six templates load pages with `BaseController`, which remains a public API. 
 
 ## Responsibilities
 
-| API                                | Responsibility                                                                                  |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `BaseController<TParams, TResult>` | Implement `execute`; inherited `perform` handles parameters, cancellation and `fallback`        |
-| `definePage({ id, create })`       | Declare the page-loading factory and provide reusable `route`, `leaf` and `bindView` references |
-| `defineWebApp`                     | Assemble page declarations, routes, guards and optional navigation structure                    |
-| Native page component              | Receive `page` data, render UI and handle interactions                                          |
+| API                               | Responsibility                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `BaseController<TInput, TResult>` | Implement `execute`; inherited `perform` handles parameters, cancellation and `fallback`        |
+| `definePage({ id, create })`      | Declare the page-loading factory and provide reusable `route`, `leaf` and `bindView` references |
+| `defineWebApp`                    | Assemble page declarations, routes, guards and optional navigation structure                    |
+| Native page component             | Receive `page` data, render UI and handle interactions                                          |
 
 Import `BaseController` from `@finesoft/front`. Import pages, routes and public-data declarations from `@finesoft/front/web`.
 
@@ -18,7 +18,7 @@ Import `BaseController` from `@finesoft/front`. Import pages, routes and public-
 `src/lib/controllers/product.ts`:
 
 ```ts
-import { BaseController, DEP_KEYS, type ExecutionContext } from "@finesoft/front";
+import { BaseController, DEP_KEYS } from "@finesoft/front";
 import { markPublic, type BasePage } from "@finesoft/front/web";
 
 export interface ProductPage extends BasePage {
@@ -26,8 +26,8 @@ export interface ProductPage extends BasePage {
     product: { id: number; name: string };
 }
 
-export class ProductController extends BaseController<{ id: number }, ProductPage> {
-    async execute(params: { id: number }, context: ExecutionContext): Promise<ProductPage> {
+export class ProductController extends BaseController {
+    async execute({ params, context }): Promise<ProductPage> {
         const logger = await context.get(DEP_KEYS.LOGGER_FACTORY);
         logger.loggerFor("ProductController").info(`Loading product ${params.id}`);
         context.record("product.load", { productId: params.id });
@@ -43,7 +43,7 @@ export class ProductController extends BaseController<{ id: number }, ProductPag
         );
     }
 
-    override fallback(params: { id: number }, _error: Error): ProductPage {
+    override fallback({ params }): ProductPage {
         return markPublic(
             {
                 id: String(params.id),
@@ -56,6 +56,10 @@ export class ProductController extends BaseController<{ id: number }, ProductPag
     }
 }
 ```
+
+The framework maintains type imports, method annotations and base-class generics from the route declaration below; these are omitted in the initial source shown here. Run `vp dev`, `vp check` or the build to generate them. Types live in `.finesoft/controller-types.d.ts`, with no declaration block appended to the controller. See [automatic controller types](./11-navigation.md) for setup.
+
+Both methods receive one object: `execute({ params, query, context })` and `fallback({ params, query, context, error })`. Destructure only the fields you need. Query remains separate from path parameters and is inferred from the route's `query` schemas.
 
 This example uses local data; application controllers can call services from `execute`. `context` provides its `signal`, `fetch`, `get(token)` and `execute(operation, input)`. Pass `context.signal` to asynchronous request APIs so cancellation reaches the actual work.
 
@@ -84,7 +88,7 @@ export const app = defineWebApp({
 });
 ```
 
-The page declaration owns the operation id; controllers do not repeat it. The URL `/products/42` is decoded by `int()`, so `execute` receives `{ id: 42 }`. In application code, `product.leaf({ id: 42 })` retains the same parameter type.
+The page declaration owns the operation id; controllers do not repeat it. The URL `/products/42` is decoded by `int()`, so `execute` receives `params: { id: 42 }`. In application code, `product.leaf({ id: 42 })` retains the same parameter type.
 
 `create` returns a new controller for each actual execution. Declaration, route discovery and reference helpers only read definitions; consuming a prefetched or retained page result also skips controller creation. Keep request identity in execution context or scoped providers, and page drafts in page instances.
 
@@ -105,7 +109,7 @@ export const home = definePage({
 });
 ```
 
-Templates use controller classes for consistent organization; function handlers suit short loading logic. Inheritance is optional: a `create` factory can also return an object implementing `perform(input, context)`.
+Templates use controller classes for consistent organization; function handlers suit short loading logic. Existing function handlers receive `(params, context, query)`. Inheritance is optional: a `create` factory can also return an object implementing `perform(params, context, query)`.
 
 ## Controllers for independent business operations
 
@@ -118,6 +122,7 @@ import {
     defineApp,
     defineOperation,
     implementController,
+    type ControllerInput,
 } from "@finesoft/front";
 
 type TotalInput = { unitPrice: number; quantity: number };
@@ -125,9 +130,9 @@ interface TotalResult {
     total: number;
 }
 
-class TotalController extends BaseController<TotalInput, TotalResult> {
-    execute({ unitPrice, quantity }: TotalInput): TotalResult {
-        return { total: unitPrice * quantity };
+class TotalController extends BaseController<ControllerInput<TotalInput>, TotalResult> {
+    execute({ params }: ControllerInput<TotalInput>): TotalResult {
+        return { total: params.unitPrice * params.quantity };
     }
 }
 

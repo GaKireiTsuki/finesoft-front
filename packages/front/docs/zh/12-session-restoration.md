@@ -8,4 +8,4 @@
 
 `app.session.save()` / `clear()` 返回可检查的结果。相邻、尚未开始的隐式 save 合并；显式快照、load、restore、clear 构成顺序边界。最终 dispose 捕获当前状态并等待已登记存储操作；浏览器关闭仍不能保证异步存储完成。
 
-清理顺序是 `try { await app.dispose(); } finally { nativeRoot.unmount(); }`，Svelte 使用其 `unmount` 函数。另一个实例仍可通过 `other.navigation.navigate("/")` 工作。协议 v2 使用导航树，旧 URL-only 快照会被判为不兼容；业务切片有独立版本和迁移契约。
+清理顺序是 `try { await app.dispose(); } finally { nativeRoot.unmount(); }`，Svelte 使用其 `unmount` 函数。另一个实例仍可通过 `other.perform({ kind: "flow", url: "/" })` 工作。协议 v2 使用导航树，旧 URL-only 快照会被判为不兼容；业务切片有独立版本和迁移契约。

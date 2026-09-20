@@ -43,7 +43,7 @@ export default function App({ app }: { app: WebAppView }) {
 }
 ```
 
-Page components receive `{ page, app, entry }` and inherit native context from their layout. Real `<a href>` links use the same navigation flow; composed actions use `app.navigation`. Class-based loaders may use `BaseController.execute(input, context)`.
+Page components receive `{ page, app, entry }` and inherit native context from their layout. Real `<a href>` links use the same navigation flow; composed actions use `app.perform(action)`. Class-based loaders may use `BaseController.execute({ params, query, context })`.
 
 ## Browser entry
 

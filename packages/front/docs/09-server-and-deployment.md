@@ -6,13 +6,12 @@ Portable data handlers return standard Responses. Bind the same operation to Nod
 
 ```ts
 import { defineApp, defineOperation, createRuntime, ExecutionError } from "@finesoft/front";
-import { defineEndpoint, createHttpHandler } from "@finesoft/front/http";
+import { defineEndpoint } from "@finesoft/front/http";
 export const double = defineOperation({
     id: "double",
     kind: "query",
     handler: (value: number) => value * 2,
 });
-export const runtime = createRuntime({ app: defineApp({ id: "data-app", operations: [double] }) });
 export const endpoints = [
     defineEndpoint({
         method: "POST",
@@ -27,7 +26,10 @@ export const endpoints = [
         encode: (value) => Response.json({ value }),
     }),
 ];
-export const handler = createHttpHandler({ runtime, endpoints });
+export function createDataApp() {
+    const runtime = createRuntime({ app: defineApp({ id: "data-app", operations: [double] }) });
+    return { runtime, endpoints };
+}
 ```
 
 ## Separate platform entries / 独立平台入口
@@ -35,15 +37,24 @@ export const handler = createHttpHandler({ runtime, endpoints });
 ```ts
 // node.ts
 import { startNodeHandler } from "@finesoft/front/node";
-import { handler, runtime } from "./data-app";
-const server = await startNodeHandler({ handler, port: 3000, disposeApp: () => runtime.dispose() });
+import { createHttpHandler } from "@finesoft/front/http";
+import { createDataApp } from "./data-app";
+const options = createDataApp();
+const handler = createHttpHandler(options);
+const server = await startNodeHandler({
+    handler,
+    port: 3000,
+    disposeApp: () => options.runtime.dispose(),
+});
 // await server.dispose();
 
 // worker.ts (a separate host entry)
-import { createWorkerHandler } from "@finesoft/front/worker";
-import { runtime, endpoints } from "./data-app";
-export default createWorkerHandler({ runtime, endpoints });
+import { createHttpHandler } from "@finesoft/front/worker";
+import { createDataApp } from "./data-app";
+export default createHttpHandler(createDataApp);
 ```
+
+The HTTP owner executes requests through `handler.fetch(request, bindings, host)`. Node and Worker use the same object. A factory argument initializes once inside the first request, avoiding Runtime creation during workerd module evaluation; bindings, cancellation and task hosts remain per request. `createWorkerHandler` has been removed.
 
 ## Web build / 页面构建
 
