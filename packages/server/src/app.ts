@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
 import { nodeSafeFetchOptions } from "./node/fetch-policy";
-import { createSSRHost } from "./ssr-host";
+import { createSSRHandler } from "./ssr-handler";
 import type { SSRModule } from "./ssr-handler";
 import { dynamicImport } from "./dynamic-import";
 
@@ -35,7 +35,8 @@ export function createSSRApp(
     } = options;
     const app = new Hono<{ Bindings: Record<string, unknown> }>();
 
-    const owner = createSSRHost({
+    const owner = createSSRHandler({
+        ownRenderers: true,
         template: async (request) => {
             const { readFileSync } = await dynamicImport("node:fs");
             const path = await dynamicImport("node:path");
@@ -53,8 +54,8 @@ export function createSSRApp(
             console.error("[SSR Error]", error);
         },
     });
-    app.get("*", (context) => owner.handle(context.req.raw, context.env));
-    return Object.assign(app, { dispose: () => owner.dispose() });
+    app.get("*", (context) => owner.fetch(context.req.raw, context.env));
+    return Object.assign(app, { dispose: owner.dispose });
 }
 
 export type { SSRModule } from "./ssr-handler";

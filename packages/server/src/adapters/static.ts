@@ -1,6 +1,6 @@
 /** Build static HTML through the same SSR response assembler used by request hosts. */
 import { dynamicImport } from "../dynamic-import";
-import { createSSRHost } from "../ssr-host";
+import { createSSRHandler } from "../ssr-handler";
 import { matchRenderModeOverride, type SSRModule } from "../ssr-handler";
 import type { Adapter, AdapterContext } from "./types";
 
@@ -22,7 +22,8 @@ export function staticAdapter(options: StaticAdapterOptions = {}): Adapter {
                 `${pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href}?build=${encodeURIComponent(context.buildId!)}`,
             );
             const modes = { ...context.renderModes };
-            const host = createSSRHost({
+            const host = createSSRHandler({
+                ownRenderers: true,
                 ...module,
                 template: context.templateHtml,
                 renderModes: modes,
@@ -48,7 +49,7 @@ export function staticAdapter(options: StaticAdapterOptions = {}): Adapter {
                         matchRenderModeOverride(url, context.renderModes) ??
                         routes.find((route) => route.path === url)?.renderMode;
                     if (mode) modes[url] = mode;
-                    const response = await host.handle(new Request("https://static.local" + url));
+                    const response = await host.fetch(new Request("https://static.local" + url));
                     const html = await response.text();
                     if (response.status !== 200)
                         throw Error(

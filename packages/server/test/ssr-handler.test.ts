@@ -24,17 +24,17 @@ test("portable SSR preserves status, cookies, redirect, slots, locale, rewrite a
         defaultLocale: "ar",
         renderModes: { "/shell/*": "csr" },
     });
-    const response = await handler(new Request("https://example.com/"));
+    const response = await handler.fetch(new Request("https://example.com/"));
     expect(response.status).toBe(403);
     expect(response.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
     expect(response.headers.get("content-location")).toBe("/internal");
     const html = await response.text();
     expect(html).toContain('lang="ar" dir="rtl"');
     expect(html).toContain("custom");
-    const redirect = await handler(new Request("https://example.com/go"));
+    const redirect = await handler.fetch(new Request("https://example.com/go"));
     expect(redirect.status).toBe(307);
     expect(redirect.headers.get("location")).toBe("/login");
-    const shell = await handler(new Request("https://example.com/shell/a"));
+    const shell = await handler.fetch(new Request("https://example.com/shell/a"));
     expect(await shell.text()).toContain('lang="ar" dir="rtl"');
     expect(render).toHaveBeenCalledTimes(2);
 });
@@ -50,14 +50,14 @@ test("caches only explicit public prerender results, isolates origins, bypasses 
     }));
     const handler = createSSRHandler({ template, render, serializeServerData: JSON.stringify });
     const request = (path = "/", headers?: HeadersInit) =>
-        handler(new Request(`https://example.com${path}`, { headers }));
+        handler.fetch(new Request(`https://example.com${path}`, { headers }));
     const first = await (await request()).text();
     expect(await (await request()).text()).toBe(first);
     await request("/", { cookie: "user=2" });
     await request("/", { authorization: "Bearer private" });
     await request("/cookie");
     await request("/cookie");
-    await handler(new Request("https://other.com/"));
+    await handler.fetch(new Request("https://other.com/"));
     expect(count).toBe(7);
 });
 
@@ -75,7 +75,7 @@ test("internal fetch carries per-request bindings, depth and cancellation and hi
         render: async (_url, ctx) => ({ ...base, html: await (await ctx!.fetch!("/api")).text() }),
     });
     expect(
-        await (await handler(new Request("https://example.com/"), { tenant: "t" })).text(),
+        await (await handler.fetch(new Request("https://example.com/"), { tenant: "t" })).text(),
     ).toContain("ok");
     const bad = createSSRHandler({
         template,
@@ -84,7 +84,7 @@ test("internal fetch carries per-request bindings, depth and cancellation and hi
             throw new Error("private secret");
         },
     });
-    const failure = await bad(new Request("https://example.com/"));
+    const failure = await bad.fetch(new Request("https://example.com/"));
     expect(failure.status).toBe(500);
     expect(await failure.text()).toBe("Internal Server Error");
 });
@@ -101,10 +101,12 @@ test("a warmed public cache cannot skip current request guards or replay into a 
             return { ...base, renderMode: "prerender", cache: "public" };
         },
     });
-    await handler(new Request("https://example.com/"));
-    expect((await handler(new Request("https://example.com/"), { denied: true })).status).toBe(403);
+    await handler.fetch(new Request("https://example.com/"));
+    expect(
+        (await handler.fetch(new Request("https://example.com/"), { denied: true })).status,
+    ).toBe(403);
     personalized = true;
-    const response = await handler(new Request("https://example.com/"));
+    const response = await handler.fetch(new Request("https://example.com/"));
     expect(response.headers.getSetCookie()).toEqual(["session=private"]);
     expect(await response.text()).toContain("personal");
 });
@@ -131,11 +133,11 @@ test("per-request module selection retains each serializer and skips it on an HT
             };
         },
     });
-    const first = handler(new Request("https://test/first"));
-    const second = await handler(new Request("https://test/second"));
+    const first = handler.fetch(new Request("https://test/first"));
+    const second = await handler.fetch(new Request("https://test/second"));
     release();
     expect(await (await first).text()).toContain('"name":"/first"');
     expect(await second.text()).toContain('"name":"/second"');
-    await handler(new Request("https://test/second"));
+    await handler.fetch(new Request("https://test/second"));
     expect(serialized).toEqual(["/second", "/first"]);
 });

@@ -49,7 +49,7 @@ export const NODE_BUILTINS = [
 export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOptions): string {
     return `
 import { Hono } from "hono";
-import { createSSRHost, registerProxyRoutes } from "@finesoft/front/ssr";
+import { createSSRHandler, registerProxyRoutes } from "@finesoft/front/ssr";
 ${opts.platformImport}
 ${opts.dnsPolicy === "hostname" ? "" : 'import { nodeSafeFetchOptions as _safeFetchOptions } from "@finesoft/front/node";'}
 import { render, serializeServerData } from "./${ctx.ssrEntry}";
@@ -62,7 +62,8 @@ const app = new Hono();
 ${generateProxyCode(ctx.proxies ?? [])}
 ${ctx.setupPath ? 'if (typeof _setupDefault === "function") await _setupDefault(app);' : ""}
 ${opts.platformMiddleware ?? ""}
-const ssrHost = createSSRHost({
+const ssr = createSSRHandler({
+        ownRenderers: true,
     template: TEMPLATE,
     render,
     serializeServerData,
@@ -73,7 +74,7 @@ const ssrHost = createSSRHost({
     ${opts.platformCache ? "cache: {get: platformCacheGet, set: platformCacheSet}," : ""}
     ${opts.publicCacheHeaders ? `publicCacheHeaders: ${JSON.stringify(opts.publicCacheHeaders)},` : ""}
 });
-app.get("*", c => ssrHost.handle(c.req.raw, c.env));
+app.get("*", c => ssr.fetch(c.req.raw, c.env));
 ${opts.platformExport}
 `;
 }
@@ -227,7 +228,9 @@ export async function prerenderRoutes(ctx: AdapterContext): Promise<PrerenderRes
                     onError: (error) =>
                         console.warn(`  [prerender] Failed to render ${url}:`, error),
                 });
-                const response = await handler(new Request(new URL(url, "http://prerender.local")));
+                const response = await handler.fetch(
+                    new Request(new URL(url, "http://prerender.local")),
+                );
                 if (eligible && response.status === 200)
                     results.push({ url, html: await response.text() });
             } catch (e) {

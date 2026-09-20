@@ -54,16 +54,24 @@ test("parameter routes decode once, fall through schemas, and report determinist
             }),
         ],
     });
-    expect(await (await handler(new Request("https://example.com/items/42"))).json()).toEqual({
-        id: 42,
-    });
-    expect(await (await handler(new Request("https://example.com/items/a%2Fb"))).json()).toEqual({
+    expect(await (await handler.fetch(new Request("https://example.com/items/42"))).json()).toEqual(
+        {
+            id: 42,
+        },
+    );
+    expect(
+        await (await handler.fetch(new Request("https://example.com/items/a%2Fb"))).json(),
+    ).toEqual({
         slug: "a/b/",
     });
-    const method = await handler(new Request("https://example.com/items/42", { method: "PUT" }));
+    const method = await handler.fetch(
+        new Request("https://example.com/items/42", { method: "PUT" }),
+    );
     expect(method.status).toBe(405);
     expect(method.headers.get("Allow")).toBe("GET, POST");
-    expect((await handler(new Request("https://example.com/items/%E0%A4%A"))).status).toBe(404);
+    expect((await handler.fetch(new Request("https://example.com/items/%E0%A4%A"))).status).toBe(
+        404,
+    );
     expect(() =>
         createHttpHandler({
             runtime,
@@ -136,7 +144,7 @@ test("explicit projection, context, protected nested calls and deterministic HTT
             }),
         ],
     });
-    const response = await handler(
+    const response = await handler.fetch(
         new Request("https://example.com/data", {
             method: "POST",
             body: '{"n":3}',
@@ -147,18 +155,18 @@ test("explicit projection, context, protected nested calls and deterministic HTT
     expect(response.status).toBe(201);
     expect(response.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
     expect(await response.json()).toEqual({ n: 3, tenant: "first" });
-    const denied = await handler(
+    const denied = await handler.fetch(
         new Request("https://example.com/data", { method: "POST", body: '{"n":3}' }),
     );
     expect(denied.status).toBe(403);
     expect(await denied.json()).toEqual({ error: { code: "denied", message: "Access denied" } });
-    const bad = await handler(
+    const bad = await handler.fetch(
         new Request("https://example.com/data", { method: "POST", body: '{"n":"x"}' }),
     );
     expect(bad.status).toBe(400);
     expect(await bad.text()).not.toContain("secret");
-    expect((await handler(new Request("https://example.com/data"))).status).toBe(405);
-    expect((await handler(new Request("https://example.com/inner"))).status).toBe(404);
+    expect((await handler.fetch(new Request("https://example.com/data"))).status).toBe(405);
+    expect((await handler.fetch(new Request("https://example.com/inner"))).status).toBe(404);
     await runtime.dispose();
 });
 
@@ -215,7 +223,7 @@ test.each(["complete", "cancel", "error", "abort"] as const)(
             ],
         });
         const abort = new AbortController();
-        const response = await handler(
+        const response = await handler.fetch(
             new Request("https://example.com", { signal: abort.signal }),
         );
         expect(disposed).toBe(false);
@@ -283,7 +291,9 @@ test.each(["abort", "cancel"] as const)(
             ],
         });
         const abort = new AbortController();
-        const response = await handler(new Request("https://test/", { signal: abort.signal }));
+        const response = await handler.fetch(
+            new Request("https://test/", { signal: abort.signal }),
+        );
         const reader = response.body!.getReader();
         const reading = reader.read().then(
             () => {

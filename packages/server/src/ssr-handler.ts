@@ -2,6 +2,7 @@ import { getLocaleAttributes, LruMap, type SecureFetchOptions } from "@finesoft/
 import { injectCSRShell, injectSSRContent } from "@finesoft/ssr/inject";
 import { createInternalFetch, MAX_SSR_DEPTH, SSR_DEPTH_HEADER } from "./internal-fetch";
 import { isPublicSSRResult } from "./ssr-cache";
+import type { HttpHandler } from "./http";
 
 export interface SSRRequestContext {
     readonly request: Request;
@@ -39,6 +40,8 @@ export interface SSRCache {
     set(key: string, html: string): void | Promise<void>;
 }
 interface SSRHandlerBaseOptions {
+    /** Transfer loaded renderer shutdown to this handler. Default: borrowed renderers. */
+    readonly ownRenderers?: boolean;
     template: string | ((request: Request) => string | Promise<string>);
     renderModes?: Record<string, string>;
     defaultLocale?: string;
@@ -75,10 +78,18 @@ export function matchRenderModeOverride(
     }
     return undefined;
 }
+export interface SSRHandler extends HttpHandler {
+    dispose(this: void): Promise<void>;
+}
 /** Standard Request/Response HTML assembly; owns no Node, Hono, filesystem or Vite state. */
-export function createSSRHandler<TData = unknown>(options: SSRHandlerOptions<TData>) {
+export function createSSRHandler<TData = unknown>(options: SSRHandlerOptions<TData>): SSRHandler {
     const cache = options.cache ?? new LruMap<string, string>(1000);
-    return async (
+    const ownRenderers = options.ownRenderers ?? false;
+    const owners = new Set<SSRModule<TData>["render"]>();
+    if (ownRenderers && "render" in options) owners.add(options.render);
+    const active = new Set<Promise<Response>>();
+    let closing: Promise<void> | undefined;
+    const respond = async (
         request: Request,
         bindings: Readonly<Record<string, unknown>> = {},
     ): Promise<Response> => {
@@ -114,6 +125,7 @@ export function createSSRHandler<TData = unknown>(options: SSRHandlerOptions<TDa
             const publicRequest =
                 !request.headers.has("cookie") && !request.headers.has("authorization");
             const module = "loadModule" in options ? await options.loadModule(request) : options;
+            if (ownRenderers) owners.add(module.render);
             const result = await module.render(url, {
                 request,
                 bindings,
@@ -172,5 +184,32 @@ export function createSSRHandler<TData = unknown>(options: SSRHandlerOptions<TDa
                 { status: request.signal.aborted ? 499 : 500 },
             );
         }
+    };
+    return {
+        fetch(request, bindings) {
+            if (closing)
+                return Promise.resolve(new Response("Application closed", { status: 503 }));
+            const work = respond(request, bindings);
+            active.add(work);
+            void work.then(
+                () => active.delete(work),
+                () => active.delete(work),
+            );
+            return work;
+        },
+        dispose: () =>
+            (closing ??= (async () => {
+                while (active.size) await Promise.allSettled(active);
+                const results = await Promise.allSettled(
+                    [...owners].map(async (render) => {
+                        await render.dispose?.();
+                    }),
+                );
+                owners.clear();
+                const errors = results
+                    .filter((result) => result.status === "rejected")
+                    .map((result) => result.reason);
+                if (errors.length) throw new AggregateError(errors, "SSR cleanup failed");
+            })()),
     };
 }

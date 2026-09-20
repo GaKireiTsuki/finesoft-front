@@ -77,7 +77,7 @@ test.each<{ name: string; metadata: Partial<SSRResponseResult>; public: boolean 
     expect(statics).toHaveLength(scenario.public ? 1 : 0);
     const cache = { get: vi.fn(), set: vi.fn() };
     const handler = createSSRHandler({ ...module, template: "<!--ssr-body-->", cache });
-    await handler(new Request("https://example.test/static"));
+    await handler.fetch(new Request("https://example.test/static"));
     expect(cache.get).toHaveBeenCalledTimes(scenario.public ? 1 : 0);
     expect(cache.set).toHaveBeenCalledTimes(scenario.public ? 1 : 0);
 });
@@ -104,7 +104,7 @@ describe("shared adapter helpers", () => {
         expect(code).toContain('const RENDER_MODES = {"/docs":"prerender"};');
         expect(code).toContain('const DEFAULT_LOCALE = "en-US";');
         expect(code).toContain(
-            'import { createSSRHost, registerProxyRoutes } from "@finesoft/front/ssr";',
+            'import { createSSRHandler, registerProxyRoutes } from "@finesoft/front/ssr";',
         );
         expect(code).toContain(
             'registerProxyRoutes(app, [{"prefix":"/api","target":"https://example.com"}]);',

@@ -1,7 +1,44 @@
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
 import { createRuntime, defineApp, defineOperation, createToken, provide } from "@finesoft/core";
 import { defineEndpoint } from "../src/http";
-import { createWorkerHandler, runManagedTask } from "../src/worker";
+import { createHttpHandler, runManagedTask } from "../src/worker";
+
+test("the HTTP owner initializes once during the first Worker request and isolates later bindings", async () => {
+    const operation = defineOperation({
+        id: "tenant",
+        kind: "query",
+        handler: (_: undefined, ctx) => ctx.bindings.tenant,
+    });
+    let runtime: ReturnType<typeof createRuntime> | undefined;
+    const initialize = vi.fn(() => {
+        runtime = createRuntime({ app: defineApp({ id: "lazy-worker", operations: [operation] }) });
+        return {
+            runtime,
+            endpoints: [
+                defineEndpoint({
+                    method: "GET",
+                    path: "/",
+                    operation,
+                    decode: () => undefined,
+                    encode: (value) => Response.json(value),
+                }),
+            ],
+        };
+    });
+    const handler = createHttpHandler(initialize);
+    expect(initialize).not.toHaveBeenCalled();
+    const responses = await Promise.all(
+        ["first", "second"].map((tenant) =>
+            handler.fetch(new Request("https://worker/"), { tenant }),
+        ),
+    );
+    expect(await Promise.all(responses.map((response) => response.json()))).toEqual([
+        "first",
+        "second",
+    ]);
+    expect(initialize).toHaveBeenCalledTimes(1);
+    await runtime!.dispose();
+});
 
 test("managed task owns a separate scope through host completion, independently of response cancellation", async () => {
     let finish!: () => void;
@@ -40,7 +77,7 @@ test("managed task owns a separate scope through host completion, independently 
             ],
         }),
     });
-    const worker = createWorkerHandler({
+    const worker = createHttpHandler({
         runtime,
         endpoints: [
             defineEndpoint({

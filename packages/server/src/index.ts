@@ -18,13 +18,11 @@ export { detectRuntime, resolveRoot, type RuntimeInfo } from "./runtime";
 export { finesoftFrontViteConfig, type FinesoftFrontViteOptions } from "./vite-plugin";
 
 export * from "./http";
-export { createWorkerHandler } from "./worker";
 export {
     createSSRHandler,
+    type SSRHandler,
     type SSRHandlerOptions,
     type SSRRequestContext,
     type SSRResponseResult,
     type SSRCache,
 } from "./ssr-handler";
-
-export { createSSRHost } from "./ssr-host";

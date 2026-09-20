@@ -1,4 +1,4 @@
-import { createSSRHost } from "./ssr-host";
+import { createSSRHandler } from "./ssr-handler";
 /**
  * finesoftFrontViteConfig — Vite 插件
  *
@@ -397,7 +397,8 @@ export async function loadMessages(locale) {
                 const ssrPath = pathToFileURL(path.resolve(root, "dist/server/ssr.js")).href;
                 const ssrModule = (await dynamicImport(ssrPath)) as SSRModule;
 
-                const owner = createSSRHost({
+                const owner = createSSRHandler({
+                    ownRenderers: true,
                     template,
                     ...ssrModule,
                     fetch: (request, bindings) => app.fetch(request, bindings),
@@ -406,7 +407,7 @@ export async function loadMessages(locale) {
                     defaultLocale: options.defaultLocale,
                     onError: (error) => console.error("[SSR Preview Error]", error),
                 });
-                app.get("*", (c: any) => owner.handle(c.req.raw, c.env));
+                app.get("*", (c: any) => owner.fetch(c.req.raw, c.env));
                 const close = server.httpServer.close.bind(server.httpServer);
                 server.httpServer.close = (callback?: (error?: Error) => void) =>
                     close((error?: Error) => {

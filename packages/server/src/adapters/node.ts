@@ -47,7 +47,7 @@ app.use("*", async (c, next) => {
 `,
                 platformExport: `
 const port = +(process.env.PORT || 3000);
-const server = await startNodeHandler({ handler: request => app.fetch(request), port, disposeApp: () => ssrHost.dispose() });
+const server = await startNodeHandler({ handler: request => app.fetch(request), port, disposeApp: ssr.dispose });
 console.log(\`Server running at http://localhost:\${port}\`);
 export { server };
 `,
