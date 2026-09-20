@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { preview, createServer } from "vite-plus";
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
+import path from "node:path";
 const root = new URL("../", import.meta.url).pathname;
-const evidence = root + "reports/template-unification/browser";
+const evidence = path.resolve(
+    root,
+    process.env.FINESOFT_VERIFY_REPORT_DIR ?? "reports/template-unification/browser",
+);
 await fs.mkdir(evidence, { recursive: true });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const results = [];
@@ -170,6 +174,15 @@ try {
                 assert.ok(contents.search.text.includes("Vite Starter Kit"));
                 await open(page, base + "/search?q=missing");
                 await page.getByText("No products found.").waitFor();
+                await open(page, base + "/search");
+                assert.equal(await page.locator(".product-card").count(), 4);
+                contents.searchDefault = await captureView(page.locator(".page:visible"));
+                assert.ok(contents.searchDefault.text.includes("SSR Deep Dive"));
+                await open(page, base + "/search?q=missing&q=Vite");
+                assert.equal(await page.locator(".product-card").count(), 1);
+                assert.ok(
+                    (await page.locator(".page:visible").innerText()).includes("Vite Starter Kit"),
+                );
                 await open(page, base + "/");
                 assert.equal(await page.locator(".product-card").count(), 3);
                 contents.home = await captureView(page.locator(".page:visible"));

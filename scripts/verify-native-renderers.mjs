@@ -29,9 +29,13 @@ if (!process.env.NATIVE_FIX_ONLY)
         },
     });
 const fixture = "/test/native-app/";
+// Full and focused runs compile with different modes; never reuse their SSR prebundles.
+await fs.mkdir(root + "reports/native-renderers", { recursive: true });
+const cacheDir = await fs.mkdtemp(root + "reports/native-renderers/vite-cache-");
 const server = await createServer({
     configFile: false,
     root: root + "packages/front",
+    cacheDir,
     optimizeDeps: {
         force: true,
         include: [
@@ -207,8 +211,9 @@ try {
                     });
                     throw error;
                 });
+            await page.locator("#a input").fill("alpha");
             await page.evaluate(async () => {
-                await globalThis.apps.a.navigation.push("other");
+                await globalThis.apps.a.perform({ kind: "push", intent: "other" });
             });
             await page.waitForFunction(
                 () => globalThis.apps.a.getSnapshot().entries.at(-1)?.page.title === "Other",
@@ -219,8 +224,12 @@ try {
                     .getAttribute("data-context-locale"),
                 "en:updated",
             );
+            assert.equal(
+                await page.locator("#a [data-fs-entry][hidden] input").inputValue(),
+                "alpha",
+            );
             await page.evaluate(async () => {
-                await globalThis.apps.a.navigation.pop();
+                await globalThis.apps.a.perform({ kind: "pop" });
             });
             await page.waitForFunction(
                 () => globalThis.apps.a.getSnapshot().entries.at(-1)?.page.title === "first 1",
@@ -231,13 +240,13 @@ try {
                     .getAttribute("data-context-locale"),
                 "en:updated",
             );
-            await page.locator("#a input").fill("alpha");
+            assert.equal(await page.locator("#a input:visible").inputValue(), "alpha");
             await page.locator("#b input").fill("beta");
             await page.evaluate(() => {
                 globalThis.inputA = document.querySelector("#a input");
             });
             await page.evaluate(async () => {
-                await globalThis.apps.a.navigation.refresh();
+                await globalThis.apps.a.perform({ kind: "refresh" });
             });
             assert.equal(await page.locator("#a input").inputValue(), "alpha");
             assert.equal(
@@ -256,13 +265,13 @@ try {
                     document.getElementById("a"),
                     "native-a",
                 );
-                await globalThis.apps.b.navigation.refresh();
+                await globalThis.apps.b.perform({ kind: "refresh" });
             });
             assert.equal(await page.locator("#a input").inputValue(), "alpha");
             assert.equal(await page.locator("#b input").inputValue(), "beta");
             assert.equal(await page.locator("#a span").innerText(), "alpha");
             await page.evaluate(async () => {
-                await globalThis.apps.a.navigation.refresh();
+                await globalThis.apps.a.perform({ kind: "refresh" });
             });
             assert.equal(await page.locator("#a input").inputValue(), "alpha");
             await page.reload();
@@ -339,12 +348,10 @@ try {
             );
             assert.equal(await page.locator("#a h1:visible").innerText(), "Other");
             assert.equal(await page.locator("#a input:visible").inputValue(), "");
-            assert.equal(
-                await page.locator("#a [data-fs-entry][hidden] input").inputValue(),
-                "alpha",
-            );
-            await page.evaluate(() => globalThis.apps.a.navigation.pop());
-            assert.equal(await page.locator("#a input:visible").inputValue(), "alpha");
+            assert.equal(await page.locator("#a [data-fs-entry]").count(), 1);
+            assert.equal(await page.locator("#a [data-fs-entry][hidden]").count(), 0);
+            await page.evaluate(() => globalThis.apps.a.perform({ kind: "flow", url: "/" }));
+            assert.equal(await page.locator("#a input:visible").inputValue(), "");
             assert.equal(
                 await page
                     .locator("#b [data-fs-entry]:not([hidden]) [data-context-locale]")
@@ -354,7 +361,7 @@ try {
             await page.evaluate(async () => {
                 globalThis.previousInput = document.querySelector("#b input");
                 globalThis.setType(globalThis.apps.b, "other");
-                await globalThis.apps.b.navigation.refresh();
+                await globalThis.apps.b.perform({ kind: "refresh" });
             });
             assert.equal(await page.locator("#b input").inputValue(), "");
             assert.equal(
@@ -378,9 +385,24 @@ try {
                     if (!String(error).includes("history already owned")) throw error;
                 }
                 globalThis.ownerEntry = globalThis.owner.getSnapshot().entries[0].entryId;
-                await globalThis.owner.navigation.navigate("/other");
+                await globalThis.owner.perform({ kind: "flow", url: "/other" });
             });
             assert.equal(await page.locator("#c h1:visible").innerText(), "Other");
+            assert.equal(await page.locator("#c [data-fs-entry]").count(), 1);
+            const repeatedUrl = await page.evaluate(async () => {
+                const before = history.length;
+                const entryId = globalThis.owner.getSnapshot().entries[0].entryId;
+                for (let count = 0; count < 3; count++)
+                    await globalThis.owner.perform({ kind: "flow", url: "/other" });
+                return {
+                    before,
+                    after: history.length,
+                    entryId,
+                    current: globalThis.owner.getSnapshot().entries[0].entryId,
+                };
+            });
+            assert.equal(repeatedUrl.after, repeatedUrl.before);
+            assert.equal(repeatedUrl.current, repeatedUrl.entryId);
             await page.goBack();
             await page.waitForFunction(
                 () =>
@@ -388,9 +410,16 @@ try {
                     globalThis.ownerEntry,
             );
             assert.match(await page.locator("#c h1:visible").innerText(), /^owner \d+$/);
+            assert.equal(await page.locator("#c [data-fs-entry]").count(), 1);
             await page.screenshot({
                 path: root + "reports/native-renderers/" + ui + "-" + renderMode + ".png",
             });
+            await page.goForward();
+            await page.waitForFunction(
+                () => globalThis.owner.getSnapshot().destinations.at(-1)?.intent === "other",
+            );
+            assert.equal(await page.locator("#c h1:visible").innerText(), "Other");
+            assert.equal(await page.locator("#c [data-fs-entry]").count(), 1);
             await page.evaluate(async () => {
                 await globalThis.owner.dispose();
                 globalThis.owner = await globalThis.mount(
@@ -489,16 +518,21 @@ try {
         await structured.locator("#a input:visible").nth(0).fill("left-draft");
         await structured.locator("#a input:visible").nth(1).fill("right-draft");
         await structured.evaluate(async () => {
-            await globalThis.apps.a.navigation.push(
-                "other",
-                {},
-                {
-                    target: [
-                        { kind: "tab", key: "workspace" },
-                        { kind: "column", id: "right" },
-                    ],
-                },
-            );
+            await globalThis.apps.a.perform({
+                kind: "push",
+                intent: "other",
+                params: {},
+                target: [
+                    {
+                        kind: "tab",
+                        key: "workspace",
+                    },
+                    {
+                        kind: "column",
+                        id: "right",
+                    },
+                ],
+            });
         });
         assert.equal(
             await structured.locator("#a input:visible").nth(0).inputValue(),
@@ -507,7 +541,7 @@ try {
         assert.equal(await structured.locator("#a input:visible").nth(1).inputValue(), "");
         assert.equal(await structured.locator("#a input").count(), 3);
         await structured.evaluate(async () => {
-            await globalThis.apps.a.navigation.pop();
+            await globalThis.apps.a.perform({ kind: "pop" });
         });
         assert.equal(await structured.locator("#a input").count(), 2);
         assert.equal(
@@ -515,12 +549,12 @@ try {
             "right-draft",
         );
         await structured.evaluate(async () => {
-            await globalThis.apps.a.navigation.selectTab("notes");
+            await globalThis.apps.a.perform({ kind: "selectTab", key: "notes" });
         });
         assert.equal(await structured.locator("#a input:visible").count(), 1);
         assert.equal(await structured.locator("#a input").count(), 3);
         await structured.evaluate(async () => {
-            await globalThis.apps.a.navigation.selectTab("workspace");
+            await globalThis.apps.a.perform({ kind: "selectTab", key: "workspace" });
         });
         assert.deepEqual(
             await structured
@@ -541,7 +575,7 @@ try {
             ["left-draft", "right-draft"],
         );
         await structured.evaluate(async () => {
-            await globalThis.apps.a.navigation.refresh();
+            await globalThis.apps.a.perform({ kind: "refresh" });
         });
         assert.deepEqual(await structured.locator("#a span:visible").allTextContents(), [
             "left-draft",
@@ -592,7 +626,7 @@ try {
             /404/,
         );
         await page.evaluate(async () => {
-            await globalThis.apps.a.navigation.navigate("/");
+            await globalThis.apps.a.perform({ kind: "flow", url: "/" });
         });
         assert.match(await page.locator("#a h1").last().innerText(), /first/);
         await page.evaluate(async () => {
@@ -604,7 +638,7 @@ try {
                     : { kind: "next" },
             );
             try {
-                await app.navigation.navigate("/other");
+                await app.perform({ kind: "flow", url: "/other" });
             } catch (error) {
                 if (!String(error).includes("Navigation was not committed")) throw error;
             }
@@ -622,7 +656,7 @@ try {
                     : { kind: "next" },
             );
             let settled = false;
-            const work = app.navigation.navigate("/redirect").then(() => {
+            const work = app.perform({ kind: "flow", url: "/redirect" }).then(() => {
                 settled = true;
             });
             await new Promise((resolve) => setTimeout(resolve, 30));
@@ -671,7 +705,7 @@ try {
                 app.session.scope.set(id, { ...app.session.scope.get(id), business: "keep" });
                 await app.session.save();
                 globalThis.setType(app, "other");
-                await app.navigation.refresh();
+                await app.perform({ kind: "refresh" });
                 const bag = app.session.scope.get(id);
                 if (bag.business !== "keep" || bag.__dom)
                     throw Error("root reset must clear only DOM state");
@@ -694,7 +728,7 @@ try {
                     .getAttribute("data-context-locale"),
                 "ar",
             );
-            await page.evaluate(() => globalThis.apps.b.navigation.refresh());
+            await page.evaluate(() => globalThis.apps.b.perform({ kind: "refresh" }));
             assert.equal(await page.locator("#b input").inputValue(), "");
             assert.equal(await page.locator("#b span").innerText(), "");
             assert.equal(
@@ -727,6 +761,7 @@ try {
 } finally {
     await browser.close();
     await server.close();
+    await fs.rm(cacheDir, { recursive: true, force: true });
     await fs.mkdir(root + "reports/native-renderers", { recursive: true });
     await fs.writeFile(
         root +

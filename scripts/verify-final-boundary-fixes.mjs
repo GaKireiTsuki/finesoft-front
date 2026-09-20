@@ -61,7 +61,7 @@ for (const mode of ["deny", "redirect", "commit", "redirect-commit"]) {
         onRedirect:
             mode === "redirect-commit" ? () => stack(leaf("home", {}, { url: "/" })) : undefined,
     });
-    await navigation.resolve();
+    await navigation.start();
     const original = navigation.getSnapshot();
     let draft = "old";
     const session = createSessionStore({
@@ -346,7 +346,7 @@ try {
     await tab.waitForFunction(() => window.probe?.ready);
     assert.equal(await tab.locator("h1").textContent(), "home");
     await tab.locator("input").fill("draft");
-    await tab.evaluate(() => window.probe.app.navigation.navigate("/other"));
+    await tab.evaluate(() => window.probe.app.perform({ kind: "flow", url: "/other" }));
     await tab.waitForFunction(() => document.querySelector("h1")?.textContent === "other");
     assert.equal(await tab.locator("h1").textContent(), "other");
     assert.equal(

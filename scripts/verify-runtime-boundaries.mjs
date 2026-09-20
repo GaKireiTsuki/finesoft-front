@@ -9,7 +9,10 @@ import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import ts from "typescript";
 const root = new URL("../", import.meta.url).pathname;
-const evidence = path.join(root, "reports/application-boundaries/packed");
+const evidence = path.resolve(
+    root,
+    process.env.FINESOFT_VERIFY_REPORT_DIR ?? "reports/application-boundaries/packed",
+);
 await fs.mkdir(evidence, { recursive: true });
 const manifestPath = root + "packages/front/package.json";
 const before = await fs.readFile(manifestPath);
@@ -108,11 +111,11 @@ async function graph(entry, dist) {
     };
 }
 const typeSource = `import { defineApp, defineOperation, createRuntime, BaseController } from '@finesoft/front';
-import { definePage, defineWebApp } from '@finesoft/front/web';
+import { definePage, defineWebApp, int, str, route, type WebAppView } from '@finesoft/front/web';
 import { createHttpHandler, defineEndpoint } from '@finesoft/front/http';
-import { createWorkerHandler } from '@finesoft/front/worker';
+import { createHttpHandler as createWorkerHttpHandler } from '@finesoft/front/worker';
 import { createBrowserApp } from '@finesoft/front/browser';
-import { createSSRHandler } from '@finesoft/front/ssr';
+import { createSSRHandler, createSSRRender } from '@finesoft/front/ssr';
 const double = defineOperation({id:'double',kind:'query',handler:(n:number)=>n*2});
 const runtime=createRuntime({app:defineApp({id:'packed',operations:[double]})});
 const promise:Promise<number>=runtime.execute(double,3);
@@ -120,17 +123,19 @@ const promise:Promise<number>=runtime.execute(double,3);
 runtime.execute(double,'3');
 // @ts-expect-error Operation result stays typed through the packed declaration.
 const bad:Promise<string>=runtime.execute(double,3);
-const product=definePage({id:'load-product',routes:['/product/:id'],handler:(params:{id:number})=>({id:String(params.id),pageType:'product' as const,title:'Product'})});
+const product=definePage({id:'load-product',routes:[{path:'/product/:id',params:{id:int()}}],handler:(params)=>({id:params.id.toFixed(),pageType:'product' as const,title:'Product'})});
 product.leaf({id:1});
 // @ts-expect-error Required parameter preserved.
 product.leaf();
 // @ts-expect-error Input type preserved.
 product.leaf({id:'1'});
 product.bindView('product',{});
-class ProductController extends BaseController<{id:number}, {id:string,pageType:'product',title:string}> {
-    execute(params:{id:number}, _context: import('@finesoft/front').ExecutionContext) { return {id:String(params.id),pageType:'product' as const,title:'Product'}; }
+class ProductController extends BaseController<import('@finesoft/front').ControllerInput<{id:number}>, {id:string,pageType:'product',title:string}> {
+    execute({params}: import('@finesoft/front').ControllerInput<{id:number}>) { return {id:String(params.id),pageType:'product' as const,title:'Product'}; }
 }
-const classProduct=definePage({id:'class-product',routes:['/class-product/:id'],create:()=>new ProductController()});
+const classProduct=definePage({id:'class-product',routes:[{path:'/class-product/:id',params:{id:int()}}],create:()=>new ProductController()});
+// @ts-expect-error A numeric-only controller cannot receive a string alias.
+definePage({id:'narrow-controller',routes:[{path:'/numeric/:id',params:{id:int()}},'/string/:id'],create:()=>new ProductController()});
 classProduct.leaf({id:1});
 classProduct.bindView('product',{});
 // @ts-expect-error Factory parameter inference survives packing.
@@ -139,8 +144,56 @@ classProduct.leaf({id:'one'});
 classProduct.bindView('class-product',{});
 // @ts-expect-error Transport id is not a result pageType.
 product.bindView('load-product',{});
-const app=defineWebApp({id:'web',pages:[product],getErrorPage:(_,title)=>({id:'error',pageType:'error',title})});
-void [promise,bad,app,createBrowserApp,createHttpHandler,defineEndpoint,createWorkerHandler,createSSRHandler];`;
+const reused=definePage({id:'reused',routes:[route('/reused/:id',{intentId:'reused',params:{id:int()},query:{name:str()}})],handler:(params,_context,query)=>({id:params.id.toFixed(),pageType:'product' as const,title:query.name.toUpperCase()})});
+reused.leaf({id:1},{query:{name:'book'}});
+// @ts-expect-error Reused route declarations retain codec outputs.
+reused.leaf({id:'1'},{query:{name:'book'}});
+// @ts-expect-error Required query remains separate from params.
+reused.leaf({id:1,name:'book'});
+// @ts-expect-error Query codec output survives packing.
+reused.leaf({id:1},{query:{name:1}});
+definePage({id:'reference-route',routes:[reused.route('/reference/:id',{params:{id:int()}})],handler:(params)=>({id:params.id.toFixed(),pageType:'product' as const,title:'Product'})});
+const inferred=definePage({id:'inferred',routes:[{path:'/inferred/:id',params:{id:int()}}],create:()=>({
+    perform(params,context) {
+        const signal:AbortSignal=context.signal;
+        // @ts-expect-error Inferred params cannot become any after packing.
+        params.id.toUpperCase();
+        return {id:params.id.toFixed(),pageType:'product' as const,title:String(signal.aborted)};
+    },
+})});
+// @ts-expect-error Factories must implement perform; inline execute objects were removed.
+definePage({id:'inline',routes:['/inline'],create:()=>({execute:()=>({id:'x',pageType:'x',title:'x'})})});
+inferred.bindView('product',{});
+// @ts-expect-error Inferred factory input is numeric.
+inferred.leaf({id:'1'});
+const app=defineWebApp({id:'web',pages:[product,classProduct,inferred,reused],getErrorPage:(_,title)=>({id:'error',pageType:'error',title})});
+async function browserTypes(target:HTMLElement) {
+    const browser=await createBrowserApp({definition:app,target});
+    const general:WebAppView=browser;
+    await browser.perform({kind:'push',intent:'load-product',params:{id:1}});
+    await browser.perform({kind:'push',intent:'reused',params:{id:1},query:{name:'book'}});
+    // @ts-expect-error Required query is checked on navigation actions.
+    await browser.perform({kind:'push',intent:'reused',params:{id:1}});
+    // @ts-expect-error Query schema types propagate to navigation actions.
+    await browser.perform({kind:'push',intent:'reused',params:{id:1},query:{name:1}});
+    // @ts-expect-error Browser carries the definition parameter map.
+    await browser.perform({kind:'push',intent:'load-product',params:{id:'1'}});
+    // @ts-expect-error Parameters are required for this destination.
+    await browser.perform({kind:'push',intent:'inferred'});
+    // @ts-expect-error Nested actions carry the same map.
+    await browser.perform({kind:'compound',actions:[{kind:'push',intent:'unknown',params:{id:1}}]});
+    return general;
+}
+createSSRRender({definition:app,render:(view)=>{
+    const general:WebAppView=view;
+    void view.perform({kind:'push',intent:'inferred',params:{id:1}});
+    // @ts-expect-error SSR callbacks carry the definition parameter map.
+    void view.perform({kind:'push',intent:'inferred',params:{id:'1'}});
+    void general;
+    return '';
+}});
+void browserTypes;
+void [promise,bad,app,createBrowserApp,createHttpHandler,defineEndpoint,createWorkerHttpHandler,createSSRHandler];`;
 function typecheck(file, selected) {
     const program = ts.createProgram([file], {
         target: ts.ScriptTarget.ESNext,
@@ -287,7 +340,9 @@ try {
             const { defineEndpoint, createHttpHandler } = await import(
                 pathToFileURL(dist + "/http.mjs")
             );
-            const { createWorkerHandler } = await import(pathToFileURL(dist + "/worker.mjs"));
+            const { createHttpHandler: createWorkerHttpHandler } = await import(
+                pathToFileURL(dist + "/worker.mjs")
+            );
             const operation = defineOperation({
                 id: "double",
                 kind: "query",
@@ -308,8 +363,8 @@ try {
             try {
                 assert.equal(await runtime.execute(operation, 3), 6);
                 for (const handler of [
-                    createHttpHandler({ runtime, endpoints }),
-                    createWorkerHandler({ runtime, endpoints }).fetch,
+                    createHttpHandler({ runtime, endpoints }).fetch,
+                    createWorkerHttpHandler({ runtime, endpoints }).fetch,
                 ])
                     assert.deepEqual(
                         await (

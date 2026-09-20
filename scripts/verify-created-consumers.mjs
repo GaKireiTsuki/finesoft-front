@@ -6,7 +6,10 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 const root = new URL("../", import.meta.url).pathname;
-const evidence = root + "reports/template-unification/created-consumers";
+const evidence = path.resolve(
+    root,
+    process.env.FINESOFT_VERIFY_REPORT_DIR ?? "reports/template-unification/created-consumers",
+);
 assert.ok(process.argv[2], "Usage: vp exec node scripts/verify-created-consumers.mjs <front.tgz>");
 const tarball = path.resolve(process.argv[2]);
 const sha256 = createHash("sha256")
@@ -59,6 +62,10 @@ try {
         if (name.startsWith("svelte")) pkg.devDependencies["svelte-check"] = "^4.3.4";
         await fs.writeFile(cwd + "/package.json", JSON.stringify(pkg, null, 2));
         await fs.writeFile(evidence + "/" + name + "-install.log", run(["install"], cwd));
+        await fs.writeFile(
+            evidence + "/" + name + "-check.log",
+            run(["check", "--no-fmt", "--no-lint"], cwd),
+        );
         await fs.writeFile(
             evidence + "/" + name + "-tsc.log",
             run(["exec", "tsc", "--noEmit", "--project", "tsconfig.json"], cwd),

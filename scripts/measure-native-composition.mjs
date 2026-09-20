@@ -35,7 +35,7 @@ const limitations = [
     "Source lines, files, and lexical-token counts describe implementation size; they do not prove speed, transfer, or memory improvement.",
     "Client JavaScript totals include every built client .js asset; the initial static graph follows only statically imported relative modules from the HTML module entry. Dynamic chunks are recorded in total assets but excluded from the initial graph.",
     "Gzip totals compress each file independently and add the results; they are comparable artifact-size indicators, not a network transfer simulation with shared dictionaries or server headers.",
-    "SSR timings are local Request to Response.text measurements through createSSRHost in fresh child processes. They exclude network, TLS, reverse-proxy, filesystem, and real production host latency.",
+    "SSR timings are local Request to Response.text measurements through each version's owning SSR handler in fresh child processes. Historical baselines use createSSRHost; current versions use createSSRHandler. They exclude network, TLS, reverse-proxy, filesystem, and real production host latency.",
     "The three alternating before/after rounds use fresh Node processes, but operating-system file caches, scheduler noise, and garbage collection can still vary.",
     "Heap and RSS values are process-level samples, not allocation profiles or leak proofs; sampled values must be interpreted with the request timings and run metadata.",
     `The e22de64 comparison is source-only. Runtime and artifact comparisons use the selected baseline checkout at ${expectedBaselineCommit}${baselineWorkingTree ? " plus its snapshotted working-tree changes" : ""} and the current checkout.`,
@@ -507,7 +507,7 @@ async function measureSsrAlternating() {
 
 async function runSsrChild(root) {
     const importStarted = performance.now();
-    const [{ createSSRHost }, module] = await Promise.all([
+    const [ssr, module] = await Promise.all([
         import(pathToFileURL(path.join(root, "packages/front/dist/ssr.mjs")).href),
         import(pathToFileURL(path.join(root, "templates/react-minimal/dist/server/ssr.js")).href),
     ]);
@@ -520,7 +520,7 @@ async function runSsrChild(root) {
         throw new Error("SSR module does not export serializeServerData");
     let activeRequest = -1;
     const serializationSamples = [];
-    const host = createSSRHost({
+    const options = {
         ...module,
         template,
         serializeServerData(data) {
@@ -533,7 +533,12 @@ async function runSsrChild(root) {
             });
             return serialized;
         },
-    });
+    };
+    // Retain compatibility only inside this before/after benchmark for archived releases.
+    const host = ssr.createSSRHost
+        ? ssr.createSSRHost(options)
+        : ssr.createSSRHandler({ ...options, ownRenderers: true });
+    const handle = ssr.createSSRHost ? host.handle.bind(host) : host.fetch.bind(host);
     const warmup = 20;
     const sampleCount = 100;
     const samplesMs = [];
@@ -544,7 +549,7 @@ async function runSsrChild(root) {
         for (let index = 0; index < warmup + sampleCount; index++) {
             activeRequest = index;
             const started = performance.now();
-            const response = await host.handle(new Request("http://native-composition.measure/"));
+            const response = await handle(new Request("http://native-composition.measure/"));
             const html = await response.text();
             const elapsedMs = performance.now() - started;
             if (response.status !== 200 || !html)

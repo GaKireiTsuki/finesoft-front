@@ -5,7 +5,7 @@
     "status": "passed",
     "contents": {
       "detail": {
-        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing BaseController with typed params and DI container usage.",
+        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing route-inferred params and DI container usage.",
         "structure": {
           "tag": "section",
           "classes": [
@@ -863,7 +863,7 @@
     "status": "passed",
     "contents": {
       "detail": {
-        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing BaseController with typed params and DI container usage.",
+        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing route-inferred params and DI container usage.",
         "structure": {
           "tag": "section",
           "classes": [
@@ -1721,7 +1721,7 @@
     "status": "passed",
     "contents": {
       "detail": {
-        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing BaseController with typed params and DI container usage.",
+        "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing route-inferred params and DI container usage.",
         "structure": {
           "tag": "section",
           "classes": [

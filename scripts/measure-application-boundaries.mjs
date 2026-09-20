@@ -152,9 +152,10 @@ for (const [label, entries] of Object.entries({
         medianMs: [...samples].sort((a, b) => a - b)[2],
     };
 }
-const { createSSRHost } = await import(pathToFileURL(root + "packages/front/dist/ssr.mjs"));
+const { createSSRHandler } = await import(pathToFileURL(root + "packages/front/dist/ssr.mjs"));
 const module = await import(pathToFileURL(root + "templates/react-minimal/dist/server/ssr.js"));
-const host = createSSRHost({
+const host = createSSRHandler({
+    ownRenderers: true,
     ...module,
     template: await fs.readFile(root + "templates/react-minimal/dist/client/index.html", "utf8"),
 });
@@ -162,7 +163,7 @@ const samples = [];
 try {
     for (let i = 0; i < 120; i++) {
         const t = performance.now();
-        const response = await host.handle(new Request("http://baseline.local/"));
+        const response = await host.fetch(new Request("http://baseline.local/"));
         const html = await response.text();
         if (response.status !== 200 || !html.includes("Feed"))
             throw Error("Request measurement contract failed");
@@ -178,7 +179,7 @@ result.request = {
     medianMs: sorted[50],
     p95Ms: sorted[94],
     samplesMs: samples,
-    note: "Baseline Hono createSSRApp dispatch versus new standard createSSRHost. Same home, consumed HTML, warmup and samples; response adapter changed.",
+    note: "Baseline Hono createSSRApp dispatch versus new standard createSSRHandler. Same home, consumed HTML, warmup and samples; response adapter changed.",
 };
 await fs.writeFile(output + "/result.json", JSON.stringify(result, null, 2));
 console.log(
