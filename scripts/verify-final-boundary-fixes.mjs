@@ -13,8 +13,7 @@ import { staticAdapter } from "../packages/front/dist/vite.mjs";
 import {
     defineWebApp,
     createWebRuntime,
-    createNavigationController,
-    createNavigationSessionAdapter,
+    createWebSession,
     createSessionStore,
     leaf,
     stack,
@@ -56,7 +55,7 @@ for (const mode of ["deny", "redirect", "commit", "redirect-commit"]) {
         getErrorPage: (_, message) => page(message),
     });
     const web = createWebRuntime({ definition });
-    const navigation = createNavigationController({
+    const navigation = createWebSession({
         web,
         initial: stack(leaf("home", {}, { url: "/" })),
         onRedirect:
@@ -67,7 +66,7 @@ for (const mode of ["deny", "redirect", "commit", "redirect-commit"]) {
     let draft = "old";
     const session = createSessionStore({
         storage: { get: async () => undefined, set: async () => {}, delete: async () => {} },
-        navigation: createNavigationSessionAdapter(navigation),
+        navigation,
     });
     session.scope.set("old", "original");
     const oldScope = session.scope;

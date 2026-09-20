@@ -40,10 +40,10 @@ export async function mount(
         session: {},
         domRestore: true,
     });
-    const root = handle.hydrate
+    const root = handle.shouldHydrate
         ? hydrateRoot(target, createElement(ReactApp, { app: handle }))
         : createRoot(target);
-    if (!handle.hydrate) root.render(createElement(ReactApp, { app: handle }));
+    if (!handle.shouldHydrate) root.render(createElement(ReactApp, { app: handle }));
     const dispose = handle.dispose.bind(handle);
     Object.assign(handle, {
         dispose: async () => {

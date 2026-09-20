@@ -1,5 +1,12 @@
 import { expect, test, vi } from "vite-plus/test";
-import { DEP_KEYS, HostGuardError, createToken, defineApp, provide } from "@finesoft/core";
+import {
+    DEP_KEYS,
+    HostGuardError,
+    createRuntime,
+    createToken,
+    defineApp,
+    provide,
+} from "@finesoft/core";
 import { createWebRuntime, defineWebApp, loadPage, leaf, PrefetchedIntents } from "../../src";
 const definition = () =>
     defineWebApp({
@@ -136,4 +143,119 @@ test("unused optional service factories are not executed while preparing an ordi
     await loadPage({ web, target: "/" });
     expect(create).not.toHaveBeenCalled();
     await web.dispose();
+});
+
+test("injected runtimes receive missing Web default providers without replacing app providers", async () => {
+    const customStorage = { get: () => "app", set() {}, delete() {} };
+    const app = defineWebApp({
+        ...definition(),
+        app: defineApp({
+            id: "external-runtime",
+            providers: [
+                provide({ token: DEP_KEYS.STORAGE, lifetime: "runtime", value: customStorage }),
+            ],
+        }),
+    });
+    const runtime = createRuntime({ app: app.app! });
+    const web = createWebRuntime({ definition: app, runtime, locale: "en-US" });
+    const execution = web.createExecution();
+
+    await expect(execution.context.get(DEP_KEYS.LOCALE)).resolves.toEqual({
+        lang: "en-US",
+        dir: "ltr",
+    });
+    expect(await execution.context.get(DEP_KEYS.STORAGE)).toBe(customStorage);
+
+    await execution.dispose();
+    await web.dispose();
+    await runtime.createExecution().dispose();
+    await runtime.dispose();
+});
+
+test("execution locale selects its matching grouped translator", async () => {
+    const web = createWebRuntime({
+        definition: definition(),
+        locale: "en-US",
+        messages: { "en-US": { hello: "Hello" }, "fr-FR": { hello: "Bonjour" } },
+    });
+    const execution = web.createExecution({ locale: "fr-FR" });
+
+    expect(await execution.context.get(DEP_KEYS.LOCALE)).toEqual({ lang: "fr-FR", dir: "ltr" });
+    expect((await execution.context.get(DEP_KEYS.TRANSLATOR)).locale).toBe("fr-FR");
+    expect((await execution.context.get(DEP_KEYS.TRANSLATOR)).t("hello")).toBe("Bonjour");
+
+    await execution.dispose();
+    await web.dispose();
+});
+
+test("execution defers translator construction until the translator token is read", async () => {
+    const messages = new Proxy(
+        { "en-US": { hello: "Hello" } },
+        {
+            ownKeys: () => {
+                throw Error("messages must remain lazy");
+            },
+        },
+    );
+    const web = createWebRuntime({ definition: definition(), locale: "en-US", messages });
+    const execution = web.createExecution();
+
+    await execution.dispose();
+    await web.dispose();
+});
+
+test("execution storage scope creates a fresh default store", async () => {
+    const web = createWebRuntime({ definition: definition(), storageScope: "execution" });
+    const first = web.createExecution();
+    const second = web.createExecution();
+    (await first.context.get(DEP_KEYS.STORAGE)).set("request", "first");
+
+    expect((await second.context.get(DEP_KEYS.STORAGE)).get("request")).toBeUndefined();
+
+    await first.dispose();
+    await second.dispose();
+    await web.dispose();
+});
+
+test("feature flag string and number providers stop after the first defined value", async () => {
+    const later = {
+        isEnabled: () => false,
+        getString: () => {
+            throw Error("later string provider must not run");
+        },
+        getNumber: () => {
+            throw Error("later number provider must not run");
+        },
+    };
+    const web = createWebRuntime({
+        definition: definition(),
+        featureFlagsProviders: [
+            later,
+            { isEnabled: () => false, getString: () => "first", getNumber: () => 1 },
+        ],
+    });
+    const flags = await web.createExecution().context.get(DEP_KEYS.FEATURE_FLAGS);
+
+    expect(flags.getString("flag")).toBe("first");
+    expect(flags.getNumber("flag")).toBe(1);
+
+    await web.dispose();
+});
+
+test("external runtime uses the configured Web event recorder", async () => {
+    const recorder = { record: vi.fn() };
+    const app = defineWebApp({
+        ...definition(),
+        app: defineApp({ id: "external-recorder" }),
+    });
+    const runtime = createRuntime({ app: app.app! });
+    const web = createWebRuntime({ definition: app, runtime, eventRecorder: recorder });
+    const execution = web.createExecution();
+
+    (await execution.context.get(DEP_KEYS.EVENT_RECORDER)).record("PageView", { pageId: "home" });
+    expect(recorder.record).toHaveBeenCalledWith("PageView", { pageId: "home" });
+
+    await execution.dispose();
+    await web.dispose();
+    await runtime.dispose();
 });

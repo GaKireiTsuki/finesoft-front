@@ -196,9 +196,11 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
     }
 
     function ownsEntry(entry: HTMLElement): boolean {
-        if (!boundOutlet || (entry !== boundOutlet && entry.parentElement !== boundOutlet))
-            return false;
-        return belongsToBoundApp(entry);
+        if (!boundOutlet || !belongsToBoundApp(entry)) return false;
+        for (let current: HTMLElement | null = entry; current; current = current.parentElement) {
+            if (current === boundOutlet) return true;
+        }
+        return false;
     }
 
     function entryFrom(target: EventTarget | null): HTMLElement | undefined {
@@ -213,10 +215,8 @@ export function createDomRestore(options: DomRestoreOptions): DomRestore {
     const flushEntries = (): void => {
         if (!boundOutlet) return;
         if (boundOutlet.hasAttribute("data-fs-entry")) captureEntry(boundOutlet);
-        for (const child of Array.from(boundOutlet.children)) {
-            if (child.hasAttribute("data-fs-entry") && ownsEntry(child as HTMLElement))
-                captureEntry(child as HTMLElement);
-        }
+        for (const entry of boundOutlet.querySelectorAll<HTMLElement>("[data-fs-entry]"))
+            if (ownsEntry(entry)) captureEntry(entry);
     };
     const onVisibility = (): void => {
         if (document.visibilityState === "hidden") flushEntries();

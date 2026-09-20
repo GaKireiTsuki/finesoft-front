@@ -172,11 +172,15 @@ try {
             assert.equal(await page.locator("#a h1").innerText(), "first 1");
             assert.equal(await page.locator("#b h1").innerText(), "second 1");
             assert.equal(
-                await page.locator("#a [data-context-locale]").getAttribute("data-context-locale"),
+                await page
+                    .locator("#a [data-fs-entry]:not([hidden]) [data-context-locale]")
+                    .getAttribute("data-context-locale"),
                 "en",
             );
             assert.equal(
-                await page.locator("#b [data-context-locale]").getAttribute("data-context-locale"),
+                await page
+                    .locator("#b [data-fs-entry]:not([hidden]) [data-context-locale]")
+                    .getAttribute("data-context-locale"),
                 "ar",
             );
             await page.locator("#a [data-context-update]").click();
@@ -184,7 +188,7 @@ try {
                 .waitForFunction(
                     () =>
                         document
-                            .querySelector("#a [data-context-locale]")
+                            .querySelector("#a [data-fs-entry]:not([hidden]) [data-context-locale]")
                             ?.getAttribute("data-context-locale") === "en:updated",
                 )
                 .catch(async (error) => {
@@ -195,7 +199,9 @@ try {
                         errors,
                         state: await page.evaluate(() => ({
                             ready: globalThis.ready,
-                            locale: document.querySelector("#a [data-context-locale]")?.outerHTML,
+                            locale: document.querySelector(
+                                "#a [data-fs-entry]:not([hidden]) [data-context-locale]",
+                            )?.outerHTML,
                             button: document.querySelector("#a [data-context-update]")?.outerHTML,
                         })),
                     });
@@ -208,7 +214,9 @@ try {
                 () => globalThis.apps.a.getSnapshot().entries.at(-1)?.page.title === "Other",
             );
             assert.equal(
-                await page.locator("#a [data-context-locale]").getAttribute("data-context-locale"),
+                await page
+                    .locator("#a [data-fs-entry]:not([hidden]) [data-context-locale]")
+                    .getAttribute("data-context-locale"),
                 "en:updated",
             );
             await page.evaluate(async () => {
@@ -218,7 +226,9 @@ try {
                 () => globalThis.apps.a.getSnapshot().entries.at(-1)?.page.title === "first 1",
             );
             assert.equal(
-                await page.locator("#a [data-context-locale]").getAttribute("data-context-locale"),
+                await page
+                    .locator("#a [data-fs-entry]:not([hidden]) [data-context-locale]")
+                    .getAttribute("data-context-locale"),
                 "en:updated",
             );
             await page.locator("#a input").fill("alpha");
@@ -328,9 +338,17 @@ try {
                 () => globalThis.apps.a.getSnapshot().entries.at(-1)?.page.title === "Other",
             );
             assert.equal(await page.locator("#a h1:visible").innerText(), "Other");
-            assert.equal(await page.locator("#a input").inputValue(), "");
+            assert.equal(await page.locator("#a input:visible").inputValue(), "");
             assert.equal(
-                await page.locator("#b [data-context-locale]").getAttribute("data-context-locale"),
+                await page.locator("#a [data-fs-entry][hidden] input").inputValue(),
+                "alpha",
+            );
+            await page.evaluate(() => globalThis.apps.a.navigation.pop());
+            assert.equal(await page.locator("#a input:visible").inputValue(), "alpha");
+            assert.equal(
+                await page
+                    .locator("#b [data-fs-entry]:not([hidden]) [data-context-locale]")
+                    .getAttribute("data-context-locale"),
                 "ar",
             );
             await page.evaluate(async () => {
@@ -362,10 +380,14 @@ try {
                 globalThis.ownerEntry = globalThis.owner.getSnapshot().entries[0].entryId;
                 await globalThis.owner.navigation.navigate("/other");
             });
+            assert.equal(await page.locator("#c h1:visible").innerText(), "Other");
             await page.goBack();
             await page.waitForFunction(
-                () => globalThis.owner.getSnapshot().entries[0]?.entryId === globalThis.ownerEntry,
+                () =>
+                    globalThis.owner.getSnapshot().entries.at(-1)?.entryId ===
+                    globalThis.ownerEntry,
             );
+            assert.match(await page.locator("#c h1:visible").innerText(), /^owner \d+$/);
             await page.screenshot({
                 path: root + "reports/native-renderers/" + ui + "-" + renderMode + ".png",
             });
@@ -667,14 +689,18 @@ try {
             assert.equal(await page.locator("#b input").inputValue(), "");
             assert.equal(await page.locator("#b span").innerText(), "");
             assert.equal(
-                await page.locator("#b [data-context-locale]").getAttribute("data-context-locale"),
+                await page
+                    .locator("#b [data-fs-entry]:not([hidden]) [data-context-locale]")
+                    .getAttribute("data-context-locale"),
                 "ar",
             );
             await page.evaluate(() => globalThis.apps.b.navigation.refresh());
             assert.equal(await page.locator("#b input").inputValue(), "");
             assert.equal(await page.locator("#b span").innerText(), "");
             assert.equal(
-                await page.locator("#b [data-context-locale]").getAttribute("data-context-locale"),
+                await page
+                    .locator("#b [data-fs-entry]:not([hidden]) [data-context-locale]")
+                    .getAttribute("data-context-locale"),
                 "ar",
             );
             await page.evaluate(async () => {

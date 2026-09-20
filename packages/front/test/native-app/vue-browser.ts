@@ -39,7 +39,7 @@ export async function mount(
         session: {},
         domRestore: true,
     });
-    const root = (handle.hydrate ? createSSRApp : createApp)(App, { app: handle });
+    const root = (handle.shouldHydrate ? createSSRApp : createApp)(App, { app: handle });
     root.mount(target);
     const dispose = handle.dispose.bind(handle);
     Object.assign(handle, {

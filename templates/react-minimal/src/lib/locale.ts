@@ -1,4 +1,4 @@
-import type { WebAppView } from "@finesoft/front/react";
+import type { WebAppView } from "@finesoft/front/web";
 
 /** Both SSR and hydrated views read the translator from their own application. */
 export function getHomeLocale(app?: WebAppView) {

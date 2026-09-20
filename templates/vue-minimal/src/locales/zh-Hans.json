@@ -1,5 +1,0 @@
-{
-    "home.localeLabel": "当前语言",
-    "home.runtimeBadge": "浏览器接管后，翻译器仍然可用。",
-    "home.switchHint": "修改 src/app-definition.ts 中的 frameworkConfig.locale：en-US 为英文，zh-Hans 为中文。"
-}

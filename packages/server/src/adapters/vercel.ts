@@ -7,7 +7,13 @@
  * - functions/ssr.func/ — Serverless Function
  */
 
-import { buildBundle, copyStaticAssets, generateSSREntry, prerenderRoutes } from "./shared";
+import {
+    buildGeneratedEntry,
+    copyStaticAssets,
+    generateSSREntry,
+    prerenderRoutes,
+    writePrerenderedPages,
+} from "./shared";
 import type { Adapter } from "./types";
 
 export function vercelAdapter(): Adapter {
@@ -47,65 +53,47 @@ export function vercelAdapter(): Adapter {
                 ].join("\n"),
             });
 
-            // 写入临时入口文件
-            const tempEntry = path.resolve(root, ".vercel-entry.tmp.mjs");
-            fs.writeFileSync(tempEntry, entrySource);
+            const funcDir = path.resolve(root, ".vercel/output/functions/ssr.func");
+            await buildGeneratedEntry(ctx, ".vercel-entry.tmp.mjs", entrySource, {
+                outDir: funcDir,
+                target: "node18",
+            });
 
-            try {
-                const funcDir = path.resolve(root, ".vercel/output/functions/ssr.func");
+            // .vc-config.json
+            fs.writeFileSync(
+                path.resolve(funcDir, ".vc-config.json"),
+                JSON.stringify(
+                    {
+                        runtime: "nodejs20.x",
+                        handler: "index.mjs",
+                        launcherType: "Nodejs",
+                    },
+                    null,
+                    2,
+                ),
+            );
 
-                // 构建 serverless function
-                await buildBundle(ctx, {
-                    entry: ".vercel-entry.tmp.mjs",
-                    outDir: funcDir,
-                    target: "node18",
-                });
+            // 静态资源
+            copyStaticAssets(ctx, path.resolve(root, ".vercel/output/static"));
 
-                // .vc-config.json
-                fs.writeFileSync(
-                    path.resolve(funcDir, ".vc-config.json"),
-                    JSON.stringify(
-                        {
-                            runtime: "nodejs20.x",
-                            handler: "index.mjs",
-                            launcherType: "Nodejs",
-                        },
-                        null,
-                        2,
-                    ),
-                );
-
-                // 静态资源
-                copyStaticAssets(ctx, path.resolve(root, ".vercel/output/static"));
-
-                // 路由配置：静态文件优先，其余全部路由到 /ssr 函数
-                // Vercel 会在 x-now-route-matches 头中携带正则捕获组，
-                // 入口代码据此恢复原始请求路径
-                fs.writeFileSync(
-                    path.resolve(root, ".vercel/output/config.json"),
-                    JSON.stringify(
-                        {
-                            version: 3,
-                            routes: [{ handle: "filesystem" }, { src: "/(.*)", dest: "/ssr" }],
-                        },
-                        null,
-                        2,
-                    ),
-                );
-            } finally {
-                fs.rmSync(tempEntry, { force: true });
-            }
+            // 路由配置：静态文件优先，其余全部路由到 /ssr 函数
+            // Vercel 会在 x-now-route-matches 头中携带正则捕获组，
+            // 入口代码据此恢复原始请求路径
+            fs.writeFileSync(
+                path.resolve(root, ".vercel/output/config.json"),
+                JSON.stringify(
+                    {
+                        version: 3,
+                        routes: [{ handle: "filesystem" }, { src: "/(.*)", dest: "/ssr" }],
+                    },
+                    null,
+                    2,
+                ),
+            );
             // 构建时预渲染 prerender 路由
             const prerendered = await prerenderRoutes(ctx);
             const staticDir = path.resolve(root, ".vercel/output/static");
-            for (const { url, html } of prerendered) {
-                const filePath =
-                    url === "/"
-                        ? path.join(staticDir, "index.html")
-                        : path.join(staticDir, url, "index.html");
-                fs.mkdirSync(path.resolve(filePath, ".."), { recursive: true });
-                fs.writeFileSync(filePath, html);
-            }
+            writePrerenderedPages(ctx, staticDir, prerendered);
 
             // 为预渲染路由写入 Vercel ISR 配置（overrides）
             if (prerendered.length > 0) {

@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { AsyncStorage } from "../../src/session/types";
 import { createSessionStore } from "../../src/session/session-store";
-import type { SessionNavigationAdapter } from "../../src/session/types";
+import type { SessionNavigation } from "../../src/session/types";
 
 function fakeStorage(): AsyncStorage {
     const m = new Map<string, string>();
@@ -12,12 +12,12 @@ function fakeStorage(): AsyncStorage {
     };
 }
 
-function fakeNav(initial: unknown): SessionNavigationAdapter {
+function fakeNav(initial: unknown): SessionNavigation {
     let nav = initial;
     const present = new Set<string>();
     return {
-        capture: () => nav as never,
-        apply: (n) => {
+        captureNavigation: () => nav as never,
+        restoreNavigation: (n) => {
             nav = n;
         },
         presentKeys: () => present,
@@ -230,12 +230,12 @@ describe("SessionStore", async () => {
         await Promise.all([first, explicit, afterExplicit, loaded, afterLoad, cleared, afterClear]);
     });
 
-    test("restore isolates a synchronous adapter.apply throw (onError, no crash)", async () => {
+    test("restore isolates a synchronous navigation.restoreNavigation throw (onError, no crash)", async () => {
         const onError = vi.fn();
         const restored: string[] = [];
-        const nav: SessionNavigationAdapter = {
-            capture: () => undefined,
-            apply: () => {
+        const nav: SessionNavigation = {
+            captureNavigation: () => undefined,
+            restoreNavigation: () => {
                 throw new Error("malformed navigation blob");
             },
             presentKeys: () => [],
@@ -270,12 +270,12 @@ describe("SessionStore", async () => {
         expect(restored).toEqual([]);
     });
 
-    test("restore isolates an asynchronous adapter.apply rejection (onError, no reject)", async () => {
+    test("restore isolates an asynchronous navigation.restoreNavigation rejection (onError, no reject)", async () => {
         const onError = vi.fn();
         const restored: string[] = [];
-        const nav: SessionNavigationAdapter = {
-            capture: () => undefined,
-            apply: () => Promise.reject(new Error("hydrate failed")),
+        const nav: SessionNavigation = {
+            captureNavigation: () => undefined,
+            restoreNavigation: () => Promise.reject(new Error("hydrate failed")),
             presentKeys: () => [],
         };
         const store = createSessionStore({

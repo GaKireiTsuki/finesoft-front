@@ -48,4 +48,16 @@ describe("Container providers", () => {
         await expect(container.get(a)).rejects.toThrow("Cyclic");
         await container.dispose().catch(() => {});
     });
+
+    test("detects providers inherited from a parent scope", async () => {
+        const token = createToken<number>("parent");
+        const container = new Container();
+        container.registerProvider(provide({ token, lifetime: "runtime", value: 1 }));
+        const scope = container.createScope();
+
+        expect(scope.hasProvider(token)).toBe(true);
+
+        await scope.dispose();
+        await container.dispose();
+    });
 });

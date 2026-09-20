@@ -11,8 +11,8 @@ export async function mountApplication(
     url?: string,
 ) {
     const handle = await createBrowserApp({ definition: app, target, history, url });
-    if (!handle.hydrate) target.replaceChildren();
-    const root = (handle.hydrate ? hydrate : mount)(App, { target, props: { app: handle } });
+    if (!handle.shouldHydrate) target.replaceChildren();
+    const root = (handle.shouldHydrate ? hydrate : mount)(App, { target, props: { app: handle } });
     const originalDispose = handle.dispose.bind(handle);
     let disposal: Promise<void> | undefined;
     Object.assign(handle, {

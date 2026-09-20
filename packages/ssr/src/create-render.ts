@@ -1,9 +1,8 @@
 import {
     createWebRuntime,
     getWebPlan,
-    createNavigationController,
+    createWebSession,
     resolveInitialNavigation,
-    createAppView,
     leaf,
     stack,
     serializeNavigation,
@@ -28,7 +27,11 @@ export interface SSRRenderConfig {
 }
 /** One request scope and one native root serve ordinary and composed navigation. */
 export function createSSRRender(config: SSRRenderConfig) {
-    const owner = createWebRuntime({ ...config.configuration, definition: config.definition });
+    const owner = createWebRuntime({
+        ...config.configuration,
+        definition: config.definition,
+        storageScope: "execution",
+    });
     const render = async (url: string, context: SSRContext = {}): Promise<SSRRenderResult> => {
         const configuration = { ...config.definition.configuration, ...config.configuration };
         const resolvedLocale = config.resolveLocale?.(url, context.request);
@@ -45,6 +48,7 @@ export function createSSRRender(config: SSRRenderConfig) {
             ...configuration,
             definition: config.definition,
             runtime: owner.runtime,
+            storageScope: "execution",
             locale,
             messages,
             fetch,
@@ -57,8 +61,7 @@ export function createSSRRender(config: SSRRenderConfig) {
                 bindings: { ...context.bindings, request: context.request },
             },
         });
-        let controller: ReturnType<typeof createNavigationController> | undefined;
-        let presentation: ReturnType<typeof createAppView> | undefined;
+        let controller: ReturnType<typeof createWebSession> | undefined;
         const execution = web.createExecution();
         let failed = false;
         try {
@@ -69,12 +72,15 @@ export function createSSRRender(config: SSRRenderConfig) {
                 css: "",
                 html: "",
                 serverData: { pages: [] },
-                locale: web.getLocale(),
+                locale: resolvedLocale ?? web.getLocale(),
             } satisfies SSRRenderResult;
             if (resolved?.renderMode === "csr") return { ...base, renderMode: "csr" };
             let redirect: { url: string; status: number } | undefined;
             const cookies = parseCookieString(context.request?.headers.get("cookie") ?? "");
-            controller = createNavigationController({
+            controller = createWebSession({
+                navigate: async () => {
+                    throw Error("SSR views cannot initiate navigation");
+                },
                 web,
                 execution,
                 initial,
@@ -96,18 +102,10 @@ export function createSSRRender(config: SSRRenderConfig) {
                     },
                 }),
             });
-            const candidate = await controller.resolve();
+            const candidate = await controller.start();
             if (redirect || candidate.redirect)
                 return { ...base, redirect: redirect ?? candidate.redirect };
-            presentation = createAppView({
-                web,
-                controller,
-                navigate: async () => {
-                    throw Error("SSR views cannot initiate navigation");
-                },
-            });
-            presentation.present(candidate);
-            const snapshot = presentation.view.getSnapshot();
+            const snapshot = candidate;
             const status = snapshot.destinations.at(-1)?.status;
             // Materialize while execution resources are alive. Serialization reuses this projection.
             execution.context.signal.throwIfAborted();
@@ -123,7 +121,7 @@ export function createSSRRender(config: SSRRenderConfig) {
                           })),
                       },
             );
-            const native = await config.render(presentation.view);
+            const native = await config.render(controller);
             execution.context.signal.throwIfAborted();
             const output = typeof native === "string" ? { html: native } : native;
             return {
@@ -132,7 +130,8 @@ export function createSSRRender(config: SSRRenderConfig) {
                 head: output.head ?? "",
                 css: output.css ?? "",
                 serverData,
-                renderMode: resolved?.renderMode,
+                renderMode: snapshot.destinations.at(-1)?.renderMode ?? resolved?.renderMode,
+                locale: resolvedLocale ?? web.getLocale(),
                 status,
                 rewriteUrl: snapshot.destinations.at(-1)?.rewriteUrl,
                 ...(!status &&
@@ -145,7 +144,6 @@ export function createSSRRender(config: SSRRenderConfig) {
             failed = true;
             throw error;
         } finally {
-            presentation?.dispose();
             const cleaned = await Promise.allSettled([
                 controller?.dispose(),
                 execution.dispose(),

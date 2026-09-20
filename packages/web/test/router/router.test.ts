@@ -31,13 +31,20 @@ describe("Router", () => {
         const router = new Router();
         router.add("/blog/:slug?", "blog");
 
-        expect((await router.resolve("/blog"))?.intent).toEqual({
-            id: "blog",
-            params: { slug: undefined },
-        });
+        expect((await router.resolve("/blog"))?.intent).toEqual({ id: "blog", params: {} });
         expect((await router.resolve("/blog/hello#comments"))?.intent).toEqual({
             id: "blog",
             params: { slug: "hello" },
+        });
+    });
+
+    test("lets query fill an omitted optional path parameter", async () => {
+        const router = new Router();
+        router.add("/users/:id?", "users");
+
+        expect((await router.resolve("/users?id=42"))?.intent).toEqual({
+            id: "users",
+            params: { id: "42" },
         });
     });
 

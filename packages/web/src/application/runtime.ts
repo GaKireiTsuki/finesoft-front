@@ -26,6 +26,7 @@ import {
     type FeatureFlagsProvider,
     type LocaleAttributes,
     type Translator,
+    type Storage,
 } from "@finesoft/core";
 import { getWebPlan, WEB_EXECUTION } from "./definition";
 import type { WebAppDefinition } from "./types";
@@ -41,6 +42,8 @@ export interface WebConfiguration {
     readonly eventRecorder?: EventRecorder;
     readonly featureFlags?: Readonly<Record<string, boolean | string | number>>;
     readonly featureFlagsProviders?: readonly FeatureFlagsProvider[];
+    /** Keep browser defaults shared; SSR supplies execution for request-local memory storage. */
+    readonly storageScope?: "runtime" | "execution";
 }
 export interface WebRuntimeOptions extends WebConfiguration {
     readonly definition: WebAppDefinition;
@@ -61,16 +64,20 @@ export function createWebRuntime(input: WebRuntimeOptions) {
     const plan = getWebPlan(config.definition);
     const prefetchedIntents = config.prefetchedIntents ?? PrefetchedIntents.empty();
     const locale = config.locale ? getLocaleAttributes(config.locale) : undefined;
-    const messages =
-        config.locale && config.messages
-            ? resolveMessages(config.messages, config.locale)
-            : undefined;
-    let translator: Translator | undefined;
-    const getTranslator = () =>
-        (translator ??=
-            config.locale && messages
-                ? new SimpleTranslator({ locale: config.locale, messages })
-                : undefined);
+    let defaultTranslator: Translator | undefined;
+    const getTranslatorForLocale = (locale?: string) => {
+        if (!locale) return undefined;
+        if (locale === config.locale) {
+            if (!defaultTranslator) {
+                const messages = config.messages && resolveMessages(config.messages, locale);
+                if (messages) defaultTranslator = new SimpleTranslator({ locale, messages });
+            }
+            return defaultTranslator;
+        }
+        const messages = config.messages && resolveMessages(config.messages, locale);
+        return messages ? new SimpleTranslator({ locale, messages }) : undefined;
+    };
+    const getTranslator = () => getTranslatorForLocale(config.locale);
     let loggerFactory: LoggerFactory | undefined;
     const getLoggerFactory = () =>
         (loggerFactory ??= config.reportCallback
@@ -79,16 +86,33 @@ export function createWebRuntime(input: WebRuntimeOptions) {
                   new ReportingLoggerFactory({ report: config.reportCallback }),
               ])
             : new ConsoleLoggerFactory(config.logFilter));
-    function createOwnedRuntime(): RuntimeHandle {
-        const defaults: Provider<any>[] = [
+    let externalStorage: Storage | undefined;
+    const createMemoryStorage = (): Storage => {
+        const values = new Map<string, string>();
+        return {
+            get: (key: string) => values.get(key),
+            set: (key: string, value: string) => {
+                values.set(key, value);
+            },
+            delete: (key: string) => {
+                values.delete(key);
+            },
+        };
+    };
+    const getExternalStorage = () => (externalStorage ??= createMemoryStorage());
+    function createDefaultProviders(scopeFallback = false): Provider<any>[] {
+        const defaultLifetime = scopeFallback ? "scope" : "runtime";
+        const storageLifetime =
+            scopeFallback || config.storageScope === "execution" ? "scope" : "runtime";
+        return [
             provide({
                 token: DEP_KEYS.LOGGER_FACTORY,
-                lifetime: "runtime",
+                lifetime: defaultLifetime,
                 create: getLoggerFactory,
             }),
             provide({
                 token: DEP_KEYS.LOGGER,
-                lifetime: "runtime",
+                lifetime: defaultLifetime,
                 dependencies: [DEP_KEYS.LOGGER_FACTORY],
                 create: async (c) => (await c.get(DEP_KEYS.LOGGER_FACTORY)).loggerFor("web"),
             }),
@@ -129,55 +153,60 @@ export function createWebRuntime(input: WebRuntimeOptions) {
             }),
             provide({
                 token: DEP_KEYS.PLATFORM,
-                lifetime: "runtime",
+                lifetime: defaultLifetime,
                 create: () => {
                     return config.platform ?? detectPlatform();
                 },
             }),
             provide({
                 token: DEP_KEYS.EVENT_RECORDER,
-                lifetime: "runtime",
-                create: () => ({ record: (type, fields) => runtime.record(type, fields) }),
+                lifetime: defaultLifetime,
+                create: () =>
+                    scopeFallback && config.eventRecorder
+                        ? config.eventRecorder
+                        : { record: (type, fields) => runtime.record(type, fields) },
             }),
             provide({
                 token: DEP_KEYS.STORAGE,
-                lifetime: "runtime",
+                lifetime: storageLifetime,
                 create: () => {
-                    const values = new Map<string, string>();
-                    return {
-                        get: (key: string) => values.get(key),
-                        set: (key: string, value: string) => {
-                            values.set(key, value);
-                        },
-                        delete: (key: string) => {
-                            values.delete(key);
-                        },
-                    };
+                    if (scopeFallback && config.storageScope !== "execution")
+                        return getExternalStorage();
+                    return createMemoryStorage();
                 },
             }),
             provide({
                 token: DEP_KEYS.FEATURE_FLAGS,
-                lifetime: "runtime",
+                lifetime: defaultLifetime,
                 create: () => {
                     const providers = [...(config.featureFlagsProviders ?? [])].reverse();
                     return {
                         isEnabled: (key: string) =>
                             providers.some((p) => p.isEnabled(key)) ||
                             config.featureFlags?.[key] === true,
-                        getString: (key: string) =>
-                            providers.map((p) => p.getString?.(key)).find((v) => v !== undefined) ??
-                            (typeof config.featureFlags?.[key] === "string"
-                                ? (config.featureFlags[key] as string)
-                                : undefined),
-                        getNumber: (key: string) =>
-                            providers.map((p) => p.getNumber?.(key)).find((v) => v !== undefined) ??
-                            (typeof config.featureFlags?.[key] === "number"
-                                ? (config.featureFlags[key] as number)
-                                : undefined),
+                        getString: (key: string) => {
+                            for (const provider of providers) {
+                                const value = provider.getString?.(key);
+                                if (value !== undefined) return value;
+                            }
+                            const value = config.featureFlags?.[key];
+                            return typeof value === "string" ? value : undefined;
+                        },
+                        getNumber: (key: string) => {
+                            for (const provider of providers) {
+                                const value = provider.getNumber?.(key);
+                                if (value !== undefined) return value;
+                            }
+                            const value = config.featureFlags?.[key];
+                            return typeof value === "number" ? value : undefined;
+                        },
                     };
                 },
             }),
         ];
+    }
+    function createOwnedRuntime(): RuntimeHandle {
+        const defaults = createDefaultProviders();
         const supplied = new Set(
             [
                 ...(plan.app.providers ?? []),
@@ -198,6 +227,7 @@ export function createWebRuntime(input: WebRuntimeOptions) {
         });
     }
     const runtime: RuntimeHandle = config.runtime ?? createOwnedRuntime();
+    const externalDefaultProviders = config.runtime ? createDefaultProviders(true) : [];
     const active = new Set<ExecutionHandle>();
     let closed = false,
         disposing: Promise<void> | undefined;
@@ -231,11 +261,17 @@ export function createWebRuntime(input: WebRuntimeOptions) {
                     },
                 },
             });
+            for (const provider of externalDefaultProviders) {
+                if (!execution.context.container.hasProvider(provider.token))
+                    execution.context.container.registerProvider(provider);
+            }
             services.fetch = execution.context.fetch;
             services.locale = execution.context.locale
                 ? getLocaleAttributes(execution.context.locale)
                 : undefined;
-            Object.defineProperty(services, "translator", { get: getTranslator });
+            Object.defineProperty(services, "translator", {
+                get: () => getTranslatorForLocale(execution.context.locale),
+            });
             services.safeFetch = config.safeFetch;
             const dispose = execution.dispose.bind(execution);
             execution.dispose = async () => {

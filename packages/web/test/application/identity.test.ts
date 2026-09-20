@@ -58,12 +58,8 @@ test("same-target prefetch values hydrate their own EntryIds without overwriting
 });
 
 test("equal targets own separate drafts while sharing an opt-in query result; explicit reuse selects an EntryId", async () => {
-    const {
-        createWebRuntime,
-        defineWebApp,
-        createNavigationController,
-        createNavigationScopedState,
-    } = await import("../../src/index");
+    const { createWebRuntime, defineWebApp, createWebSession, createNavigationScopedState } =
+        await import("../../src/index");
     const { defineApp, defineOperation } = await import("@finesoft/core");
     let calls = 0;
     const query = defineOperation({
@@ -102,7 +98,7 @@ test("equal targets own separate drafts while sharing an opt-in query result; ex
         definition: web,
         invocation: { identity: "alice", locale: "en" },
     });
-    const nav = createNavigationController({
+    const nav = createWebSession({
         web: fw,
         initial: stack(leaf("edit", { id: 7 })),
     });

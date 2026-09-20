@@ -24,6 +24,50 @@ const postLoadContext = {
 };
 
 describe("middleware pipeline", () => {
+    test.each([runBeforeLoadGuards, runAfterLoadGuards])(
+        "preserves cancellation before and after an asynchronous guard",
+        async (run) => {
+            const controller = new AbortController();
+            const context = { ...postLoadContext, signal: controller.signal };
+            const later = vi.fn(() => next());
+            const cancelled = run(
+                [
+                    async () => {
+                        await Promise.resolve();
+                        controller.abort();
+                        return redirect("/stale");
+                    },
+                    later,
+                ],
+                context,
+            );
+            await expect(cancelled).rejects.toMatchObject({ code: "cancelled" });
+            expect(later).not.toHaveBeenCalled();
+            await expect(run([later], context)).rejects.toMatchObject({ code: "cancelled" });
+            expect(later).not.toHaveBeenCalled();
+        },
+    );
+
+    test.each([runBeforeLoadGuards, runAfterLoadGuards])(
+        "propagates a guard failure without running subsequent guards",
+        async (run) => {
+            const error = new Error("guard failed");
+            const later = vi.fn(() => next());
+            await expect(
+                run(
+                    [
+                        () => {
+                            throw error;
+                        },
+                        later,
+                    ],
+                    postLoadContext,
+                ),
+            ).rejects.toBe(error);
+            expect(later).not.toHaveBeenCalled();
+        },
+    );
+
     test("creates middleware results with helper factories", () => {
         expect(next()).toEqual({ kind: "next" });
         expect(redirect("/login")).toEqual({

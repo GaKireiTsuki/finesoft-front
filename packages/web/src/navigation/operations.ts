@@ -35,36 +35,7 @@ import {
  * - split：进入最后一个有内容的列（无任何内容则结束）
  */
 export function resolveActivePath(tree: NavigationNode): NavigationPath {
-    const steps: NavigationPathStep[] = [];
-    let node: NavigationNode = tree;
-
-    for (;;) {
-        switch (node.kind) {
-            case NAVIGATION_NODE_KINDS.LEAF:
-                return steps;
-            case NAVIGATION_NODE_KINDS.STACK: {
-                if (node.entries.length === 0) return steps;
-                const index = node.entries.length - 1;
-                steps.push({ kind: "stack-entry", index });
-                node = node.entries[index];
-                break;
-            }
-            case NAVIGATION_NODE_KINDS.TABS: {
-                const branch = node.branches[node.active];
-                if (branch === undefined) return steps;
-                steps.push({ kind: "tab", key: node.active });
-                node = branch;
-                break;
-            }
-            case NAVIGATION_NODE_KINDS.SPLIT: {
-                const last = lastNonEmptyColumn(node);
-                if (last === undefined) return steps;
-                steps.push({ kind: "column", id: last.id });
-                node = last.content as NavigationNode;
-                break;
-            }
-        }
-    }
+    return walkActive(tree);
 }
 
 /** 找到 split 中最后一个 content 非 undefined 的列。 */
@@ -116,27 +87,49 @@ export function findNearestStack(
     const start = findNode(tree, path);
     if (start === undefined) return undefined;
 
-    const steps: NavigationPathStep[] = [...path];
-    let node: NavigationNode = start;
+    let stackPath: NavigationPath | undefined;
+    walkActive(start, (node, activePath) => {
+        if (node.kind === NAVIGATION_NODE_KINDS.STACK) {
+            stackPath = [...path, ...activePath];
+            return true;
+        }
+        return false;
+    });
+    return stackPath;
+}
 
+/** Walk the active branch once, optionally observing every visited node. */
+function walkActive(
+    tree: NavigationNode,
+    visit?: (node: NavigationNode, path: NavigationPath) => boolean,
+): NavigationPath {
+    const path: NavigationPathStep[] = [];
+    let node = tree;
     for (;;) {
+        if (visit?.(node, path)) return path;
         switch (node.kind) {
-            case NAVIGATION_NODE_KINDS.STACK:
-                return steps;
             case NAVIGATION_NODE_KINDS.LEAF:
-                return undefined;
+                return path;
+            case NAVIGATION_NODE_KINDS.STACK: {
+                const index = node.entries.length - 1;
+                const entry = node.entries[index];
+                if (entry === undefined) return path;
+                path.push({ kind: "stack-entry", index });
+                node = entry;
+                break;
+            }
             case NAVIGATION_NODE_KINDS.TABS: {
                 const branch = node.branches[node.active];
-                if (branch === undefined) return undefined;
-                steps.push({ kind: "tab", key: node.active });
+                if (branch === undefined) return path;
+                path.push({ kind: "tab", key: node.active });
                 node = branch;
                 break;
             }
             case NAVIGATION_NODE_KINDS.SPLIT: {
-                const last = lastNonEmptyColumn(node);
-                if (last === undefined) return undefined;
-                steps.push({ kind: "column", id: last.id });
-                node = last.content as NavigationNode;
+                const column = lastNonEmptyColumn(node);
+                if (column?.content === undefined) return path;
+                path.push({ kind: "column", id: column.id });
+                node = column.content;
                 break;
             }
         }
@@ -324,50 +317,29 @@ function rebuild(
  * 激活路径上没有任何 stack 则返回 undefined。
  */
 function findActiveStack(tree: NavigationNode): NavigationPath | undefined {
-    const steps: NavigationPathStep[] = [];
     let deepest: NavigationPath | undefined;
-    let node: NavigationNode = tree;
-
-    for (;;) {
-        if (node.kind === NAVIGATION_NODE_KINDS.STACK) deepest = [...steps];
-        switch (node.kind) {
-            case NAVIGATION_NODE_KINDS.LEAF:
-                return deepest;
-            case NAVIGATION_NODE_KINDS.STACK: {
-                if (node.entries.length === 0) return deepest;
-                const index = node.entries.length - 1;
-                steps.push({ kind: "stack-entry", index });
-                node = node.entries[index];
-                break;
-            }
-            case NAVIGATION_NODE_KINDS.TABS: {
-                const branch = node.branches[node.active];
-                if (branch === undefined) return deepest;
-                steps.push({ kind: "tab", key: node.active });
-                node = branch;
-                break;
-            }
-            case NAVIGATION_NODE_KINDS.SPLIT: {
-                const last = lastNonEmptyColumn(node);
-                if (last === undefined) return deepest;
-                steps.push({ kind: "column", id: last.id });
-                node = last.content as NavigationNode;
-                break;
-            }
-        }
-    }
+    walkActive(tree, (node, path) => {
+        if (node.kind === NAVIGATION_NODE_KINDS.STACK) deepest = [...path];
+        return false;
+    });
+    return deepest;
 }
 
 /**
- * 解析栈操作的目标栈路径：
+ * 在栈操作的目标栈上执行更新：
  * - 显式 target → 取 target「at/under」最近的 stack（findNearestStack 向下钻）；
  * - 缺省 → 取激活路径上最深的 stack（findActiveStack）。
  */
-function resolveStackTarget(
+function updateStack(
     tree: NavigationNode,
-    target?: NavigationPath,
-): NavigationPath | undefined {
-    return target ? findNearestStack(tree, target) : findActiveStack(tree);
+    target: NavigationPath | undefined,
+    operation: string,
+    update: (stack: StackNode) => StackNode,
+): NavigationNode {
+    const stackPath = target ? findNearestStack(tree, target) : findActiveStack(tree);
+    if (stackPath === undefined)
+        throw new NavigationError(`${operation} 失败：激活路径上没有可用的 stack`);
+    return transformAt(tree, stackPath, (node) => update(node as StackNode));
 }
 
 // =====================================================================
@@ -380,42 +352,28 @@ export function push(
     node: NavigationNode,
     target?: NavigationPath,
 ): NavigationNode {
-    const stackPath = resolveStackTarget(tree, target);
-    if (stackPath === undefined) {
-        throw new NavigationError("push 失败：激活路径上没有可用的 stack");
-    }
-    return transformAt(tree, stackPath, (s) => {
-        const st = s as StackNode;
-        return { ...st, entries: [...st.entries, node] };
-    });
+    return updateStack(tree, target, "push", (stack) => ({
+        ...stack,
+        entries: [...stack.entries, node],
+    }));
 }
 
 /** 从 target 处最近的 stack 弹出 count 个 entry（默认 1）；绝不弹到根 entry 之下。 */
 export function pop(tree: NavigationNode, count = 1, target?: NavigationPath): NavigationNode {
     if (count <= 0) return tree;
-    const stackPath = resolveStackTarget(tree, target);
-    if (stackPath === undefined) {
-        throw new NavigationError("pop 失败：激活路径上没有可用的 stack");
-    }
-    return transformAt(tree, stackPath, (s) => {
-        const st = s as StackNode;
+    return updateStack(tree, target, "pop", (stack) => {
         // 保留至少根 entry；最多弹 entries.length - 1 个。
-        const keep = Math.max(1, st.entries.length - count);
-        if (keep === st.entries.length) return st;
-        return { ...st, entries: st.entries.slice(0, keep) };
+        const keep = Math.max(1, stack.entries.length - count);
+        return keep === stack.entries.length
+            ? stack
+            : { ...stack, entries: stack.entries.slice(0, keep) };
     });
 }
 
 /** 把 target 处最近的 stack 弹回到根 entry。 */
 export function popToRoot(tree: NavigationNode, target?: NavigationPath): NavigationNode {
-    const stackPath = resolveStackTarget(tree, target);
-    if (stackPath === undefined) {
-        throw new NavigationError("popToRoot 失败：激活路径上没有可用的 stack");
-    }
-    return transformAt(tree, stackPath, (s) => {
-        const st = s as StackNode;
-        if (st.entries.length <= 1) return st;
-        return { ...st, entries: st.entries.slice(0, 1) };
+    return updateStack(tree, target, "popToRoot", (stack) => {
+        return stack.entries.length <= 1 ? stack : { ...stack, entries: stack.entries.slice(0, 1) };
     });
 }
 
@@ -425,19 +383,15 @@ export function popTo(
     index: number,
     target?: NavigationPath,
 ): NavigationNode {
-    const stackPath = resolveStackTarget(tree, target);
-    if (stackPath === undefined) {
-        throw new NavigationError("popTo 失败：激活路径上没有可用的 stack");
-    }
-    return transformAt(tree, stackPath, (s) => {
-        const st = s as StackNode;
-        if (index < 0 || index >= st.entries.length) {
+    return updateStack(tree, target, "popTo", (stack) => {
+        if (index < 0 || index >= stack.entries.length) {
             throw new NavigationError(
-                `popTo 失败：index ${index} 越界（栈深 ${st.entries.length}）`,
+                `popTo 失败：index ${index} 越界（栈深 ${stack.entries.length}）`,
             );
         }
-        if (index === st.entries.length - 1) return st;
-        return { ...st, entries: st.entries.slice(0, index + 1) };
+        return index === stack.entries.length - 1
+            ? stack
+            : { ...stack, entries: stack.entries.slice(0, index + 1) };
     });
 }
 
@@ -447,18 +401,13 @@ export function replaceTop(
     node: NavigationNode,
     target?: NavigationPath,
 ): NavigationNode {
-    const stackPath = resolveStackTarget(tree, target);
-    if (stackPath === undefined) {
-        throw new NavigationError("replaceTop 失败：激活路径上没有可用的 stack");
-    }
-    return transformAt(tree, stackPath, (s) => {
-        const st = s as StackNode;
-        if (st.entries.length === 0) {
+    return updateStack(tree, target, "replaceTop", (stack) => {
+        if (stack.entries.length === 0) {
             throw new NavigationError("replaceTop 失败：stack 为空");
         }
-        const entries = st.entries.slice();
+        const entries = stack.entries.slice();
         entries[entries.length - 1] = node;
-        return { ...st, entries };
+        return { ...stack, entries };
     });
 }
 
@@ -556,37 +505,15 @@ function findActiveKind(
     tree: NavigationNode,
     kind: TabsNode["kind"] | SplitNode["kind"],
 ): NavigationPath | undefined {
-    const steps: NavigationPathStep[] = [];
-    let node: NavigationNode = tree;
-
-    for (;;) {
-        if (node.kind === kind) return steps;
-        switch (node.kind) {
-            case NAVIGATION_NODE_KINDS.LEAF:
-                return undefined;
-            case NAVIGATION_NODE_KINDS.STACK: {
-                if (node.entries.length === 0) return undefined;
-                const index = node.entries.length - 1;
-                steps.push({ kind: "stack-entry", index });
-                node = node.entries[index];
-                break;
-            }
-            case NAVIGATION_NODE_KINDS.TABS: {
-                const branch = node.branches[node.active];
-                if (branch === undefined) return undefined;
-                steps.push({ kind: "tab", key: node.active });
-                node = branch;
-                break;
-            }
-            case NAVIGATION_NODE_KINDS.SPLIT: {
-                const last = lastNonEmptyColumn(node);
-                if (last === undefined) return undefined;
-                steps.push({ kind: "column", id: last.id });
-                node = last.content as NavigationNode;
-                break;
-            }
+    let match: NavigationPath | undefined;
+    walkActive(tree, (node, path) => {
+        if (node.kind === kind) {
+            match = [...path];
+            return true;
         }
-    }
+        return false;
+    });
+    return match;
 }
 
 /** Reveal a particular existing entry, preserving its identity and retained state. */

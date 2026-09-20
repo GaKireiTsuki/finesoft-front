@@ -39,8 +39,11 @@ export async function mount(
         session: {},
         domRestore: true,
     });
-    if (!handle.hydrate) target.replaceChildren();
-    const root = (handle.hydrate ? hydrate : mountSvelte)(App, { target, props: { app: handle } });
+    if (!handle.shouldHydrate) target.replaceChildren();
+    const root = (handle.shouldHydrate ? hydrate : mountSvelte)(App, {
+        target,
+        props: { app: handle },
+    });
     const dispose = handle.dispose.bind(handle);
     Object.assign(handle, {
         dispose: async () => {

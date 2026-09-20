@@ -1,5 +1,5 @@
 /**
- * NavigationBridge — 把 NavigationController 接到浏览器 History / URL
+ * NavigationBridge — 把 WebSession 接到浏览器 History / URL
  *
  * Controller 自身对内容无关、不碰 history/URL（由 Web 所有）。这里负责把它「落地」到浏览器：
  *
@@ -24,12 +24,9 @@ import {
     deserializeNavigation,
     serializeNavigation,
     type NavigationCodec,
-    type NavigationController,
+    type WebSession,
     type NavigationNode,
-    type NavigationPath,
     type NavigationRouterLike,
-    type NavigationSnapshot,
-    type RouteParams,
     type SerializedNavigation,
 } from "@finesoft/web";
 import { History } from "./utils/history";
@@ -46,7 +43,7 @@ export interface NavigationBridgeDependencies {
     /** Standard host fallback for uncached URLs without an encoded navigation tree. */
     readonly resolveUrl?: (url: string) => Promise<NavigationNode | undefined>;
     /** 已构建好的导航控制器（持有 initial 树、intentDispatcher、router 等）。 */
-    readonly controller: NavigationController;
+    readonly controller: WebSession;
     readonly viewReady?: () => void | Promise<void>;
     /** URL 编解码器（默认 `createActiveLeafCodec`）。 */
     readonly codec: NavigationCodec;
@@ -64,38 +61,21 @@ export interface NavigationBridgeDependencies {
  * 所有写操作返回提交后的 `NavigationSnapshot`；写操作会同步把新树落到 history/URL。
  * `subscribe` 与 controller 的订阅一致（每次提交都回调，含来自 popstate 的 hydrate）。
  */
-export interface NavigationHandle {
+export interface NavigationHandle extends Pick<
+    WebSession,
+    | "refresh"
+    | "getSnapshot"
+    | "push"
+    | "pop"
+    | "popToRoot"
+    | "reuseEntry"
+    | "replaceTop"
+    | "selectTab"
+    | "selectColumn"
+    | "hydrate"
+    | "subscribe"
+> {
     dispose(): void;
-    refresh(): Promise<NavigationSnapshot>;
-    /** 当前快照（树 + 已解析的可见目标）。 */
-    getSnapshot(): NavigationSnapshot;
-    /** 在激活栈压入新目标。 */
-    push(
-        intent: string,
-        params?: RouteParams,
-        options?: { target?: NavigationPath },
-    ): Promise<NavigationSnapshot>;
-    /** Reveal an existing page instance by EntryId. */
-    reuseEntry(entryId: string): Promise<NavigationSnapshot>;
-    /** 从激活栈弹出 count 个（默认 1）。 */
-    pop(count?: number): Promise<NavigationSnapshot>;
-    /** 激活栈弹回根。 */
-    popToRoot(): Promise<NavigationSnapshot>;
-    /** 替换激活栈栈顶。 */
-    replaceTop(intent: string, params?: RouteParams): Promise<NavigationSnapshot>;
-    /** 切换 tabs 激活分支。 */
-    selectTab(key: string, target?: NavigationPath): Promise<NavigationSnapshot>;
-    /** 设置 split 列内容（intent=undefined 清空该列）。 */
-    selectColumn(
-        columnId: string,
-        intent: string | undefined,
-        params?: RouteParams,
-        target?: NavigationPath,
-    ): Promise<NavigationSnapshot>;
-    /** 用外部树替换当前树并重解析（一般由桥内部 popstate 调用，亦对外暴露）。 */
-    hydrate(tree: NavigationNode): Promise<NavigationSnapshot>;
-    /** 订阅快照变更；返回取消订阅函数。 */
-    subscribe(listener: (snapshot: NavigationSnapshot) => void): () => void;
 }
 
 /** 默认可滚动元素查找（与 FlowAction handler 一致）。 */
@@ -222,38 +202,16 @@ export function createNavigationBridge(deps: NavigationBridgeDependencies): Navi
             unsubscribe();
             history.dispose();
         },
-        refresh() {
-            return controller.refresh();
-        },
-        getSnapshot() {
-            return controller.getSnapshot();
-        },
-        push(intent, params, options) {
-            return controller.push(intent, params, options);
-        },
-        pop(count) {
-            return controller.pop(count);
-        },
-        popToRoot() {
-            return controller.popToRoot();
-        },
-        reuseEntry(entryId) {
-            return controller.reuseEntry(entryId);
-        },
-        replaceTop(intent, params) {
-            return controller.replaceTop(intent, params);
-        },
-        selectTab(key, target) {
-            return controller.selectTab(key, target);
-        },
-        selectColumn(columnId, intent, params, target) {
-            return controller.selectColumn(columnId, intent, params, target);
-        },
-        hydrate(tree) {
-            return controller.hydrate(tree);
-        },
-        subscribe(listener) {
-            return controller.subscribe(listener);
-        },
+        refresh: controller.refresh,
+        getSnapshot: controller.getSnapshot,
+        push: controller.push,
+        pop: controller.pop,
+        popToRoot: controller.popToRoot,
+        reuseEntry: controller.reuseEntry,
+        replaceTop: controller.replaceTop,
+        selectTab: controller.selectTab,
+        selectColumn: controller.selectColumn,
+        hydrate: controller.hydrate,
+        subscribe: controller.subscribe,
     };
 }

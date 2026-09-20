@@ -34,7 +34,7 @@ export {
     resourceKey,
     createActiveLeafCodec,
     createFullStateCodec,
-    createNavigationController,
+    createWebSession,
     decodeNavigationTreeParam,
     DEFAULT_NAV_PARAM,
     deserializeNavigation,
@@ -73,8 +73,8 @@ export type {
     LeafNode,
     NavigationCodec,
     NavigationContextInput,
-    NavigationController,
-    NavigationControllerOptions,
+    WebSession,
+    WebSessionOptions,
     BeforeNavigatePolicy,
     BeforeCommitPolicy,
     BeforeNavigateResult,
@@ -118,7 +118,6 @@ export type {
 export {
     collectLeafKeys,
     createNavigationScopedState,
-    createNavigationSessionAdapter,
     createSessionStore,
     decodeSnapshot,
     encodeSnapshot,
@@ -130,7 +129,7 @@ export {
 export type {
     NavigationScopedState,
     SessionErrorContext,
-    SessionNavigationAdapter,
+    SessionNavigation,
     SessionSnapshot,
     SessionStateProvider,
     SessionStore,
@@ -174,4 +173,4 @@ export { resolveInitialNavigation } from "./application/initial-navigation";
 export { definePage, type PageReference } from "./application/page";
 export { parseCookieString } from "./middleware/cookies";
 
-export { NavigationCommitError } from "./navigation/controller";
+export { NavigationCommitError } from "./application/session";

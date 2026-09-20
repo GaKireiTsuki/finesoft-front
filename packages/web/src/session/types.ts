@@ -111,16 +111,15 @@ export interface NavigationScopedState {
 }
 
 /**
- * 导航适配器：SessionStore 与具体结构化导航控制器解耦的接缝。
+ * 持久化导航端口：WebSession 直接实现，SessionStore 只依赖捕获和恢复契约。
  *
- * SessionStore 不直接依赖 `NavigationController`，core 不产生 nav → session 的反向耦合；
  * 所有页面形态通过同一结构化树恢复。
  */
-export interface SessionNavigationAdapter {
+export interface SessionNavigation {
     /** 捕获当前导航位置。 */
-    capture(): SessionSnapshot["navigation"] | undefined;
+    captureNavigation(): SessionSnapshot["navigation"] | undefined;
     /** 应用恢复的导航位置。 */
-    apply(navigation: SessionSnapshot["navigation"]): void | Promise<void>;
+    restoreNavigation(navigation: SessionSnapshot["navigation"]): void | Promise<void>;
     /**
      * 可选：计算当前导航位置的可比 URL，写入 `SessionSnapshot.url` 供恢复门控精确匹配。
      *
@@ -154,8 +153,8 @@ export interface SessionStoreOptions {
     readonly version?: number;
     /** 快照最大存活时长（ms）；省略 = 不过期。 */
     readonly maxAgeMs?: number;
-    /** 导航适配器；省略 = 不恢复导航。 */
-    readonly navigation?: SessionNavigationAdapter;
+    /** 导航端口；省略 = 不恢复导航。 */
+    readonly navigation?: SessionNavigation;
     /** 注入时钟（测试 / SSR 安全）；默认 `() => Date.now()`。 */
     readonly now?: () => number;
     /** 错误回调；默认 no-op，仅接收安全错误码与阶段/key，不接收私有异常。 */

@@ -12,10 +12,10 @@ export async function mountApplication(
     url?: string,
 ) {
     const handle = await createBrowserApp({ definition: app, target, history, url });
-    const root = handle.hydrate
+    const root = handle.shouldHydrate
         ? hydrateRoot(target, createElement(App, { app: handle }))
         : createRoot(target);
-    if (!handle.hydrate) root.render(createElement(App, { app: handle }));
+    if (!handle.shouldHydrate) root.render(createElement(App, { app: handle }));
     const originalDispose = handle.dispose.bind(handle);
     let disposal: Promise<void> | undefined;
     Object.assign(handle, {

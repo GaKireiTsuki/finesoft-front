@@ -8,6 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { syncTemplateSources } from "./sync-template-sources.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -69,6 +70,10 @@ const catalog = readCatalog();
  */
 function rewriteTemplatePkg(pkgJsonPath) {
     const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+    for (const hook of ["predev", "prebuild"]) {
+        if (pkg.scripts?.[hook]?.startsWith("node ../../scripts/sync-template-sources.mjs "))
+            delete pkg.scripts[hook];
+    }
     for (const section of ["dependencies", "devDependencies"]) {
         if (!pkg[section]) continue;
         for (const [name, value] of Object.entries(pkg[section])) {
@@ -93,6 +98,8 @@ function rewriteTemplateTsconfig(file) {
 }
 
 // ── Copy templates ──
+
+syncTemplateSources();
 
 // Clean previous templates
 if (fs.existsSync(destDir)) {

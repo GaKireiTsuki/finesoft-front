@@ -214,6 +214,25 @@ describe("dom-restore — attach 接线", () => {
         expect(dom?.fields).toEqual({ note: "typed" });
     });
 
+    test("captures an entry nested below native outlet wrappers", () => {
+        const scope = createNavigationScopedState();
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        outlet.setAttribute("data-fs-app", "parent");
+        const wrapper = new FakeElement("main");
+        const c = island("nested {}", [{ tag: "input", attrs: { name: "note" }, value: "typed" }]);
+        wrapper.appendChild(c);
+        outlet.appendChild(wrapper);
+        dr.attach(asHTMLElement(outlet));
+
+        c.querySelector("[name]")!.dispatchEvent(new FakeEvent("input", { bubbles: true }));
+
+        expect(
+            (scope.get("nested {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom
+                ?.fields,
+        ).toEqual({ note: "typed" });
+    });
+
     test("input 事件（委托）→ 实时捕获", () => {
         const scope = createNavigationScopedState();
         const dr = createDomRestore({ scope, schedule: (cb) => cb() });
@@ -301,6 +320,45 @@ describe("dom-restore — attach 接线", () => {
 
         const dom = (scope.get("k {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom;
         expect(dom?.fields).toEqual({ note: "vis-flush" });
+    });
+
+    test("change, pagehide, and visibilitychange flush nested entries", () => {
+        const scope = createNavigationScopedState();
+        const dr = createDomRestore({ scope, schedule: (cb) => cb() });
+        const outlet = new FakeElement("div");
+        outlet.setAttribute("data-fs-app", "parent");
+        const wrapper = new FakeElement("main");
+        const c = island("nested {}", [{ tag: "input", attrs: { name: "note" }, value: "change" }]);
+        wrapper.appendChild(c);
+        outlet.appendChild(wrapper);
+        dr.attach(asHTMLElement(outlet));
+        const input = c.querySelector("[name]") as FakeElement;
+
+        input.dispatchEvent(new FakeEvent("change", { bubbles: true }));
+        expect(
+            (scope.get("nested {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom
+                ?.fields,
+        ).toEqual({ note: "change" });
+
+        input.value = "pagehide";
+        (globalThis.window as unknown as import("./fake-dom").FakeGlobalTarget).dispatchEvent(
+            new FakeEvent("pagehide"),
+        );
+        expect(
+            (scope.get("nested {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom
+                ?.fields,
+        ).toEqual({ note: "pagehide" });
+
+        input.value = "hidden";
+        const document = globalThis.document as unknown as {
+            visibilityState: string;
+        } & import("./fake-dom").FakeGlobalTarget;
+        document.visibilityState = "hidden";
+        document.dispatchEvent(new FakeEvent("visibilitychange"));
+        expect(
+            (scope.get("nested {}") as { __dom?: { fields?: Record<string, unknown> } }).__dom
+                ?.fields,
+        ).toEqual({ note: "hidden" });
     });
 
     test("dispose unbinds delegated input capture", () => {

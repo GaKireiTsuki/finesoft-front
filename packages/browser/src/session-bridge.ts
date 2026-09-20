@@ -4,7 +4,7 @@
  * SessionStore（Web）本身对浏览器无关：它只懂 capture / persist / load / restore，不订阅导航、
  * 不碰 `window`。本文件负责把它「落地」到浏览器运行时：
  *
- * - **自动捕获**：导航变更（`subscribeNavigation`）时**先** `store.scope.prune(adapter.presentKeys())`
+ * - **自动捕获**：导航变更（`subscribeNavigation`）时**先** `store.scope.prune(navigation.presentKeys())`
  *   —— 这正是「pop B 后 B 的作用域状态消失」的落点（离树条目被丢弃，对标 SwiftUI `@State`
  *   push/pop 生命周期）—— 再防抖落盘（默认 `SESSION_DEFAULT_DEBOUNCE_MS`，合并连续导航）。
  * - **生命周期落盘**：`window` 的 `pagehide` 与 `document` 的 `visibilitychange`
@@ -18,7 +18,7 @@
 
 import type {
     NavigationScopedState,
-    SessionNavigationAdapter,
+    SessionNavigation,
     SessionRestoreResult,
     SessionSnapshot,
     SessionStateProvider,
@@ -35,8 +35,8 @@ export interface SessionBridgeOptions {
     readonly deferPersistenceUntilRestore?: boolean;
     /** 会话编排器（Web）。 */
     readonly store: SessionStore;
-    /** 导航适配器；导航变更时用其 `presentKeys()` 驱动 scoped prune。 */
-    readonly adapter: SessionNavigationAdapter;
+    /** 导航端口；导航变更时用其 `presentKeys()` 驱动 scoped prune。 */
+    readonly navigation: SessionNavigation;
     /** 订阅导航变更；返回反订阅函数。省略 = 不自动捕获（仅靠生命周期事件 + 手动 `save`）。 */
     readonly subscribeNavigation?: (onChange: () => void) => () => void;
     /** 自动落盘防抖窗口（ms）；默认 `SESSION_DEFAULT_DEBOUNCE_MS`。 */
@@ -101,7 +101,7 @@ export function defaultShouldRestore(snapshot: SessionSnapshot, currentUrl: stri
  * 首次导航完成后调一次 `restore(initialUrl)` 完成 boot 恢复。
  */
 export function createSessionBridge(options: SessionBridgeOptions): SessionHandle {
-    const { store, adapter, subscribeNavigation } = options;
+    const { store, navigation, subscribeNavigation } = options;
     const debounceMs = options.debounceMs ?? SESSION_DEFAULT_DEBOUNCE_MS;
     const shouldRestore = options.shouldRestore ?? defaultShouldRestore;
 
@@ -126,7 +126,7 @@ export function createSessionBridge(options: SessionBridgeOptions): SessionHandl
     /** 导航变更：先 prune 离树作用域，再防抖落盘。 */
     function onNavigationChange(): void {
         if (disposed || restoring) return;
-        store.scope.prune(adapter.presentKeys());
+        store.scope.prune(navigation.presentKeys());
         cancelTimer();
         timer = setTimeout(() => {
             timer = undefined;

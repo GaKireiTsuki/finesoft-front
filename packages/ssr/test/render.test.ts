@@ -1,6 +1,6 @@
 import { DEP_KEYS, HostGuardError, str } from "../../core/src/index";
 import { expect, test, vi } from "vite-plus/test";
-import { defineWebApp, markPublic } from "@finesoft/web";
+import { defineWebApp, leaf, markPublic, split } from "@finesoft/web";
 import { routePages } from "../../web/test/helpers/definition";
 import { createSSRRender } from "../src/create-render";
 
@@ -48,6 +48,54 @@ test("SSR installs the host resolver in the request's protected fetch", async ()
     await expect(safeFetch!("https://example.com")).rejects.toBeInstanceOf(HostGuardError);
     expect(lookup).toHaveBeenCalledWith("example.com");
     expect(fetch).not.toHaveBeenCalled();
+    await render.dispose();
+});
+
+test("SSR default storage is shared within one request and fresh for the next request", async () => {
+    const definition = defineWebApp({
+        id: "request-storage",
+        navigation: split([
+            { id: "writer", content: leaf("writer") },
+            { id: "reader", content: leaf("reader") },
+        ]),
+        pages: routePages(
+            [
+                {
+                    id: "writer",
+                    handler: async (_params, context) => {
+                        const storage = await context.get(DEP_KEYS.STORAGE);
+                        const previous = storage.get("request") ?? "fresh";
+                        storage.set("request", `${previous}:writer`);
+                        return { id: "writer", pageType: "writer", title: previous };
+                    },
+                },
+                {
+                    id: "reader",
+                    handler: async (_params, context) => ({
+                        id: "reader",
+                        pageType: "reader",
+                        title: (await context.get(DEP_KEYS.STORAGE)).get("request") ?? "missing",
+                    }),
+                },
+            ],
+            [
+                { path: "/writer", intentId: "writer" },
+                { path: "/reader", intentId: "reader" },
+            ],
+        ),
+        getErrorPage: errorPage,
+    });
+    const render = createSSRRender({
+        definition,
+        render: (app) =>
+            app
+                .getSnapshot()
+                .entries.map((entry) => entry.page.title)
+                .join(","),
+    });
+
+    await expect(render("/writer")).resolves.toMatchObject({ html: "fresh,fresh:writer" });
+    await expect(render("/writer")).resolves.toMatchObject({ html: "fresh,fresh:writer" });
     await render.dispose();
 });
 
@@ -231,13 +279,16 @@ test("beforeLoad rewrite internally re-routes to the new URL", async () => {
                     intentId: "legacy",
                     beforeLoad: [() => ({ kind: "rewrite", url: "/canonical" })],
                 },
-                { path: "/canonical", intentId: "canonical" },
+                { path: "/canonical", intentId: "canonical", renderMode: "csr" },
             ],
         ),
         getErrorPage: errorPage,
     });
     const render = createSSRRender({ definition, render: (app) => titleRenderer(app) });
-    await expect(render("/legacy")).resolves.toMatchObject({ html: "canonical" });
+    await expect(render("/legacy")).resolves.toMatchObject({
+        html: "canonical",
+        renderMode: "csr",
+    });
     expect(legacy).not.toHaveBeenCalled();
     expect(canonical).toHaveBeenCalledTimes(1);
     await render.dispose();

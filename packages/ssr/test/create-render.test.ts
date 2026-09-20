@@ -17,11 +17,14 @@ describe("createSSRRender", () => {
                     },
                 },
             ]),
-            render: (app) => {
+            render: async (app) => {
                 const snapshot = app.getSnapshot();
                 expect(snapshot.entries).toHaveLength(1);
                 expect(snapshot.destinations[0]?.page.title).toBe("Home");
                 expect(app.locale).toBeUndefined();
+                await expect(app.perform({ kind: "flow", url: "/home" })).rejects.toMatchObject({
+                    code: "configuration",
+                });
                 return { html: `<main>${snapshot.entries[0]!.page.title}</main>` };
             },
         });
@@ -62,7 +65,7 @@ describe("createSSRRender", () => {
         const render = createSSRRender({
             definition,
             configuration: { locale: "en-US" },
-            resolveLocale: () => ({ lang: "zh-Hans", dir: "ltr" }),
+            resolveLocale: () => ({ lang: "zh-Hans", dir: "rtl" }),
             render: (app) => {
                 expect(app.locale).toEqual({ lang: "zh-Hans", dir: "ltr" });
                 return {
@@ -79,7 +82,7 @@ describe("createSSRRender", () => {
             html: "ok",
             head: '<meta name="language" content="zh-Hans">',
             css: ".app{}",
-            locale: { lang: "zh-Hans", dir: "ltr" },
+            locale: { lang: "zh-Hans", dir: "rtl" },
         });
         await render.dispose();
     });

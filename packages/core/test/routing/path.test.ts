@@ -5,7 +5,8 @@ describe("compilePath", () => {
     test("matches encoded segments before decoding, including encoded slashes", () => {
         const path = compilePath("/files/:name/:optional?");
         const params = path.match("/files/a%2Fb");
-        expect(params).toEqual({ name: "a/b", optional: undefined });
+        expect(params).toEqual({ name: "a/b" });
+        expect(Object.hasOwn(params!, "optional")).toBe(false);
         expect(Object.getPrototypeOf(params!)).toBeNull();
         expect(path.reverse({ name: "a/b" })).toBe("/files/a%2Fb");
     });

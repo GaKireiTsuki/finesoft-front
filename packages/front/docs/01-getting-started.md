@@ -55,8 +55,8 @@ import { app as definition } from "./app-definition";
 import App from "./App";
 const target = document.getElementById("app")!;
 const app = await createBrowserApp({ definition, target });
-const root = app.hydrate ? hydrateRoot(target, <App app={app} />) : createRoot(target);
-if (!app.hydrate) root.render(<App app={app} />);
+const root = app.shouldHydrate ? hydrateRoot(target, <App app={app} />) : createRoot(target);
+if (!app.shouldHydrate) root.render(<App app={app} />);
 await app.ready;
 // Cleanup owned by the application:
 // try { await app.dispose(); } finally { root.unmount(); }

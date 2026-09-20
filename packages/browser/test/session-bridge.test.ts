@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
-import type { SessionNavigationAdapter, SessionSnapshot, SessionStore } from "@finesoft/web";
+import type { SessionNavigation, SessionSnapshot, SessionStore } from "@finesoft/web";
 import {
     createSessionBridge,
     defaultShouldRestore,
@@ -12,7 +12,7 @@ import {
 } from "../src/session-bridge";
 
 // =====================================================================
-// Fakes —— store / adapter / DOM EventTarget（仅本测试用）
+// Fakes —— store / navigation / DOM EventTarget（仅本测试用）
 // =====================================================================
 
 /**
@@ -90,11 +90,11 @@ function makeStore(
     };
 }
 
-/** Fake adapter：presentKeys 由测试控制（用于断言 prune 入参）。 */
-function makeAdapter(present: () => Iterable<string>) {
+/** Fake navigation：presentKeys 由测试控制（用于断言 prune 入参）。 */
+function makeNavigation(present: () => Iterable<string>) {
     return {
-        capture: () => undefined,
-        apply: () => undefined,
+        captureNavigation: () => undefined,
+        restoreNavigation: () => undefined,
         presentKeys: present,
     };
 }
@@ -105,7 +105,7 @@ function makeAdapter(present: () => Iterable<string>) {
  */
 function build(opts: {
     store: ReturnType<typeof makeStore>;
-    adapter: ReturnType<typeof makeAdapter>;
+    navigation: ReturnType<typeof makeNavigation>;
     subscribeNavigation?: (onChange: () => void) => () => void;
     debounceMs?: number;
     shouldRestore?: (snapshot: SessionSnapshot, currentUrl: string) => boolean;
@@ -113,7 +113,7 @@ function build(opts: {
     return createSessionBridge({
         ...opts,
         store: opts.store as unknown as SessionStore,
-        adapter: opts.adapter as SessionNavigationAdapter,
+        navigation: opts.navigation as SessionNavigation,
     });
 }
 
@@ -146,7 +146,7 @@ describe("createSessionBridge — auto-capture", async () => {
         const store = makeStore();
         const bridge = build({
             store,
-            adapter: makeAdapter(() => []),
+            navigation: makeNavigation(() => []),
             subscribeNavigation: (cb) => {
                 onChange = cb;
                 return () => undefined;
@@ -175,7 +175,7 @@ describe("createSessionBridge — auto-capture", async () => {
         const store = makeStore();
         const bridge = build({
             store,
-            adapter: makeAdapter(() => []),
+            navigation: makeNavigation(() => []),
             subscribeNavigation: (cb) => {
                 onChange = cb;
                 return () => undefined;
@@ -203,7 +203,7 @@ describe("createSessionBridge — auto-capture", async () => {
         // pop B → present 仅剩 A。
         const bridge = build({
             store,
-            adapter: makeAdapter(() => ["A {}"]),
+            navigation: makeNavigation(() => ["A {}"]),
             subscribeNavigation: (cb) => {
                 onChange = cb;
                 return () => undefined;
@@ -229,7 +229,7 @@ describe("createSessionBridge — auto-capture", async () => {
         const store = makeStore();
         const bridge = build({
             store,
-            adapter: makeAdapter(() => []),
+            navigation: makeNavigation(() => []),
             subscribeNavigation: (cb) => {
                 onChange = cb;
                 return () => undefined;
@@ -259,7 +259,7 @@ describe("createSessionBridge — auto-capture", async () => {
         const store = makeStore();
         const bridge = build({
             store,
-            adapter: makeAdapter(() => []),
+            navigation: makeNavigation(() => []),
         });
 
         doc.visibilityState = "visible";
@@ -286,7 +286,7 @@ describe("createSessionBridge — restore gate", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore({ load: () => loaded });
-        const bridge = build({ store, adapter: makeAdapter(() => []) });
+        const bridge = build({ store, navigation: makeNavigation(() => []) });
         return { store, bridge };
     }
 
@@ -400,7 +400,7 @@ describe("createSessionBridge — restore gate", async () => {
         const store = makeStore({ load: () => s });
         const bridge = build({
             store,
-            adapter: makeAdapter(() => []),
+            navigation: makeNavigation(() => []),
             shouldRestore: () => true, // 始终恢复，即便深链不匹配
         });
         await bridge.restore("/posts/99");
@@ -419,7 +419,7 @@ describe("createSessionBridge — restore gate", async () => {
                 resolved = true;
             },
         });
-        const bridge = build({ store, adapter: makeAdapter(() => []) });
+        const bridge = build({ store, navigation: makeNavigation(() => []) });
         await bridge.restore("/");
         expect(resolved).toBe(true);
         await bridge.dispose();
@@ -435,7 +435,7 @@ describe("createSessionBridge — handle + dispose", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore();
-        const bridge = build({ store, adapter: makeAdapter(() => []) });
+        const bridge = build({ store, navigation: makeNavigation(() => []) });
 
         await bridge.save();
         expect(store.save).toHaveBeenCalledTimes(1);
@@ -456,7 +456,7 @@ describe("createSessionBridge — handle + dispose", async () => {
         const store = makeStore();
         const bridge = build({
             store,
-            adapter: makeAdapter(() => []),
+            navigation: makeNavigation(() => []),
             subscribeNavigation: (cb) => {
                 onChange = cb;
                 return unsub;
@@ -551,7 +551,7 @@ describe("createSessionBridge — scope handle", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore();
-        const bridge = build({ store, adapter: makeAdapter(() => []) });
+        const bridge = build({ store, navigation: makeNavigation(() => []) });
 
         bridge.scope.set("home {}", { q: "hi" });
         expect(store.scope.get("home {}")).toEqual({ q: "hi" });
@@ -563,7 +563,7 @@ describe("createSessionBridge — scope handle", async () => {
         vi.stubGlobal("window", makeEventTarget());
         vi.stubGlobal("document", makeEventTarget());
         const store = makeStore();
-        const bridge = build({ store, adapter: makeAdapter(() => []) });
+        const bridge = build({ store, navigation: makeNavigation(() => []) });
         // 模拟 restore 重建 scope：替换 store.scope 为新实例
         const fresh = {
             get: () => "restored",
@@ -597,7 +597,7 @@ test("startup pause prevents hydration events from overwriting persisted drafts 
     let navigation!: () => void;
     const bridge = createSessionBridge({
         store,
-        adapter: makeAdapter(() => []),
+        navigation: makeNavigation(() => []),
         debounceMs: 0,
         deferPersistenceUntilRestore: true,
         subscribeNavigation: (callback) => {

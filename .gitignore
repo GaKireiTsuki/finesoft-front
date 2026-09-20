@@ -12,7 +12,22 @@ dist
 dist-ssr
 reports/
 .worktrees/
+.template-cache/
 *.local
+
+# Portable template copies are materialized from react / react-minimal by vp install.
+/templates/[sv]*/src/app-definition.ts
+/templates/[sv]*/src/styles.css
+/templates/[sv]*/src/lib/controllers/
+/templates/[sv]*/src/lib/data/
+/templates/[sv]*/src/lib/guards/
+/templates/[sv]*/src/lib/mappers/
+/templates/[sv]*/src/lib/models/
+/templates/[sv]*/src/lib/services/
+/templates/[sv]*-minimal/src/lib/locale.ts
+/templates/[sv]*-minimal/src/lib/navigation.ts
+/templates/[sv]*-minimal/src/locales/
+/templates/[sv]*-minimal/src/vite-env.d.ts
 
 # playwright MCP screenshots / console logs (transient verification artifacts)
 .playwright-mcp/

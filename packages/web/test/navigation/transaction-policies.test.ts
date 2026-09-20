@@ -3,7 +3,7 @@ import { expect, test, vi } from "vite-plus/test";
 import {
     createWebRuntime,
     defineWebApp,
-    createNavigationController,
+    createWebSession,
     leaf,
     stack,
     split,
@@ -34,7 +34,7 @@ function fixture(policies: Partial<WebAppDefinition> = {}) {
         ...policies,
     });
     const framework = createWebRuntime({ definition });
-    const controller = createNavigationController({
+    const controller = createWebSession({
         web: framework,
         initial: stack(leaf("home")),
         isServer: false,
@@ -165,7 +165,7 @@ test("admission redirect preserves transaction identity, final commit sees final
         return next();
     });
     const f = fixture({ beforeNavigate: [beforeNavigate], beforeCommit: [beforeCommit] });
-    const controller = createNavigationController({
+    const controller = createWebSession({
         web: f.web,
         initial: leaf("home"),
         onRedirect: () => leaf("other"),
@@ -181,7 +181,7 @@ test("admission redirect preserves transaction identity, final commit sees final
             beforeCommit: [],
         }),
     });
-    const invalid = createNavigationController({
+    const invalid = createWebSession({
         web: invalidFramework,
         initial: leaf("home"),
         beforeCommit: [(() => redirect("/")) as never],
@@ -208,7 +208,7 @@ test("denied commit preserves one-shot SSR prefetch until a committed read", asy
         definition: f.web.definition,
         prefetchedIntents: prefetched,
     });
-    const controller = createNavigationController({ web: framework, initial: target });
+    const controller = createWebSession({ web: framework, initial: target });
     await controller.resolve();
     expect(prefetched.size).toBe(1);
     veto = false;

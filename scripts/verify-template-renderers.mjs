@@ -208,6 +208,10 @@ try {
                 })
                 .waitFor();
             if (name.endsWith("-minimal")) {
+                assert.equal(
+                    await page.getByRole("button", { name: "← Back", exact: true }).count(),
+                    0,
+                );
                 await page.getByRole("button", { name: "Notes", exact: true }).click();
                 await page.getByRole("heading", { name: "Notes", exact: true }).waitFor();
                 await page.getByRole("button", { name: "Feed", exact: true }).click();
@@ -297,6 +301,10 @@ try {
             await second.getByRole("heading", { name: "Error 404", exact: true }).waitFor();
             await second.getByRole("link", { name: "← Go Home", exact: true }).click();
             await second.getByRole("heading", { name: "Feed", exact: true }).waitFor();
+            assert.equal(
+                await second.getByRole("button", { name: "← Back", exact: true }).count(),
+                0,
+            );
             await second.getByRole("button", { name: "Notes", exact: true }).click();
             await second.getByRole("heading", { name: "Notes", exact: true }).waitFor();
             assert.equal(new URL(page.url()).pathname, "/");

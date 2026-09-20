@@ -40,6 +40,8 @@ try {
         const pkg = JSON.parse(await fs.readFile(source + "/package.json"));
         assert.ok(!JSON.stringify(pkg).includes("workspace:"));
         assert.ok(!JSON.stringify(pkg).includes("catalog:"));
+        assert.equal(pkg.scripts.prebuild, undefined);
+        assert.equal(pkg.scripts.predev, undefined);
         await fs.copyFile(source + "/tsconfig.json", evidence + "/" + name + "-tsconfig.json");
         const cwd = scratch + "/" + name;
         await fs.cp(source, cwd, { recursive: true });

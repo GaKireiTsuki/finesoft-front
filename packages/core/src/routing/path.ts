@@ -85,9 +85,9 @@ export function compilePath(pattern: string): CompiledPath {
             const params = createParams();
             for (let index = 0; index < parameters.length; index++) {
                 const raw = result[index + 1];
+                if (raw === undefined && parameters[index].optional) continue;
                 try {
-                    params[parameters[index].name] =
-                        raw === undefined ? undefined : decodeURIComponent(raw);
+                    params[parameters[index].name] = decodeURIComponent(raw!);
                 } catch {
                     return null;
                 }

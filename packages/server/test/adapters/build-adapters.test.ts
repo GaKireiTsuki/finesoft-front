@@ -1,31 +1,31 @@
 import * as nodePath from "node:path";
+import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
-const { buildBundle, copyStaticAssets, generateSSREntry, prerenderRoutes } = vi.hoisted(() => ({
-    buildBundle: vi.fn(),
-    copyStaticAssets: vi.fn(),
-    generateSSREntry: vi.fn(),
-    prerenderRoutes: vi.fn(),
-}));
-
-vi.mock("../../src/adapters/shared", () => ({
-    buildBundle,
-    copyStaticAssets,
-    generateSSREntry,
-    prerenderRoutes,
-}));
+vi.mock("../../src/adapters/shared", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../src/adapters/shared")>();
+    return {
+        ...actual,
+        copyStaticAssets: vi.fn(),
+        generateSSREntry: vi.fn(actual.generateSSREntry),
+        prerenderRoutes: vi.fn(),
+    };
+});
 
 import { cloudflareAdapter } from "../../src/adapters/cloudflare";
 import { netlifyAdapter } from "../../src/adapters/netlify";
 import { nodeAdapter } from "../../src/adapters/node";
 import { vercelAdapter } from "../../src/adapters/vercel";
+import { copyStaticAssets, generateSSREntry, prerenderRoutes } from "../../src/adapters/shared";
+import type { AdapterContext } from "../../src/adapters/types";
+
+const mockCopyStaticAssets = vi.mocked(copyStaticAssets);
+const mockGenerateSSREntry = vi.mocked(generateSSREntry);
+const mockPrerenderRoutes = vi.mocked(prerenderRoutes);
 
 afterEach(() => {
     vi.restoreAllMocks();
-    buildBundle.mockReset();
-    copyStaticAssets.mockReset();
-    generateSSREntry.mockReset();
-    prerenderRoutes.mockReset();
+    vi.clearAllMocks();
 });
 
 describe("deployment adapters", () => {
@@ -34,18 +34,17 @@ describe("deployment adapters", () => {
         const ctx = createAdapterContext(fs);
         const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
-        generateSSREntry.mockReturnValue("node-entry-source");
-        prerenderRoutes.mockResolvedValue([
+        mockPrerenderRoutes.mockResolvedValue([
             { url: "/", html: "<html>home</html>" },
             { url: "/blog", html: "<html>blog</html>" },
         ]);
 
-        await nodeAdapter().build(ctx as never);
+        await nodeAdapter().build(ctx);
 
         const tempEntry = nodePath.resolve("/project", ".node-entry.tmp.mjs");
         const prerenderDir = nodePath.resolve("/project", "dist/prerender");
 
-        expect(generateSSREntry).toHaveBeenCalledWith(
+        expect(mockGenerateSSREntry).toHaveBeenCalledWith(
             ctx,
             expect.objectContaining({
                 platformImport: expect.stringContaining("@finesoft/front/node"),
@@ -55,17 +54,18 @@ describe("deployment adapters", () => {
                 ),
             }),
         );
-        expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, "node-entry-source");
-        expect(buildBundle).toHaveBeenCalledWith(
-            ctx,
+        expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, expect.any(String));
+        expect(ctx.vite.build).toHaveBeenCalledWith(
             expect.objectContaining({
-                entry: ".node-entry.tmp.mjs",
-                outDir: nodePath.resolve("/project", "dist/server"),
-                target: "node18",
-                emptyOutDir: false,
+                build: expect.objectContaining({
+                    ssr: ".node-entry.tmp.mjs",
+                    outDir: nodePath.resolve("/project", "dist/server"),
+                    target: "node18",
+                    emptyOutDir: false,
+                }),
             }),
         );
-        expect(prerenderRoutes).toHaveBeenCalledWith(ctx);
+        expect(mockPrerenderRoutes).toHaveBeenCalledWith(ctx);
         expect(fs.mkdirSync).toHaveBeenCalledWith(prerenderDir, {
             recursive: true,
         });
@@ -84,19 +84,18 @@ describe("deployment adapters", () => {
         const ctx = createAdapterContext(fs);
         const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
-        generateSSREntry.mockReturnValue("cloudflare-entry-source");
-        prerenderRoutes.mockResolvedValue([
+        mockPrerenderRoutes.mockResolvedValue([
             { url: "/", html: "<html>home</html>" },
             { url: "/docs", html: "<html>docs</html>" },
         ]);
 
-        await cloudflareAdapter().build(ctx as never);
+        await cloudflareAdapter().build(ctx);
 
         const outputDir = nodePath.resolve("/project", "dist/cloudflare");
         const tempEntry = nodePath.resolve("/project", ".cf-entry.tmp.mjs");
         const assetsDir = nodePath.resolve(outputDir, "assets");
 
-        expect(generateSSREntry).toHaveBeenCalledWith(
+        expect(mockGenerateSSREntry).toHaveBeenCalledWith(
             ctx,
             expect.objectContaining({
                 platformExport: "export default app;",
@@ -107,17 +106,18 @@ describe("deployment adapters", () => {
             recursive: true,
             force: true,
         });
-        expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, "cloudflare-entry-source");
-        expect(buildBundle).toHaveBeenCalledWith(
-            ctx,
+        expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, expect.any(String));
+        expect(ctx.vite.build).toHaveBeenCalledWith(
             expect.objectContaining({
-                entry: ".cf-entry.tmp.mjs",
-                outDir: outputDir,
-                target: "es2022",
-                fileName: "_worker.js",
+                build: expect.objectContaining({
+                    ssr: ".cf-entry.tmp.mjs",
+                    outDir: outputDir,
+                    target: "es2022",
+                    rollupOptions: { output: { entryFileNames: "_worker.js" } },
+                }),
             }),
         );
-        expect(copyStaticAssets).toHaveBeenCalledWith(ctx, assetsDir);
+        expect(mockCopyStaticAssets).toHaveBeenCalledWith(ctx, assetsDir);
         expect(files.get(nodePath.join(assetsDir, "index.html"))).toBe("<html>home</html>");
         expect(files.get(nodePath.join(assetsDir, "/docs", "index.html"))).toBe(
             "<html>docs</html>",
@@ -131,19 +131,18 @@ describe("deployment adapters", () => {
         const ctx = createAdapterContext(fs);
         const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
-        generateSSREntry.mockReturnValue("netlify-entry-source");
-        prerenderRoutes.mockResolvedValue([
+        mockPrerenderRoutes.mockResolvedValue([
             { url: "/", html: "<html>home</html>" },
             { url: "/pricing", html: "<html>pricing</html>" },
         ]);
 
-        await netlifyAdapter().build(ctx as never);
+        await netlifyAdapter().build(ctx);
 
         const funcDir = nodePath.resolve("/project", ".netlify/functions-internal/ssr");
         const clientDir = nodePath.resolve("/project", "dist/client");
         const tempEntry = nodePath.resolve("/project", ".netlify-entry.tmp.mjs");
 
-        expect(generateSSREntry).toHaveBeenCalledWith(
+        expect(mockGenerateSSREntry).toHaveBeenCalledWith(
             ctx,
             expect.objectContaining({
                 platformImport: expect.stringContaining("hono/netlify"),
@@ -153,17 +152,29 @@ describe("deployment adapters", () => {
                 },
             }),
         );
+        const netlifyOptions = mockGenerateSSREntry.mock.calls[0]?.[1] as {
+            platformCache: string;
+        };
+        const cache = createPlatformCache(netlifyOptions.platformCache);
+        for (let index = 0; index < 1000; index++) {
+            await cache.platformCacheSet(`/${index}`, String(index));
+        }
+        expect(await cache.platformCacheGet("/0")).toBe("0");
+        await cache.platformCacheSet("/1000", "1000");
+        await expect(cache.platformCacheGet("/0")).resolves.toBeNull();
+        await expect(cache.platformCacheGet("/1")).resolves.toBe("1");
         expect(fs.rmSync).toHaveBeenCalledWith(nodePath.resolve("/project", ".netlify"), {
             recursive: true,
             force: true,
         });
-        expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, "netlify-entry-source");
-        expect(buildBundle).toHaveBeenCalledWith(
-            ctx,
+        expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, expect.any(String));
+        expect(ctx.vite.build).toHaveBeenCalledWith(
             expect.objectContaining({
-                entry: ".netlify-entry.tmp.mjs",
-                outDir: funcDir,
-                target: "node18",
+                build: expect.objectContaining({
+                    ssr: ".netlify-entry.tmp.mjs",
+                    outDir: funcDir,
+                    target: "node18",
+                }),
             }),
         );
         expect(files.get(nodePath.resolve(clientDir, "_redirects"))).toBe(
@@ -184,13 +195,12 @@ describe("deployment adapters", () => {
         const ctx = createAdapterContext(fs);
         const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
-        generateSSREntry.mockReturnValue("vercel-entry-source");
-        prerenderRoutes.mockResolvedValue([
+        mockPrerenderRoutes.mockResolvedValue([
             { url: "/", html: "<html>home</html>" },
             { url: "/pricing", html: "<html>pricing</html>" },
         ]);
 
-        await vercelAdapter().build(ctx as never);
+        await vercelAdapter().build(ctx);
 
         const outputDir = nodePath.resolve("/project", ".vercel/output");
         const staticDir = nodePath.resolve(outputDir, "static");
@@ -199,7 +209,7 @@ describe("deployment adapters", () => {
         const vcConfigPath = nodePath.resolve(funcDir, ".vc-config.json");
         const configPath = nodePath.resolve(outputDir, "config.json");
 
-        expect(generateSSREntry).toHaveBeenCalledWith(
+        expect(mockGenerateSSREntry).toHaveBeenCalledWith(
             ctx,
             expect.objectContaining({
                 platformImport: expect.stringContaining("@hono/node-server"),
@@ -210,16 +220,17 @@ describe("deployment adapters", () => {
             recursive: true,
             force: true,
         });
-        expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, "vercel-entry-source");
-        expect(buildBundle).toHaveBeenCalledWith(
-            ctx,
+        expect(fs.writeFileSync).toHaveBeenCalledWith(tempEntry, expect.any(String));
+        expect(ctx.vite.build).toHaveBeenCalledWith(
             expect.objectContaining({
-                entry: ".vercel-entry.tmp.mjs",
-                outDir: funcDir,
-                target: "node18",
+                build: expect.objectContaining({
+                    ssr: ".vercel-entry.tmp.mjs",
+                    outDir: funcDir,
+                    target: "node18",
+                }),
             }),
         );
-        expect(copyStaticAssets).toHaveBeenCalledWith(ctx, staticDir);
+        expect(mockCopyStaticAssets).toHaveBeenCalledWith(ctx, staticDir);
         expect(JSON.parse(files.get(vcConfigPath) ?? "{}")).toEqual({
             runtime: "nodejs20.x",
             handler: "index.mjs",
@@ -250,12 +261,25 @@ describe("deployment adapters", () => {
     });
 });
 
+interface PlatformCache {
+    platformCacheGet(url: string): Promise<string | null>;
+    platformCacheSet(url: string, html: string): Promise<void>;
+}
+
+function createPlatformCache(source: string): PlatformCache {
+    return runInNewContext(`${source}\n({ platformCacheGet, platformCacheSet })`) as PlatformCache;
+}
+
+type AdapterTestContext = AdapterContext & {
+    vite: { build: ReturnType<typeof vi.fn> };
+};
+
 function createAdapterContext(fs: {
     mkdirSync: ReturnType<typeof vi.fn>;
     readFileSync: ReturnType<typeof vi.fn>;
     rmSync: ReturnType<typeof vi.fn>;
     writeFileSync: ReturnType<typeof vi.fn>;
-}): Record<string, unknown> {
+}): AdapterTestContext {
     return {
         root: "/project",
         ssrEntry: "src/ssr.ts",
@@ -272,7 +296,7 @@ function createAdapterContext(fs: {
             resolve: (...parts: string[]) => nodePath.resolve(...parts),
             join: (...parts: string[]) => nodePath.join(...parts),
         },
-    };
+    } as unknown as AdapterTestContext;
 }
 
 function createFsMock(initialFiles: Record<string, string> = {}): {

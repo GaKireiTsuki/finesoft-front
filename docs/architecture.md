@@ -56,6 +56,10 @@ export const definition = defineWebApp({
 
 页面声明拥有路由，不再平行登记 controllers/routes。`navigation({ url, match, target })` 接收已经过 codec 校验的匹配，可将目标放入应用的 tabs/stack/split。反向路由使用结构化描述，不解析调试字符串。纯路径编译由 Web 与 HTTP 共用：先匹配编码路径，再解码捕获值一次，`%2F` 保持为一个参数；畸形编码不成为有效匹配。
 
+`createWebSession` 是导航树、按 EntryId 保留的页面和原生快照的唯一所有者。`getSnapshot()` 返回同一份稳定 `AppSnapshot`，`navigation` 命令直接操作该会话；每次成功提交只发布一次。`onCommit(next, previous)` 在普通订阅通知之前执行，宿主据此比较页面类型并捕获离开页面的 DOM 状态；新原生根确认后清除旧类型的 DOM 草稿，保留业务切片。持久化直接使用会话的 `captureNavigation/restoreNavigation`，不再构造控制器、展示层和导航适配器三个对象。
+
+低层 `resolve/apply` 的失败候选仍不提交。宿主首次使用 `start()`：成功提交正常页面；首次拒绝仅呈现安全错误，不写入被拒绝的页面或触发成功提交步骤。首次失败阶段仍使用原始输入进行刷新、结构导航和持久化，所有失败展示记录都禁止保留复用；首个成功提交结束该阶段。后续拒绝保留已有快照。
+
 事务顺序是 admission → beforeLoad → operation → afterLoad → beforeCommit → commit → 必需宿主步骤与原生提交。普通观察者异常隔离；history 或原生提交失败通过带 `committed: true` 的 NavigationCommitError 表达，不能当成提交前拒绝。守卫拒绝保持原快照、预取和草稿。SSR 将拒绝转换成安全错误展示，不公开被拒绝页面。
 
 | 身份              | 含义                     |
@@ -70,7 +74,7 @@ export const definition = defineWebApp({
 
 应用使用原生 mount/hydrate API 创建一个根，Provider/Layout 包住 Outlet。Outlet 按 EntryId 保持外层元素；页面组件 key 同时包含 pageType，类型改变时重建。隐藏 entry 仍留在原生树中，context 和局部状态自然继承。
 
-`createBrowserApp({ definition, target })` 完成准备并返回句柄。应用挂载后才等待 `app.ready`。原生绑定在实际提交后同步确认该 revision；确认自身不等待会话恢复。第一次确认之后，框架允许该轮 native provider 完成注册，再读取和恢复持久化会话，避免互相等待。滚动恢复只作用于仍然当前的已提交版本。
+`createBrowserApp({ definition, target })` 完成准备并返回句柄。应用根据 `app.shouldHydrate` 选择原生 hydrate 或 mount，挂载后才等待 `app.ready`。原生绑定在实际提交后同步确认该 revision；确认自身不等待会话恢复。第一次确认之后，框架允许该轮 native provider 完成注册，再读取和恢复持久化会话，避免互相等待。滚动恢复只作用于仍然当前的已提交版本。
 
 真实 `<a href>` 导航保留修饰键、新窗口、download、外链和锚点语义。每个 target 只归一个应用；同一窗口只允许一个地址栏所有者，嵌入实例使用 memory history。DOM 恢复以应用根和 entry 为边界，不读取嵌套应用输入。
 

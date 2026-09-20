@@ -9,7 +9,8 @@
         "version": "changeset version",
         "release": "vp run -r build && changeset publish --access public",
         "release:auto:changeset": "node ./scripts/auto-changeset.mjs",
-        "prepare": "vp config"
+        "prepare": "vp run templates:sync && vp config",
+        "templates:sync": "node ./scripts/sync-template-sources.mjs"
     },
     "devDependencies": {
         "@changesets/cli": "catalog:",

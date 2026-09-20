@@ -6,7 +6,12 @@
  * - dist/client/_redirects — 路由重写规则
  */
 
-import { buildBundle, generateSSREntry, prerenderRoutes } from "./shared";
+import {
+    buildGeneratedEntry,
+    generateSSREntry,
+    prerenderRoutes,
+    writePrerenderedPages,
+} from "./shared";
 import type { Adapter } from "./types";
 
 export function netlifyAdapter(): Adapter {
@@ -46,34 +51,21 @@ async function platformCacheSet(url, html) {
                 },
             });
 
-            const tempEntry = path.resolve(root, ".netlify-entry.tmp.mjs");
-            fs.writeFileSync(tempEntry, entrySource);
-
-            try {
-                await buildBundle(ctx, {
-                    entry: ".netlify-entry.tmp.mjs",
-                    outDir: funcDir,
-                    target: "node18",
-                });
-            } finally {
-                fs.rmSync(tempEntry, { force: true });
-            }
+            await buildGeneratedEntry(ctx, ".netlify-entry.tmp.mjs", entrySource, {
+                outDir: funcDir,
+                target: "node18",
+            });
 
             // _redirects — 静态文件优先，其余走 SSR function
             const redirects = `/* /.netlify/functions/ssr 200\n`;
             fs.writeFileSync(path.resolve(root, "dist/client/_redirects"), redirects);
 
             // 构建时预渲染
-            const prerendered = await prerenderRoutes(ctx);
-            const clientDir = path.resolve(root, "dist/client");
-            for (const { url, html } of prerendered) {
-                const filePath =
-                    url === "/"
-                        ? path.join(clientDir, "index.html")
-                        : path.join(clientDir, url, "index.html");
-                fs.mkdirSync(path.resolve(filePath, ".."), { recursive: true });
-                fs.writeFileSync(filePath, html);
-            }
+            writePrerenderedPages(
+                ctx,
+                path.resolve(root, "dist/client"),
+                await prerenderRoutes(ctx),
+            );
 
             console.log(
                 "  Netlify output → .netlify/functions-internal/ssr/\n" +

@@ -11,7 +11,7 @@ export async function mountApplication(
     url?: string,
 ) {
     const handle = await createBrowserApp({ definition: app, target, history, url });
-    const root = (handle.hydrate ? createSSRApp : createApp)(App, { app: handle });
+    const root = (handle.shouldHydrate ? createSSRApp : createApp)(App, { app: handle });
     root.mount(target);
     const originalDispose = handle.dispose.bind(handle);
     let disposal: Promise<void> | undefined;

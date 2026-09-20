@@ -96,12 +96,12 @@ export {
     type BeforeCommitResult,
     type NavigationTransactionContext,
     type NavigationCommitContext,
-    createNavigationController,
+    createWebSession,
     NAVIGATION_OP_KINDS,
     type HydrateOperation,
     type NavigationContextInput,
-    type NavigationController,
-    type NavigationControllerOptions,
+    type WebSession,
+    type WebSessionOptions,
     type NavigationDispatchContext,
     type NavigationOperation,
     type NavigationOpKind,
@@ -114,4 +114,4 @@ export {
     type SelectColumnOperation,
     type SelectTabOperation,
     type SetVisibilityOperation,
-} from "./controller";
+} from "../application/session";

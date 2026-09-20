@@ -94,25 +94,28 @@ export class History<State> {
     }
 
     replaceState(state: State, url: string): void {
-        cancelTryScroll();
-        const id = generateUuid();
-        this.recordWrite(id, false);
-        window.history.replaceState(this.historyState(id, state), "", url);
-        this.currentStateId = id;
-        this.entries.set(id, { state, scrollY: 0 });
-        this.scrollTop = 0;
+        const id = this.write("replaceState", url, { state, scrollY: 0 });
         this.log.info("replaceState", state, url, id);
     }
 
     pushState(state: State, url: string): void {
+        const id = this.write("pushState", url, { state, scrollY: 0 });
+        this.log.info("pushState", state, url, id);
+    }
+
+    private write(
+        method: "pushState" | "replaceState",
+        url: string,
+        entry?: HistoryEntry<State>,
+    ): string {
         cancelTryScroll();
         const id = generateUuid();
-        this.recordWrite(id, true);
-        window.history.pushState(this.historyState(id, state), "", url);
+        this.recordWrite(id, method === "pushState");
+        window.history[method](this.historyState(id, entry?.state), "", url);
         this.currentStateId = id;
-        this.entries.set(id, { state, scrollY: 0 });
+        if (entry) this.entries.set(id, entry);
         this.scrollTop = 0;
-        this.log.info("pushState", state, url, id);
+        return id;
     }
 
     private recordWrite(id: string, push: boolean): void {
@@ -260,23 +263,13 @@ export class History<State> {
 
     /** 仅推入 URL，不缓存页面状态（用于页面加载失败场景） */
     pushUrl(url: string): void {
-        cancelTryScroll();
-        const id = generateUuid();
-        this.recordWrite(id, true);
-        window.history.pushState(this.historyState(id), "", url);
-        this.currentStateId = id;
-        this.scrollTop = 0;
+        const id = this.write("pushState", url);
         this.log.info("pushUrl (no state)", url, id);
     }
 
     /** 仅替换 URL，不缓存页面状态（用于页面加载失败场景） */
     replaceUrl(url: string): void {
-        cancelTryScroll();
-        const id = generateUuid();
-        this.recordWrite(id, false);
-        window.history.replaceState(this.historyState(id), "", url);
-        this.currentStateId = id;
-        this.scrollTop = 0;
+        const id = this.write("replaceState", url);
         this.log.info("replaceUrl (no state)", url, id);
     }
 

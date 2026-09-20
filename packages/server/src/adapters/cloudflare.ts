@@ -9,7 +9,13 @@
  * 若 setup 代理使用了 process.env，需在 wrangler.toml 启用 nodejs_compat。
  */
 
-import { buildBundle, copyStaticAssets, generateSSREntry, prerenderRoutes } from "./shared";
+import {
+    buildGeneratedEntry,
+    copyStaticAssets,
+    generateSSREntry,
+    prerenderRoutes,
+    writePrerenderedPages,
+} from "./shared";
 import type { Adapter } from "./types";
 
 export function cloudflareAdapter(): Adapter {
@@ -50,37 +56,20 @@ async function platformCacheSet(url, html) {
 }`,
             });
 
-            const tempEntry = path.resolve(root, ".cf-entry.tmp.mjs");
-            fs.writeFileSync(tempEntry, entrySource);
+            await buildGeneratedEntry(ctx, ".cf-entry.tmp.mjs", entrySource, {
+                outDir: outputDir,
+                target: "es2022",
+                fileName: "_worker.js",
+                // 使用默认 external（vite/esbuild/rollup/fsevents/lightningcss）
+                // 这些构建工具运行时不需要，且 fsevents 是 macOS .node 原生二进制无法打包
+            });
 
-            try {
-                await buildBundle(ctx, {
-                    entry: ".cf-entry.tmp.mjs",
-                    outDir: outputDir,
-                    target: "es2022",
-                    fileName: "_worker.js",
-                    // 使用默认 external（vite/esbuild/rollup/fsevents/lightningcss）
-                    // 这些构建工具运行时不需要，且 fsevents 是 macOS .node 原生二进制无法打包
-                });
-
-                // 静态资源
-                copyStaticAssets(ctx, path.resolve(outputDir, "assets"));
-
-                // 构建时预渲染
-                const prerendered = await prerenderRoutes(ctx);
-                for (const { url, html } of prerendered) {
-                    const filePath =
-                        url === "/"
-                            ? path.join(outputDir, "assets", "index.html")
-                            : path.join(outputDir, "assets", url, "index.html");
-                    fs.mkdirSync(path.resolve(filePath, ".."), {
-                        recursive: true,
-                    });
-                    fs.writeFileSync(filePath, html);
-                }
-            } finally {
-                fs.rmSync(tempEntry, { force: true });
-            }
+            copyStaticAssets(ctx, path.resolve(outputDir, "assets"));
+            writePrerenderedPages(
+                ctx,
+                path.resolve(outputDir, "assets"),
+                await prerenderRoutes(ctx),
+            );
 
             console.log("  Cloudflare output → dist/cloudflare/\n");
         },

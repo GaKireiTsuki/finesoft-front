@@ -19,10 +19,10 @@ import { PrefetchedIntents } from "../../src/prefetched-intents/prefetched-inten
 import { Router } from "../../src/router/router";
 import {
     NAVIGATION_OP_KINDS,
-    createNavigationController,
-    type NavigationControllerOptions,
+    createWebSession,
+    type WebSessionOptions,
     type NavigationDispatchContext,
-} from "../../src/navigation/controller";
+} from "../../src/application/session";
 import { split, stack, tabs } from "../../src/navigation/nodes";
 import { SPLIT_VISIBILITIES, type NavigationNode } from "../../src/navigation/types";
 
@@ -59,7 +59,7 @@ test("one queued redirect chain disposes each execution before following and com
             events.push(`ready:${snapshot.destinations[0].intent}`);
         },
     });
-    const controller = createNavigationController(options);
+    const controller = createWebSession(options);
     const commits = vi.fn();
     controller.subscribe(commits);
     try {
@@ -131,7 +131,7 @@ function makeThrowingControllers(intentId: string, calls?: string[]): PageContro
 }
 
 /** 构建一个 createContext 回调（返回 Container；可附 url）。 */
-function contextFactory(url?: string): NavigationControllerOptions["createContext"] {
+function contextFactory(url?: string): WebSessionOptions["createContext"] {
     const container = new Container();
     return (): NavigationDispatchContext => ({ container, url });
 }
@@ -145,13 +145,13 @@ function factory(controller: FixtureController): PageControllerDefinition {
     };
 }
 function makeOptions(
-    overrides: Partial<NavigationControllerOptions> & {
+    overrides: Partial<WebSessionOptions> & {
         controllers: PageControllerDefinition[];
         initial: NavigationNode;
         router?: Router;
         prefetched?: PrefetchedIntents;
     },
-): NavigationControllerOptions {
+): WebSessionOptions {
     const { controllers, router, prefetched, ...options } = overrides;
     const framework = createWebRuntime({
         definition: defineWebApp({
@@ -182,7 +182,7 @@ describe("single leaf (backward-compatible flat page)", () => {
     test("resolve() dispatches the one intent and yields one destination", async () => {
         const calls: string[] = [];
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) }, calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home", { a: 1 }) }),
         );
 
@@ -199,7 +199,7 @@ describe("single leaf (backward-compatible flat page)", () => {
 
     test("getTree / getSnapshot reflect committed state", async () => {
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
 
@@ -218,7 +218,7 @@ describe("single leaf (backward-compatible flat page)", () => {
 // =====================================================================
 
 describe("stack operations", () => {
-    function stackController(calls: string[]): ReturnType<typeof createNavigationController> {
+    function stackController(calls: string[]): ReturnType<typeof createWebSession> {
         const dispatcher = makeControllers(
             {
                 root: (p) => pageFor("root", p),
@@ -227,7 +227,7 @@ describe("stack operations", () => {
             },
             calls,
         );
-        return createNavigationController(
+        return createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
     }
@@ -271,7 +271,7 @@ describe("stack operations", () => {
             { list: (p) => pageFor("list", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: split([{ id: "list", content: leaf("list") }, { id: "detail" }]),
@@ -327,7 +327,7 @@ describe("stack operations", () => {
             { a: (p) => pageFor("a", p), b: (p) => pageFor("b", p), c: (p) => pageFor("c", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: stack([leaf("a"), leaf("b"), leaf("c")]),
@@ -353,7 +353,7 @@ describe("stack operations", () => {
             { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
             dispatchCalls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: stack(leaf("root")),
@@ -377,7 +377,7 @@ describe("stack operations", () => {
             { home: (p) => pageFor("home", p), other: (p) => pageFor("other", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("home")) }),
         );
         await controller.resolve(); // [home]
@@ -399,7 +399,7 @@ describe("tabs", () => {
             { home: (p) => pageFor("home", p), profile: (p) => pageFor("profile", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: tabs({
@@ -422,7 +422,7 @@ describe("tabs", () => {
             { home: (p) => pageFor("home", p), profile: (p) => pageFor("profile", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: tabs({
@@ -456,7 +456,7 @@ describe("split", () => {
             { list: (p) => pageFor("list", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: split([
@@ -483,7 +483,7 @@ describe("split", () => {
             },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: split([{ id: "list", content: leaf("list") }, { id: "detail" }]),
@@ -511,7 +511,7 @@ describe("split", () => {
             list: (p) => pageFor("list", p),
             detail: (p) => pageFor("detail", p),
         });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: split([
@@ -540,7 +540,7 @@ describe("beforeLoad guards (primary destination)", () => {
         const calls: string[] = [];
         const guard: BeforeLoadGuard = () => next();
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) }, calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("home"),
@@ -557,7 +557,7 @@ describe("beforeLoad guards (primary destination)", () => {
         const calls: string[] = [];
         const guard: BeforeLoadGuard = () => deny(403, "nope");
         const dispatcher = makeControllers({ secret: (p) => pageFor("secret", p) }, calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("secret"),
@@ -583,7 +583,7 @@ describe("beforeLoad guards (primary destination)", () => {
                 title: `${status}/${message}`,
             }),
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("secret"),
@@ -602,7 +602,7 @@ describe("beforeLoad guards (primary destination)", () => {
         const onRedirect = vi.fn();
         const guard: BeforeLoadGuard = () => redirect("/login", 302);
         const dispatcher = makeControllers({ secret: (p) => pageFor("secret", p) }, calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("secret"),
@@ -628,7 +628,7 @@ describe("beforeLoad guards (primary destination)", () => {
             { alias: (p) => pageFor("alias", p), canonical: (p) => pageFor("canonical", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 router,
@@ -651,7 +651,7 @@ describe("beforeLoad guards (primary destination)", () => {
         const router = new Router(); // 无路由 → resolve 返回 null
         const guard: BeforeLoadGuard = () => rewrite("/nope");
         const dispatcher = makeControllers({ alias: (p) => pageFor("alias", p) }, calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 router,
@@ -681,7 +681,7 @@ describe("afterLoad guards (primary destination)", () => {
             return next();
         };
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("home"),
@@ -698,7 +698,7 @@ describe("afterLoad guards (primary destination)", () => {
     test("afterLoad deny returns an error destination without committing the loaded page", async () => {
         const guard: AfterLoadGuard = () => deny(403, "blocked");
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("home"),
@@ -716,7 +716,7 @@ describe("afterLoad guards (primary destination)", () => {
         const onRedirect = vi.fn();
         const guard: AfterLoadGuard = () => redirect("/elsewhere", 302);
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("home"),
@@ -737,7 +737,7 @@ describe("afterLoad guards (primary destination)", () => {
     test("afterLoad rewrite → page kept, NO status (canonical URL only)", async () => {
         const guard: AfterLoadGuard = () => rewrite("/canonical");
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("home"),
@@ -760,7 +760,7 @@ describe("afterLoad guards (primary destination)", () => {
             list: (p) => pageFor("list", p),
             detail: (p) => pageFor("detail", p),
         });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: split([
@@ -785,7 +785,7 @@ describe("dispatch failure handling", () => {
     test("a throwing controller does not throw out of resolve; surfaces status 500 + error page", async () => {
         const calls: string[] = [];
         const dispatcher = makeThrowingControllers("home", calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
 
@@ -813,7 +813,7 @@ describe("dispatch failure handling", () => {
                 },
             }),
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: split([
@@ -831,7 +831,7 @@ describe("dispatch failure handling", () => {
 
     test("unregistered intent (no controller) is treated as a dispatch failure", async () => {
         const dispatcher = [] as PageControllerDefinition[]; // 空：home 无 controller
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
 
@@ -857,7 +857,7 @@ describe("prefetched reuse", () => {
                 data: prefetchedPage,
             },
         ]);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home"), prefetched }),
         );
 
@@ -885,7 +885,7 @@ describe("prefetched reuse", () => {
                 data: { id: "y", pageType: "detail", title: "D" },
             },
         ]);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: split([
@@ -914,7 +914,7 @@ describe("prefetched reuse", () => {
                 data: { id: "h", pageType: "home", title: "S" },
             },
         ]);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: stack(leaf("home")),
@@ -943,7 +943,7 @@ describe("hydrate", () => {
             { home: (p) => pageFor("home", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
         await controller.resolve();
@@ -968,7 +968,7 @@ describe("subscribe", () => {
             home: (p) => pageFor("home", p),
             detail: (p) => pageFor("detail", p),
         });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("home")) }),
         );
         const received: string[][] = [];
@@ -988,7 +988,7 @@ describe("subscribe", () => {
 
     test("the snapshot passed to listeners equals getSnapshot()", async () => {
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
         let last: unknown;
@@ -1012,9 +1012,7 @@ describe("immutability", () => {
             detail: (p) => pageFor("detail", p),
         });
         const initial = stack(leaf("root"));
-        const controller = createNavigationController(
-            makeOptions({ controllers: dispatcher, initial }),
-        );
+        const controller = createWebSession(makeOptions({ controllers: dispatcher, initial }));
         await controller.resolve();
         const before = controller.getTree();
 
@@ -1033,7 +1031,7 @@ describe("immutability", () => {
 describe("invalid operations propagate NavigationError", () => {
     test("selectTab on a non-tabs tree throws", async () => {
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
         await controller.resolve();
@@ -1043,7 +1041,7 @@ describe("invalid operations propagate NavigationError", () => {
 
     test("push with no stack on the active path throws", async () => {
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: leaf("home") }),
         );
         await controller.resolve();
@@ -1087,7 +1085,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
     test("two concurrent pushes both land; neither is dropped", async () => {
         const calls: string[] = [];
         const dispatcher = makeSlowDispatcher(["root", "a", "b"], calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve(); // stack([root])
@@ -1108,7 +1106,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
 
     test("many interleaved concurrent pushes apply in submission order", async () => {
         const dispatcher = makeSlowDispatcher(["root", "x0", "x1", "x2", "x3", "x4"]);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve();
@@ -1127,7 +1125,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
     test("a rejected op does not poison the queue; later ops still commit", async () => {
         const calls: string[] = [];
         const dispatcher = makeSlowDispatcher(["root", "ok"], calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve();
@@ -1144,7 +1142,7 @@ describe("concurrent apply() serialization (no last-write-wins race)", () => {
 
     test("concurrent resolve() and apply() do not clobber each other", async () => {
         const dispatcher = makeSlowDispatcher(["root", "next"]);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
 
@@ -1173,7 +1171,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
     test("defaults to true under a server-like env (no window)", async () => {
         const seen: boolean[] = [];
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("home"),
@@ -1190,7 +1188,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
     test("explicit isServer:false overrides the env default in the fallback context", async () => {
         const seen: boolean[] = [];
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("home"),
@@ -1207,7 +1205,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
     test("explicit isServer:true is honored too", async () => {
         const seen: boolean[] = [];
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: leaf("home"),
@@ -1224,7 +1222,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
         const seen: boolean[] = [];
         const container = new Container();
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 router: new Router(),
                 controllers: dispatcher,
@@ -1276,7 +1274,7 @@ describe("setVisibility 影响可见集与派发", () => {
             },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: threeColumns() }),
         );
 
@@ -1309,9 +1307,7 @@ describe("setVisibility 影响可见集与派发", () => {
             ],
             SPLIT_VISIBILITIES.DETAIL_ONLY,
         );
-        const controller = createNavigationController(
-            makeOptions({ controllers: dispatcher, initial }),
-        );
+        const controller = createWebSession(makeOptions({ controllers: dispatcher, initial }));
 
         await controller.resolve();
         expect(calls).toEqual(["message"]); // detailOnly：只预取 detail
@@ -1328,7 +1324,7 @@ describe("setVisibility 影响可见集与派发", () => {
             folders: (p) => pageFor("folders", p),
             message: (p) => pageFor("message", p),
         });
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({
                 controllers: dispatcher,
                 initial: split([
@@ -1354,7 +1350,7 @@ describe("invalidate / refresh", () => {
     test("refresh 重新 dispatch 当前激活叶子（清其缓存 + 重解析）", async () => {
         const calls: string[] = [];
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) }, calls);
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("home")) }),
         );
         await controller.resolve(); // [home]
@@ -1371,7 +1367,7 @@ describe("invalidate / refresh", () => {
             { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve();
@@ -1389,7 +1385,7 @@ describe("invalidate / refresh", () => {
             { root: (p) => pageFor("root", p), detail: (p) => pageFor("detail", p) },
             calls,
         );
-        const controller = createNavigationController(
+        const controller = createWebSession(
             makeOptions({ controllers: dispatcher, initial: stack(leaf("root")) }),
         );
         await controller.resolve();
@@ -1431,7 +1427,7 @@ test("cancelled handlers cannot block a new generation, and release their own sc
             getErrorPage: (_status, title) => pageFor(title, {}),
         }),
     });
-    const nav = createNavigationController({ web, initial: leaf("slow") });
+    const nav = createWebSession({ web, initial: leaf("slow") });
     const old = nav.resolve();
     const rejected = expect(old).rejects.toMatchObject({ code: "cancelled" });
     await entered;
@@ -1485,7 +1481,7 @@ test.each(["resolve", "refresh"] as const)(
                     getErrorPage: (_status, message) => pageFor(message, {}),
                 }),
             });
-            const nav = createNavigationController({ web: framework, initial: leaf("home") });
+            const nav = createWebSession({ web: framework, initial: leaf("home") });
             nav.subscribe(() => {
                 commits++;
             });

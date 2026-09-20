@@ -1,13 +1,15 @@
 import { detectPlatform, ExecutionError } from "@finesoft/core";
 import {
+    ACTION_KINDS,
+    ActionDispatcher,
+    collectVisibleDestinations,
     createWebRuntime,
-    createAppView,
-    createNavigationController,
+    createWebSession,
     createActiveLeafCodec,
     resolveInitialNavigation,
-    createNavigationSessionAdapter,
     createSessionStore,
     leaf,
+    mapNavigationLeaves,
     stack,
     deserializeNavigation,
     PrefetchedIntents,
@@ -18,8 +20,12 @@ import {
     type SessionSnapshot,
     type AsyncStorage,
     type WebRuntime,
-    type NavigationController,
+    type WebSession,
     type NavigationSnapshot,
+    type NavigationContextInput,
+    type FlowAction,
+    type ExternalUrlAction,
+    type BasePage,
 } from "@finesoft/web";
 import { createNavigationBridge, type NavigationHandle } from "./navigation-bridge";
 import { deserializeServerData } from "./server-data";
@@ -46,9 +52,14 @@ export interface BrowserAppConfig {
     readonly domRestore?: boolean;
     readonly buildId?: string;
     readonly serverDataSource?: HTMLScriptElement | null;
+    readonly onModal?: (
+        page: BasePage,
+        context: { readonly app: WebAppView; readonly snapshot: NavigationSnapshot },
+    ) => void | Promise<void>;
 }
 export interface BrowserAppHandle extends WebAppView {
-    readonly hydrate: boolean;
+    readonly actionDispatcher: ActionDispatcher;
+    readonly shouldHydrate: boolean;
     /** Resolves after the first native commit and optional session restore. Mount before awaiting. */
     readonly ready: Promise<void>;
     dispose(): Promise<void>;
@@ -70,11 +81,11 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
     if (config.domRestore && !config.session) throw Error("DOM restore requires session storage");
     targets.add(target);
     if (browserHistory) windows.add(win);
-    let web: WebRuntime | undefined, controller: NavigationController | undefined;
+    let web: WebRuntime | undefined, controller: WebSession | undefined;
+    let disposeSession: WebSession["dispose"] | undefined;
     let bridge: NavigationHandle | undefined,
         session: SessionHandle | undefined,
         dom: DomRestore | undefined;
-    let presentation: ReturnType<typeof createAppView> | undefined;
     let closed = false,
         mounted = false,
         restoring = !!config.session;
@@ -88,6 +99,10 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
     });
     void ready.catch(() => {});
     const pending = new Map<number, { resolve: () => void; reject: (error: unknown) => void }>();
+    const domResets = new Set<string>();
+    const actionDispatcher = new ActionDispatcher();
+    const modalControllers = new Set<WebSession>();
+    const modalWork = new Set<Promise<void>>();
     const cleanups: (() => void)[] = [];
     const originalLocale = {
         lang: target.getAttribute("lang"),
@@ -110,6 +125,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
             capture();
             closed = true;
             controller?.cancel();
+            for (const modal of modalControllers) modal.cancel();
             for (const waiter of pending.values()) waiter.reject(new ExecutionError("cancelled"));
             pending.clear();
             failReady(new ExecutionError("cancelled"));
@@ -117,10 +133,10 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
             bridge?.dispose();
             const errors: unknown[] = [];
             for (const cleanup of [
-                () => controller?.dispose(),
+                () => disposeSession?.(),
+                () => Promise.allSettled(modalWork),
                 () => session?.dispose(),
                 () => dom?.dispose(),
-                () => presentation?.dispose(),
                 () => web?.dispose(),
             ]) {
                 try {
@@ -184,6 +200,21 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
         const codec = definition.navigationCodec ?? createActiveLeafCodec();
         const resolveUrl = async (url: string) =>
             (await resolveInitialNavigation(activeWeb, url, { codec }))?.tree;
+        function browserUrl(value: string, external = false): URL {
+            let url: URL;
+            try {
+                url = new URL(value, win.location.href);
+            } catch {
+                throw new ExecutionError("validation", "Invalid browser destination");
+            }
+            if (
+                url.protocol !== "http:" &&
+                url.protocol !== "https:" &&
+                !(external && (url.protocol === "mailto:" || url.protocol === "tel:"))
+            )
+                throw new ExecutionError("validation", "Unsupported browser destination protocol");
+            return url;
+        }
         const initial =
             wire.status === "ready" && wire.data.tree
                 ? deserializeNavigation(wire.data.tree)
@@ -191,21 +222,67 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                   stack(leaf("@finesoft/not-found", {}, { url: initialUrl })));
         async function navigate(url: string) {
             if (closed) throw new ExecutionError("configuration", "Browser application is closed");
-            const parsed = new URL(url, win.location.href);
+            const parsed = browserUrl(url);
             if (parsed.origin !== win.location.origin) {
                 win.location.assign(parsed.href);
                 return;
             }
             const sequence = ++navigationSequence;
             controller!.cancel();
-            const tree = await resolveUrl(parsed.pathname + parsed.search + parsed.hash);
+            const path = parsed.pathname + parsed.search + parsed.hash;
+            const tree = controller!.getTree();
+            const recovering =
+                tree.kind === "stack" &&
+                tree.entries.length === 1 &&
+                tree.entries[0]?.kind === "leaf" &&
+                ["@finesoft/not-found", "@finesoft/error"].includes(tree.entries[0].intent);
+            // The fallback root has no application structure to retain yet.
+            const overlay =
+                (recovering ? await resolveUrl(path) : undefined) ??
+                codec.decode(path, activeWeb.router);
+            const match = overlay ? undefined : await activeWeb.router.resolve(path);
             if (closed || sequence !== navigationSequence) throw new ExecutionError("cancelled");
-            const result = await controller!.hydrate(
-                tree ?? stack(leaf("@finesoft/not-found", {}, { url })),
-            );
+            const result = overlay
+                ? await controller!.hydrate(overlay)
+                : await controller!.push(
+                      match?.intent.id ?? "@finesoft/not-found",
+                      match?.intent.params,
+                      { url: path },
+                  );
             if (result !== controller!.getSnapshot())
                 throw new ExecutionError("denied", "Navigation was not committed");
         }
+        const createContext = ({ intent, params, url, execution }: NavigationContextInput) => ({
+            container: execution.container,
+            navigation: createBrowserContext({
+                url: url ?? initialUrl,
+                intent: { id: intent, params },
+                container: execution.container,
+            }),
+        });
+        const followRedirect = async (value: { url: string }, candidate: NavigationSnapshot) => {
+            const url = browserUrl(value.url);
+            if (url.origin !== win.location.origin) {
+                win.location.assign(url.href);
+                return;
+            }
+            const path = url.pathname + url.search + url.hash;
+            const overlay = codec.decode(path, activeWeb.router);
+            if (overlay) return overlay;
+            const match = await activeWeb.router.resolve(path);
+            const target = leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
+                url: path,
+            });
+            const redirected =
+                candidate.destinations.find(
+                    (entry) => entry.status && entry.status >= 300 && entry.status < 400,
+                )?.entryId ?? collectVisibleDestinations(candidate.tree).at(-1)?.entryId;
+            return redirected
+                ? mapNavigationLeaves(candidate.tree, (entry) =>
+                      entry.entryId === redirected ? target : entry,
+                  )
+                : stack(target);
+        };
         const waitForCommit = (revision: number, signal?: AbortSignal): Promise<void> => {
             if (!mounted || revision === acknowledged) return Promise.resolve();
             if (signal?.aborted || closed) return Promise.reject(new ExecutionError("cancelled"));
@@ -231,54 +308,29 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                     transitionId: snapshot.transitionId,
                 });
         };
-        controller = createNavigationController({
-            web,
-            initial,
-            isServer: false,
-            createContext: ({ intent, params, url, execution }) => ({
-                container: execution.container,
-                navigation: createBrowserContext({
-                    url: url ?? initialUrl,
-                    intent: { id: intent, params },
-                    container: execution.container,
-                }),
-            }),
-            onRedirect: async (value) => {
-                const url = new URL(value.url, win.location.href);
-                if (url.origin !== win.location.origin) {
-                    win.location.assign(url.href);
-                    return;
-                }
-                return resolveUrl(url.pathname + url.search);
-            },
-            viewReady: async (snapshot, signal) => {
-                await waitForCommit(presentation!.view.getSnapshot().revision, signal);
-                if (!mounted) return;
-                if (!restoring) restore();
-                recordPageView(snapshot);
-            },
-        });
-        if (browserHistory)
-            bridge = createNavigationBridge({
-                controller,
-                codec,
-                router: web.router,
-                log,
-                onPopStart: () => {
-                    navigationSequence++;
-                },
-                resolveUrl,
-                getScrollablePageElement: () =>
-                    target.querySelector<HTMLElement>("[data-fs-scroll]") ?? target,
-            });
-        presentation = createAppView({
-            web,
-            controller,
+        controller = createWebSession({
             navigate,
+            perform: (action) => {
+                if (closed)
+                    return Promise.reject(
+                        new ExecutionError("configuration", "Browser application is closed"),
+                    );
+                return actionDispatcher.perform(action);
+            },
             session: () => session,
             commit(revision) {
                 if (closed) return;
                 acknowledged = revision;
+                // Removing a focused native input can emit a final change event.
+                // Discard its old DOM state only once the replacement has committed.
+                for (const entryId of domResets) {
+                    const bag = session?.scope.get(entryId) as Record<string, unknown> | undefined;
+                    if (bag) {
+                        const { __dom: _oldDom, ...state } = bag;
+                        session!.scope.set(entryId, state);
+                    }
+                }
+                domResets.clear();
                 pending.get(revision)?.resolve();
                 if (mounted) return;
                 mounted = true;
@@ -299,46 +351,113 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                     });
                 });
             },
+            captureUrl: () =>
+                browserHistory
+                    ? win.location.pathname + win.location.search
+                    : codec.encode(controller!.getTree(), activeWeb.router),
+            web,
+            initial,
+            isServer: false,
+            createContext,
+            onRedirect: followRedirect,
+            viewReady: async (snapshot, signal) => {
+                await waitForCommit(controller!.getSnapshot().revision, signal);
+                if (!mounted) return;
+                if (!restoring) restore();
+                recordPageView(snapshot);
+            },
+        });
+        disposeSession = controller.dispose;
+        if (browserHistory)
+            bridge = createNavigationBridge({
+                controller,
+                codec,
+                router: web.router,
+                log,
+                onPopStart: () => {
+                    navigationSequence++;
+                },
+                resolveUrl,
+                getScrollablePageElement: () =>
+                    target.querySelector<HTMLElement>("[data-fs-scroll]") ?? target,
+            });
+        actionDispatcher.onAction<FlowAction>(ACTION_KINDS.FLOW, async (action) => {
+            if (closed) throw new ExecutionError("configuration", "Browser application is closed");
+            if (action.presentationContext !== "modal") {
+                if (!action.entryId) return navigate(action.url);
+                navigationSequence++;
+                controller!.cancel();
+                const result = await controller!.reuseEntry(action.entryId);
+                if (result !== controller!.getSnapshot())
+                    throw new ExecutionError("denied", "Navigation was not committed");
+                return;
+            }
+            if (!config.onModal)
+                throw new ExecutionError("configuration", "Modal actions require onModal");
+            const work = (async () => {
+                const match = await activeWeb.router.resolve(action.url);
+                if (closed) throw new ExecutionError("cancelled");
+                let handedOff = false;
+                const modal = createWebSession({
+                    web: activeWeb,
+                    initial: stack(
+                        leaf(match?.intent.id ?? "@finesoft/not-found", match?.intent.params, {
+                            url: action.url,
+                        }),
+                    ),
+                    isServer: false,
+                    createContext,
+                    onRedirect: async (value, candidate) => {
+                        const tree = await followRedirect(value, candidate);
+                        handedOff = !tree;
+                        return tree;
+                    },
+                });
+                modalControllers.add(modal);
+                try {
+                    const snapshot = await modal.start();
+                    if (closed || handedOff) return;
+                    const page = snapshot.destinations.at(-1)?.page;
+                    if (page) await config.onModal!(page, { app: controller!, snapshot });
+                } finally {
+                    await modal.dispose();
+                    modalControllers.delete(modal);
+                }
+            })();
+            modalWork.add(work);
+            try {
+                await work;
+            } finally {
+                modalWork.delete(work);
+            }
+        });
+        actionDispatcher.onAction<ExternalUrlAction>(ACTION_KINDS.EXTERNAL_URL, (action) => {
+            if (closed) throw new ExecutionError("configuration", "Browser application is closed");
+            win.open(browserUrl(action.url, true).href, "_blank", "noopener,noreferrer");
         });
         cleanups.push(
-            controller.onCommit((next) => {
+            controller.onCommit((next, previousSnapshot) => {
                 capture();
                 for (const destination of next.destinations) {
-                    const previous = presentation!.view
-                        .getSnapshot()
-                        .entries.find((entry) => entry.entryId === destination.entryId);
-                    if (
-                        previous &&
-                        previous.page.pageType !== destination.page.pageType &&
-                        session
-                    ) {
-                        const bag = session.scope.get(destination.entryId) as
-                            | Record<string, unknown>
-                            | undefined;
-                        if (bag) {
-                            const { __dom: _oldDom, ...state } = bag;
-                            session.scope.set(destination.entryId, state);
-                        }
-                    }
+                    const previous = previousSnapshot.entries.find(
+                        (entry) => entry.entryId === destination.entryId,
+                    );
+                    if (previous && previous.page.pageType !== destination.page.pageType && session)
+                        domResets.add(destination.entryId);
                 }
             }),
         );
         if (config.session) {
-            const adapter = createNavigationSessionAdapter(controller, () =>
-                browserHistory
-                    ? win.location.pathname + win.location.search
-                    : codec.encode(controller!.getTree(), activeWeb.router),
-            );
             const store = createSessionStore({
                 ...config.session,
                 storage: config.session.storage ?? createWebStorage("local"),
                 key: `finesoft:${definition.id}:${config.persistenceKey}`,
-                navigation: adapter,
+                navigation: controller,
             });
             for (const provider of config.session.providers ?? []) store.register(provider);
             session = createSessionBridge({
                 store,
-                adapter,
+                navigation: controller,
                 subscribeNavigation: (listener) => controller!.subscribe(listener),
                 debounceMs: config.session.debounceMs,
                 shouldRestore: config.session.shouldRestore,
@@ -358,8 +477,7 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
                 dom.attach(target);
             }
         }
-        const first = await controller.resolve();
-        if (first !== controller.getSnapshot()) presentation.present(first);
+        await controller.start();
         const onClick = (event: MouseEvent) => {
             if (
                 event.defaultPrevented ||
@@ -399,8 +517,9 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
         };
         target.addEventListener("click", onClick);
         cleanups.push(() => target.removeEventListener("click", onClick));
-        return Object.assign(presentation.view, {
-            hydrate: wire.status === "ready" && target.hasChildNodes(),
+        return Object.assign(controller, {
+            actionDispatcher,
+            shouldHydrate: wire.status === "ready" && target.hasChildNodes(),
             ready,
             dispose,
         });

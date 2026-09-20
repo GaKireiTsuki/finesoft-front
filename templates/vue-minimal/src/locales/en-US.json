@@ -1,5 +1,0 @@
-{
-    "home.localeLabel": "Current locale",
-    "home.runtimeBadge": "Hydration kept the translator alive on the client.",
-    "home.switchHint": "Change frameworkConfig.locale in src/app-definition.ts to en-US or zh-Hans to load the corresponding JSON file."
-}

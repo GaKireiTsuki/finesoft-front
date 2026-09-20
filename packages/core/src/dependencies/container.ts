@@ -41,6 +41,10 @@ export class Container {
         this.cleanups.push({ dispose: cleanup });
     }
 
+    hasProvider(token: Token): boolean {
+        return this.providers.has(token) || this.parent?.hasProvider(token) === true;
+    }
+
     private assertOpen(): void {
         if (this.closed) throw new Error("Container is closed");
     }

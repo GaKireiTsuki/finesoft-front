@@ -27,6 +27,10 @@ interface InFlightEntry {
     readonly scopeGeneration: number;
 }
 
+function afterSettled<T>(promise: Promise<T>, callback: () => void): void {
+    void promise.then(callback, callback);
+}
+
 const MAX_CACHE_KEY_DEPTH = 50;
 
 /**
@@ -258,6 +262,13 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
             async function execute<I, O>(operation: Operation<I, O>, input: I): Promise<O> {
                 const start = Date.now();
                 executionRecord("operation", { operationId: operation.id, phase: "start" });
+                const complete = (cacheHit = false) =>
+                    executionRecord("operation", {
+                        operationId: operation.id,
+                        phase: "complete",
+                        ...(cacheHit ? { cacheHit: true } : {}),
+                        durationMs: Date.now() - start,
+                    });
                 try {
                     assertActive();
                     if (plan.operations.get(operation.id) !== operation)
@@ -284,11 +295,7 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                     const cachePolicy = operation.cache;
                     if (!cachePolicy) {
                         const output = await invoke(operation, validated);
-                        executionRecord("operation", {
-                            operationId: operation.id,
-                            phase: "complete",
-                            durationMs: Date.now() - start,
-                        });
+                        complete();
                         return output;
                     }
                     const cacheValue = cachePolicy.key ? cachePolicy.key(validated) : validated;
@@ -301,12 +308,7 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                     const selectedCache = cachePolicy.scope === "execution" ? scopeCache : cache;
                     const cached = selectedCache.get(key);
                     if (cached && cached.expires > Date.now()) {
-                        executionRecord("operation", {
-                            operationId: operation.id,
-                            phase: "complete",
-                            cacheHit: true,
-                            durationMs: Date.now() - start,
-                        });
+                        complete(true);
                         return cached.value as O;
                     }
                     if (cached) selectedCache.delete(key);
@@ -328,11 +330,7 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                                   currentScopeGeneration,
                               );
                     const output = await promise;
-                    executionRecord("operation", {
-                        operationId: operation.id,
-                        phase: "complete",
-                        durationMs: Date.now() - start,
-                    });
+                    complete();
                     return output;
                 } catch (cause) {
                     const error =
@@ -395,14 +393,9 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                     scopeGeneration: expectedScopeGeneration,
                 };
                 inFlight.set(key, entry);
-                void promise.then(
-                    () => {
-                        if (inFlight.get(key) === entry) inFlight.delete(key);
-                    },
-                    () => {
-                        if (inFlight.get(key) === entry) inFlight.delete(key);
-                    },
-                );
+                afterSettled(promise, () => {
+                    if (inFlight.get(key) === entry) inFlight.delete(key);
+                });
                 return promise;
             }
 
@@ -414,10 +407,7 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                 execute(operation, input) {
                     const promise = execute(operation, input);
                     running.add(promise);
-                    void promise.then(
-                        () => running.delete(promise),
-                        () => running.delete(promise),
-                    );
+                    afterSettled(promise, () => running.delete(promise));
                     return promise;
                 },
                 dispose() {

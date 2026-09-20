@@ -35,8 +35,8 @@ export interface WebAppDefinition {
     readonly loadMessages?: import("../i18n/messages").MessagesLoader;
     readonly getErrorPage: (status: number, message: string) => BasePage;
     readonly configuration?: WebConfiguration;
-    readonly beforeNavigate?: readonly import("../navigation/controller").BeforeNavigatePolicy[];
-    readonly beforeCommit?: readonly import("../navigation/controller").BeforeCommitPolicy[];
+    readonly beforeNavigate?: readonly import("../application/session").BeforeNavigatePolicy[];
+    readonly beforeCommit?: readonly import("../application/session").BeforeCommitPolicy[];
     readonly beforeLoad?: readonly BeforeLoadGuard[];
     readonly afterLoad?: readonly AfterLoadGuard[];
 }

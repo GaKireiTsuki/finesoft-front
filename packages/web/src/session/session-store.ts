@@ -92,7 +92,7 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
         );
         return {
             version,
-            navigation: cloneSnapshotValue(navigation?.capture()),
+            navigation: cloneSnapshotValue(navigation?.captureNavigation()),
             url: navigation?.captureUrl?.(),
             slices,
             scoped,
@@ -186,7 +186,7 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
                     return { status: "invalid" };
                 }
                 try {
-                    await navigation?.apply(valid.navigation);
+                    await navigation?.restoreNavigation(valid.navigation);
                 } catch (cause) {
                     report({ phase: "restore", code: "navigation-invalid" });
                     return { status: "failed", cause };

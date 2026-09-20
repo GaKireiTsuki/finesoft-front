@@ -5,14 +5,19 @@
  * 运行：node dist/server/index.mjs
  */
 
-import { buildBundle, generateSSREntry, prerenderRoutes } from "./shared";
+import {
+    buildGeneratedEntry,
+    generateSSREntry,
+    prerenderRoutes,
+    writePrerenderedPages,
+} from "./shared";
 import type { Adapter } from "./types";
 
 export function nodeAdapter(): Adapter {
     return {
         name: "node",
         async build(ctx) {
-            const { fs, path, root } = ctx;
+            const { path, root } = ctx;
 
             const entrySource = generateSSREntry(ctx, {
                 platformImport: `import { startNodeHandler } from "@finesoft/front/node";
@@ -48,36 +53,15 @@ export { server };
 `,
             });
 
-            const tempEntry = path.resolve(root, ".node-entry.tmp.mjs");
-            fs.writeFileSync(tempEntry, entrySource);
-
-            try {
-                await buildBundle(ctx, {
-                    entry: ".node-entry.tmp.mjs",
-                    outDir: path.resolve(root, "dist/server"),
-                    target: "node18",
-                    emptyOutDir: false,
-                });
-            } finally {
-                fs.rmSync(tempEntry, { force: true });
-            }
+            await buildGeneratedEntry(ctx, ".node-entry.tmp.mjs", entrySource, {
+                outDir: path.resolve(root, "dist/server"),
+                target: "node18",
+                emptyOutDir: false,
+            });
 
             // 构建时预渲染 prerender 路由
             const prerendered = await prerenderRoutes(ctx);
-            if (prerendered.length > 0) {
-                const prerenderDir = path.resolve(root, "dist/prerender");
-                fs.mkdirSync(prerenderDir, { recursive: true });
-                for (const { url, html } of prerendered) {
-                    const filePath =
-                        url === "/"
-                            ? path.join(prerenderDir, "index.html")
-                            : path.join(prerenderDir, url, "index.html");
-                    fs.mkdirSync(path.resolve(filePath, ".."), {
-                        recursive: true,
-                    });
-                    fs.writeFileSync(filePath, html);
-                }
-            }
+            writePrerenderedPages(ctx, path.resolve(root, "dist/prerender"), prerendered);
 
             console.log(
                 "  Node output → dist/server/index.mjs\n" + "  Run: node dist/server/index.mjs\n",

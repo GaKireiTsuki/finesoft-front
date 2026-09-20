@@ -13,9 +13,11 @@ vi.mock("../../src/dynamic-import", () => ({
 import {
     NODE_BUILTINS,
     buildBundle,
+    buildGeneratedEntry,
     copyStaticAssets,
     generateSSREntry,
     prerenderRoutes,
+    writePrerenderedPages,
 } from "../../src/adapters/shared";
 import { createSSRHandler, type SSRResponseResult } from "../../src/ssr-handler";
 
@@ -173,6 +175,65 @@ describe("shared adapter helpers", () => {
         expect(fs.rmSync).not.toHaveBeenCalledWith("/project/out-no-html/index.html", {
             force: true,
         });
+    });
+
+    test("builds generated entries with cleanup and writes shared prerender paths", async () => {
+        const fs = {
+            mkdirSync: vi.fn(),
+            rmSync: vi.fn(),
+            writeFileSync: vi.fn(),
+        };
+        const vite = { build: vi.fn(async () => {}) };
+        const ctx = createAdapterContext({ fs, vite });
+
+        await buildGeneratedEntry(ctx as never, ".entry.tmp.mjs", "export {};", {
+            outDir: "/project/dist/server",
+        });
+        writePrerenderedPages(ctx as never, "/project/dist/static", [
+            { url: "/", html: "root" },
+            { url: "/docs", html: "docs" },
+        ]);
+
+        expect(fs.writeFileSync).toHaveBeenNthCalledWith(
+            1,
+            "/project/.entry.tmp.mjs",
+            "export {};",
+        );
+        expect(vite.build).toHaveBeenCalledWith(
+            expect.objectContaining({ build: expect.objectContaining({ ssr: ".entry.tmp.mjs" }) }),
+        );
+        expect(fs.rmSync).toHaveBeenCalledWith("/project/.entry.tmp.mjs", { force: true });
+        expect(fs.writeFileSync).toHaveBeenNthCalledWith(
+            2,
+            "/project/dist/static/index.html",
+            "root",
+        );
+        expect(fs.writeFileSync).toHaveBeenNthCalledWith(
+            3,
+            "/project/dist/static/docs/index.html",
+            "docs",
+        );
+    });
+
+    test("removes a generated entry and preserves the build error", async () => {
+        const failure = Error("bundle failed");
+        const fs = {
+            rmSync: vi.fn(),
+            writeFileSync: vi.fn(),
+        };
+        const ctx = createAdapterContext({
+            fs,
+            vite: { build: vi.fn(async () => Promise.reject(failure)) },
+        });
+
+        await expect(
+            buildGeneratedEntry(ctx as never, ".entry.tmp.mjs", "export {};", {
+                outDir: "/project/dist/server",
+            }),
+        ).rejects.toBe(failure);
+
+        expect(fs.writeFileSync).toHaveBeenCalledWith("/project/.entry.tmp.mjs", "export {};");
+        expect(fs.rmSync).toHaveBeenCalledWith("/project/.entry.tmp.mjs", { force: true });
     });
 
     test("pre-renders static routes, expands locales, and injects locale attributes", async () => {

@@ -131,7 +131,7 @@ test("two URLs for one operation retain actual route policy and ambiguous intent
 });
 
 test("Split secondary guards block transaction commits and same target pushes retain separate pages", async () => {
-    const { createNavigationController, split, stack } = await import("../../src/navigation");
+    const { createWebSession, split, stack } = await import("../../src/navigation");
     let calls = 0;
     let denied = false;
     const web = defineWebApp({
@@ -156,7 +156,7 @@ test("Split secondary guards block transaction commits and same target pushes re
         getErrorPage: errorPage,
     });
     const fw = createWebRuntime({ definition: web });
-    const controller = createNavigationController({ web: fw, initial: stack(leaf("edit")) });
+    const controller = createWebSession({ web: fw, initial: stack(leaf("edit")) });
     const first = await controller.resolve();
     const second = await controller.push("edit");
     expect(second.destinations[0].entryId).not.toBe(first.destinations[0].entryId);
@@ -229,7 +229,7 @@ test("route-free leaf runs globals and navigation guards while unmatched URL rem
 });
 
 test("cancelling a transaction during guards prevents later guards, controllers and commits", async () => {
-    const { createNavigationController, stack } = await import("../../src/navigation");
+    const { createWebSession, stack } = await import("../../src/navigation");
     let release!: () => void;
     let entered!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -267,7 +267,7 @@ test("cancelling a transaction during guards prevents later guards, controllers 
         getErrorPage: errorPage,
     });
     const fw = createWebRuntime({ definition: web });
-    const nav = createNavigationController({ web: fw, initial: stack(leaf("home")) });
+    const nav = createWebSession({ web: fw, initial: stack(leaf("home")) });
     nav.subscribe(() => {
         calls.push("commit");
     });
@@ -306,9 +306,9 @@ test("facade disposal finishes environment and owned Runtime even if execution c
 });
 
 test("disposed navigation rejects new work even when its shared facade is still alive", async () => {
-    const { createNavigationController, stack } = await import("../../src/navigation");
+    const { createWebSession, stack } = await import("../../src/navigation");
     const fw = createWebRuntime({ definition: fixtureDefinition() });
-    const nav = createNavigationController({ web: fw, initial: stack(leaf("home")) });
+    const nav = createWebSession({ web: fw, initial: stack(leaf("home")) });
     await nav.dispose();
     await expect(nav.resolve()).rejects.toMatchObject({
         code: "configuration",
@@ -333,8 +333,7 @@ test("Web definitions own an immutable navigation declaration snapshot", async (
 });
 
 test("before-load rewrite preserves the destination EntryId across tree, data and serialization", async () => {
-    const { createNavigationController, stack, serializeNavigation } =
-        await import("../../src/navigation");
+    const { createWebSession, stack, serializeNavigation } = await import("../../src/navigation");
     const web = defineWebApp({
         pages: routePages(
             [{ id: "home", handler: () => ({ id: "home", pageType: "home", title: "Home" }) }],
@@ -352,7 +351,7 @@ test("before-load rewrite preserves the destination EntryId across tree, data an
     });
     const fw = createWebRuntime({ definition: web });
     const initial = leaf("home", {}, { url: "/old" });
-    const nav = createNavigationController({ web: fw, initial: stack(initial) });
+    const nav = createWebSession({ web: fw, initial: stack(initial) });
     const snapshot = await nav.resolve();
     expect(snapshot.destinations[0].entryId).toBe(initial.entryId);
     expect(serializeNavigation(snapshot.tree)).toMatchObject({
@@ -365,7 +364,7 @@ test.each(["loader", "tree"] as const)(
     "%s cancellation reaches supplied execution controller, nested fetch and query cache without disposing it",
     async (producer) => {
         const { defineOperation } = await import("@finesoft/core");
-        const { createNavigationController } = await import("../../src/navigation");
+        const { createWebSession } = await import("../../src/navigation");
         let start!: () => void, release!: () => void;
         const started = new Promise<void>((resolve) => {
             start = resolve;
@@ -418,7 +417,7 @@ test.each(["loader", "tree"] as const)(
             },
         });
         const execution = framework.createExecution();
-        const nav = createNavigationController({
+        const nav = createWebSession({
             web: framework,
             execution,
             initial: leaf("home"),
@@ -468,7 +467,7 @@ test.each(["loader", "tree"] as const)(
 test.each(["loader", "tree"] as const)(
     "%s detaches completed signal bindings and forwards already-aborted signals",
     async (producer) => {
-        const { createNavigationController } = await import("../../src/navigation");
+        const { createWebSession } = await import("../../src/navigation");
         let calls = 0;
         const framework = createWebRuntime({
             definition: defineWebApp({
@@ -490,7 +489,7 @@ test.each(["loader", "tree"] as const)(
         });
         const execution = framework.createExecution();
         const target = leaf("home");
-        const nav = createNavigationController({ web: framework, execution, initial: target });
+        const nav = createWebSession({ web: framework, execution, initial: target });
         const run = (signal: AbortSignal) =>
             producer === "loader"
                 ? loadPage({ web: framework, execution, target, signal })

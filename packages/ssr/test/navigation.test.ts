@@ -6,7 +6,7 @@ vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 import {
     createActiveLeafCodec,
     createFullStateCodec,
-    createNavigationController,
+    createWebSession,
     createWebRuntime,
     defineWebApp,
     deserializeNavigation,
@@ -214,7 +214,7 @@ test("SSR pages hydrate the same composed tree without refetching", async () => 
         definition,
         prefetchedIntents: PrefetchedIntents.fromArray(output.serverData.pages),
     });
-    const controller = createNavigationController({
+    const controller = createWebSession({
         web: browser,
         initial: deserializeNavigation(output.serverData.tree!),
         isServer: false,

@@ -141,7 +141,11 @@ test("malformed and duplicate EntryIds fail before navigation and scoped mutatio
     const apply = vi.fn();
     const store = createSessionStore({
         storage: storage(),
-        navigation: { capture: () => undefined, apply, presentKeys: () => [] },
+        navigation: {
+            captureNavigation: () => undefined,
+            restoreNavigation: apply,
+            presentKeys: () => [],
+        },
     });
     store.scope.set("retained", "draft");
     for (const navigation of [
@@ -199,7 +203,11 @@ test("capture detaches every channel and explicit persist owns admission-time da
                 }
             },
         },
-        navigation: { capture: () => navigation, apply: () => {}, presentKeys: () => ["entry-a"] },
+        navigation: {
+            captureNavigation: () => navigation,
+            restoreNavigation: () => {},
+            presentKeys: () => ["entry-a"],
+        },
     });
     store.register({ ...provider("draft"), capture: () => draft });
     store.scope.set("entry-a", scoped);
@@ -276,7 +284,11 @@ test("invalid explicit or structural snapshot values fail without writing or poi
     let navigation: unknown;
     const store = createSessionStore({
         storage: { ...storage(), set },
-        navigation: { capture: () => navigation as never, apply: () => {}, presentKeys: () => [] },
+        navigation: {
+            captureNavigation: () => navigation as never,
+            restoreNavigation: () => {},
+            presentKeys: () => [],
+        },
     });
     const snapshot = { version: 1, capturedAt: 7, slices: { bad: cycle }, scoped: {} };
     await expect(store.persist(snapshot)).resolves.toMatchObject({ status: "failed" });

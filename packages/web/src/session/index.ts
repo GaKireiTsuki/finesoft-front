@@ -1,5 +1,5 @@
 /**
- * Session barrel —— 会话恢复（快照模型 / codec / 导航作用域状态 / 编排器 / 导航适配器）
+ * Session barrel —— 会话恢复（快照模型 / codec / 导航作用域状态 / 编排器 / 导航端口）
  */
 
 // ===== Types =====
@@ -16,7 +16,7 @@ export {
     SessionError,
     type NavigationScopedState,
     type SessionErrorContext,
-    type SessionNavigationAdapter,
+    type SessionNavigation,
     type SessionSnapshot,
     type SessionStateProvider,
     type SessionStore,
@@ -31,6 +31,3 @@ export { collectLeafKeys, createNavigationScopedState } from "./scoped-state";
 
 // ===== Store（会话编排器）=====
 export { createSessionStore } from "./session-store";
-
-// ===== Navigation adapter =====
-export { createNavigationSessionAdapter } from "./navigation-adapter";

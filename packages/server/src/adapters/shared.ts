@@ -115,9 +115,41 @@ export function copyStaticAssets(
     }
 }
 
+/** Build a generated platform entry and remove it once Vite has consumed it. */
+export async function buildGeneratedEntry(
+    ctx: AdapterContext,
+    entry: string,
+    source: string,
+    options: Omit<BuildBundleOptions, "entry">,
+): Promise<void> {
+    const temporaryPath = ctx.path.resolve(ctx.root, entry);
+    ctx.fs.writeFileSync(temporaryPath, source);
+    try {
+        await buildBundle(ctx, { ...options, entry });
+    } finally {
+        ctx.fs.rmSync(temporaryPath, { force: true });
+    }
+}
+
 export interface PrerenderResult {
     url: string;
     html: string;
+}
+
+/** Materialize prerendered pages with the path layout used by every request-host adapter. */
+export function writePrerenderedPages(
+    ctx: AdapterContext,
+    outputDir: string,
+    pages: Iterable<PrerenderResult>,
+): void {
+    for (const { url, html } of pages) {
+        const file =
+            url === "/"
+                ? ctx.path.join(outputDir, "index.html")
+                : ctx.path.join(outputDir, url, "index.html");
+        ctx.fs.mkdirSync(ctx.path.resolve(file, ".."), { recursive: true });
+        ctx.fs.writeFileSync(file, html);
+    }
 }
 
 /**

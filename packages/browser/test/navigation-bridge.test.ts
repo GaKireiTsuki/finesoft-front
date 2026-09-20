@@ -63,7 +63,7 @@ import {
     serializeNavigation,
     stack,
     tabs,
-    type NavigationController,
+    type WebSession,
     type NavigationNode,
     type NavigationRouterLike,
     type RouteParams,
@@ -282,7 +282,7 @@ describe("createNavigationBridge", () => {
         const log = makeLogger();
 
         const handle = createNavigationBridge({
-            controller: controller as unknown as NavigationController,
+            controller: controller as unknown as WebSession,
             codec,
             router,
             log,
@@ -304,7 +304,8 @@ describe("createNavigationBridge", () => {
         expect(controller.push).toHaveBeenCalledWith("a", { x: 1 }, { target: [] });
         expect(controller.pop).toHaveBeenCalledWith(2);
         expect(controller.popToRoot).toHaveBeenCalledTimes(1);
-        expect(controller.replaceTop).toHaveBeenCalledWith("b", undefined);
+        expect(controller.replaceTop).toHaveBeenCalledWith("b");
+        expect(handle.replaceTop).toBe(controller.replaceTop);
         expect(controller.selectTab).toHaveBeenCalledWith("k", []);
         expect(controller.selectColumn).toHaveBeenCalledWith("c", "intent", { y: 2 }, []);
         expect(controller.hydrate).toHaveBeenCalledWith(leaf("z"));
@@ -319,7 +320,7 @@ describe("createNavigationBridge", () => {
         const log = makeLogger();
 
         createNavigationBridge({
-            controller: controller as unknown as NavigationController,
+            controller: controller as unknown as WebSession,
             codec,
             router,
             log,
@@ -335,7 +336,7 @@ describe("createNavigationBridge", () => {
 
 /** A native host owns admission and page commits.  The bridge only needs this boundary. */
 function makeController(initial: NavigationNode): {
-    controller: NavigationController & { resolve(): Promise<unknown> };
+    controller: WebSession & { resolve(): Promise<unknown> };
     dispatch: ReturnType<typeof vi.fn>;
 } {
     const dispatch = vi.fn(async (intent: Intent<BasePage>) => makePage(intent.id));
@@ -389,7 +390,7 @@ function makeController(initial: NavigationNode): {
         cancel: vi.fn(),
     };
     return {
-        controller: controller as unknown as NavigationController & { resolve(): Promise<unknown> },
+        controller: controller as unknown as WebSession & { resolve(): Promise<unknown> },
         dispatch,
     };
 }
@@ -397,7 +398,7 @@ function makeController(initial: NavigationNode): {
 /**
  * 纯 fake controller：每个方法都是 vi.fn，用于验证 handle 委派。
  *
- * 刻意返回**对象字面量类型**（不标注成 `NavigationController` 接口），这样在 `expect(fake.push)`
+ * 刻意返回**对象字面量类型**（不标注成 `WebSession` 接口），这样在 `expect(fake.push)`
  * 上是普通属性访问而非接口方法引用，避开 `unbound-method` 警告（同 flow-action.test 的
  * `framework.didEnterPage` 写法）。传入 bridge 时在调用点 `as` 成 controller。
  */
