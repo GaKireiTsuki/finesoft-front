@@ -5,7 +5,7 @@ URL、SSR、结构化导航共用页面加载器；执行前后运行全局、�
 ## Guard / 守卫
 
 ```ts
-import { next, redirect, type BeforeLoadGuard } from "@finesoft/front/web";
+import { next, redirect, type BeforeLoadGuard } from "@finesoft/front";
 export const signedIn: BeforeLoadGuard = (context) =>
     context.getCookie("session")
         ? next()

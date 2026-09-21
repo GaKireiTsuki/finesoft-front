@@ -41,7 +41,7 @@ await app.perform({ kind: "refresh" });
 创建浏览器应用时提供 `onModal(page, { app, snapshot })`，然后调用：
 
 ```ts
-import { makeFlowAction } from "@finesoft/front/web";
+import { makeFlowAction } from "@finesoft/front";
 await app.perform(makeFlowAction("/items/42", "modal"));
 ```
 

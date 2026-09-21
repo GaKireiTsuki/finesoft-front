@@ -3,6 +3,11 @@
     "name": "react",
     "artifact": "production preview",
     "status": "passed",
+    "serverController": {
+      "sourceIsolated": true,
+      "hydrationCalls": 0,
+      "remoteCalls": 2
+    },
     "contents": {
       "detail": {
         "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing route-inferred params and DI container usage.",
@@ -126,6 +131,164 @@
                       "classes": [],
                       "attributes": {
                         "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "searchDefault": {
+        "text": "All Products\n\n4 result(s)\n\nTypeScript Handbook\n\n$29.99\n\nView Details →\nVite Starter Kit\n\n$19.99\n\nView Details →\nHono Framework Guide\n\n$24.99\n\nView Details →\nSSR Deep Dive\n\n$34.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-search"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "results"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/1"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/3"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/4"
                       },
                       "children": []
                     }
@@ -372,6 +535,11 @@
     "name": "react-minimal",
     "artifact": "production preview",
     "status": "passed",
+    "serverController": {
+      "sourceIsolated": true,
+      "hydrationCalls": 0,
+      "remoteCalls": 5
+    },
     "contents": {
       "notes": {
         "text": "Notes\n\nThis textarea is navigation-scoped — switch tabs and it survives.\n\nNotes draft",
@@ -861,6 +1029,11 @@
     "name": "vue",
     "artifact": "production preview",
     "status": "passed",
+    "serverController": {
+      "sourceIsolated": true,
+      "hydrationCalls": 0,
+      "remoteCalls": 2
+    },
     "contents": {
       "detail": {
         "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing route-inferred params and DI container usage.",
@@ -984,6 +1157,164 @@
                       "classes": [],
                       "attributes": {
                         "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "searchDefault": {
+        "text": "All Products\n\n4 result(s)\n\nTypeScript Handbook\n\n$29.99\n\nView Details →\nVite Starter Kit\n\n$19.99\n\nView Details →\nHono Framework Guide\n\n$24.99\n\nView Details →\nSSR Deep Dive\n\n$34.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-search"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "results"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/1"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/3"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/4"
                       },
                       "children": []
                     }
@@ -1230,6 +1561,11 @@
     "name": "vue-minimal",
     "artifact": "production preview",
     "status": "passed",
+    "serverController": {
+      "sourceIsolated": true,
+      "hydrationCalls": 0,
+      "remoteCalls": 5
+    },
     "contents": {
       "notes": {
         "text": "Notes\n\nThis textarea is navigation-scoped — switch tabs and it survives.\n\nNotes draft",
@@ -1719,6 +2055,11 @@
     "name": "svelte",
     "artifact": "production preview",
     "status": "passed",
+    "serverController": {
+      "sourceIsolated": true,
+      "hydrationCalls": 0,
+      "remoteCalls": 2
+    },
     "contents": {
       "detail": {
         "text": "← Back\nProduct 2\n\n$29.99\n\nThis is a demo product showcasing route-inferred params and DI container usage.",
@@ -1842,6 +2183,164 @@
                       "classes": [],
                       "attributes": {
                         "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "searchDefault": {
+        "text": "All Products\n\n4 result(s)\n\nTypeScript Handbook\n\n$29.99\n\nView Details →\nVite Starter Kit\n\n$19.99\n\nView Details →\nHono Framework Guide\n\n$24.99\n\nView Details →\nSSR Deep Dive\n\n$34.99\n\nView Details →",
+        "structure": {
+          "tag": "section",
+          "classes": [
+            "page",
+            "page-search"
+          ],
+          "attributes": {},
+          "children": [
+            {
+              "tag": "h1",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "p",
+              "classes": [],
+              "attributes": {},
+              "children": []
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "results"
+              ],
+              "attributes": {},
+              "children": [
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/1"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/2"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/3"
+                      },
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "tag": "article",
+                  "classes": [
+                    "product-card"
+                  ],
+                  "attributes": {},
+                  "children": [
+                    {
+                      "tag": "h3",
+                      "classes": [],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "p",
+                      "classes": [
+                        "price"
+                      ],
+                      "attributes": {},
+                      "children": []
+                    },
+                    {
+                      "tag": "a",
+                      "classes": [],
+                      "attributes": {
+                        "href": "/products/4"
                       },
                       "children": []
                     }
@@ -2088,6 +2587,11 @@
     "name": "svelte-minimal",
     "artifact": "production preview",
     "status": "passed",
+    "serverController": {
+      "sourceIsolated": true,
+      "hydrationCalls": 0,
+      "remoteCalls": 5
+    },
     "contents": {
       "notes": {
         "text": "Notes\n\nThis textarea is navigation-scoped — switch tabs and it survives.\n\nNotes draft",
@@ -2574,18 +3078,33 @@
     "errors": []
   },
   {
+    "name": "react",
+    "artifact": "development cold scan and server controller",
+    "status": "passed"
+  },
+  {
     "name": "react-minimal",
-    "artifact": "development generated loader and independent mounts",
+    "artifact": "development cold scan, generated loader and independent mounts",
+    "status": "passed"
+  },
+  {
+    "name": "vue",
+    "artifact": "development cold scan and server controller",
     "status": "passed"
   },
   {
     "name": "vue-minimal",
-    "artifact": "development generated loader and independent mounts",
+    "artifact": "development cold scan, generated loader and independent mounts",
+    "status": "passed"
+  },
+  {
+    "name": "svelte",
+    "artifact": "development cold scan and server controller",
     "status": "passed"
   },
   {
     "name": "svelte-minimal",
-    "artifact": "development generated loader and independent mounts",
+    "artifact": "development cold scan, generated loader and independent mounts",
     "status": "passed"
   }
 ]

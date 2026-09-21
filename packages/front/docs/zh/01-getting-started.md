@@ -1,6 +1,6 @@
 # 快速开始
 
-使用可移植执行入口和明确的 Web、浏览器、SSR 入口。React、Vue、Svelte 都由应用创建一个原生根，布局和 Provider 包住 Outlet。六套模板共用此接入方式。
+所有框架 API 统一使用 `from "@finesoft/front"`。React、Vue、Svelte 都由应用创建一个原生根，布局和 Provider 包住 Outlet。六套模板共用此接入方式。
 
 先安装依赖。Node 要求 `^22.18.0 || >=24.11.0`，项目工具统一使用 Vite+。full 展示商品、搜索和守卫，minimal 展示 tabs/stack、输入草稿和会话恢复。
 
@@ -13,7 +13,7 @@ vp install
 
 ```ts
 // src/app-definition.ts
-import { definePage, defineWebApp, markPublic } from "@finesoft/front/web";
+import { definePage, defineWebApp, markPublic } from "@finesoft/front";
 export const home = definePage({
     id: "home",
     routes: ["/"],
@@ -30,9 +30,10 @@ export const app = defineWebApp({
 
 ```tsx
 // src/App.tsx
-import { Outlet, type WebAppView } from "@finesoft/front/react";
+import { Outlet as selectOutlet, type WebAppView } from "@finesoft/front";
 import Home from "./pages/Home";
 import ErrorPage from "./pages/ErrorPage";
+const Outlet = selectOutlet("react");
 const views = { home: Home, error: ErrorPage };
 export default function App({ app }: { app: WebAppView }) {
     return (
@@ -49,7 +50,7 @@ export default function App({ app }: { app: WebAppView }) {
 
 ```tsx
 // src/main.tsx
-import { createBrowserApp } from "@finesoft/front/browser";
+import { createBrowserApp } from "@finesoft/front";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { app as definition } from "./app-definition";
 import App from "./App";
@@ -69,14 +70,14 @@ await app.ready;
 ```tsx
 // src/ssr.tsx
 import { renderToString } from "react-dom/server";
-import { createSSRRender } from "@finesoft/front/ssr";
+import { createSSRRender } from "@finesoft/front";
 import { app as definition } from "./app-definition";
 import App from "./App";
 export const render = createSSRRender({
     definition,
     render: (app) => renderToString(<App app={app} />),
 });
-export { serializeServerData } from "@finesoft/front/ssr";
+export { serializeServerData } from "@finesoft/front";
 ```
 
 ## Vite
@@ -84,10 +85,14 @@ export { serializeServerData } from "@finesoft/front/ssr";
 ```ts
 import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
-import { finesoftFrontViteConfig } from "@finesoft/front/vite";
+import { finesoftFrontViteConfig } from "@finesoft/front";
 export default defineConfig({
     plugins: [react(), finesoftFrontViteConfig({ adapter: "node", ssr: { entry: "src/ssr.tsx" } })],
 });
 ```
 
-Vue 从 `/vue` 导入 Outlet，使用 `createSSRApp` / `createApp` 与 `renderToString`；Svelte 从 `/svelte` 导入 Outlet，使用 `hydrate` / `mount` 与 `svelte/server` 的 `render`。参见对应模板。Svelte 在 `hydrate` 为 false 时先清空挂载目标，再执行 `mount`，避免旧的 SSR 错误页残留。
+Vue 使用 `Outlet("vue")`，使用 `createSSRApp` / `createApp` 与 `renderToString`；Svelte 使用 `Outlet("svelte")`，使用 `hydrate` / `mount` 与 `svelte/server` 的 `render`。参见对应模板。Svelte 在 `hydrate` 为 false 时先清空挂载目标，再执行 `mount`，避免旧的 SSR 错误页残留。
+
+`useSnapshot("react", app)` 返回快照，`useSnapshot("vue", app)` 返回原生 ref，`useSnapshot("svelte", app)` 返回 store。选择参数必须是字符串字面量；Vite 插件把调用转换成所选原生实现的直接引用，保留组件身份、订阅与清理。
+
+插件在初始化时生成 `.finesoft/front.d.ts`，并维护 `tsconfig.json` 中仅针对 `@finesoft/front` 的类型路径。只安装使用的 UI 依赖，现有类型提示不变。将 `.finesoft/` 加入 `.gitignore`；依赖变化后重启开发进程。独立 `tsc` 或 Node 项目先运行 `vp exec finesoft-types`，也可从统一入口调用 `generateFrontTypes({ root })`。该映射仅用于类型，运行时仍解析正式包。

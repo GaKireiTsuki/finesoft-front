@@ -6,7 +6,7 @@
 
 ```ts
 import { detectPlatform, type FeatureFlagsProvider } from "@finesoft/front";
-import { getPWADisplayMode } from "@finesoft/front/browser";
+import { getPWADisplayMode } from "@finesoft/front";
 // Configure configuration.featureFlags and configuration.platform in the Web declaration.
 // Call getPWADisplayMode only in a browser-owned lifecycle.
 ```

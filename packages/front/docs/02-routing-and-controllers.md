@@ -11,7 +11,7 @@ All six templates load pages with `BaseController`, which remains a public API. 
 | `defineWebApp`                    | Assemble page declarations, routes, guards and optional navigation structure                    |
 | Native page component             | Receive `page` data, render UI and handle interactions                                          |
 
-Import `BaseController` from `@finesoft/front`. Import pages, routes and public-data declarations from `@finesoft/front/web`.
+Import controllers, pages, routes and public-data declarations from `@finesoft/front`.
 
 ## Load a page with BaseController
 
@@ -19,7 +19,7 @@ Import `BaseController` from `@finesoft/front`. Import pages, routes and public-
 
 ```ts
 import { BaseController, DEP_KEYS } from "@finesoft/front";
-import { markPublic, type BasePage } from "@finesoft/front/web";
+import { markPublic, type BasePage } from "@finesoft/front";
 
 export interface ProductPage extends BasePage {
     pageType: "product";
@@ -71,7 +71,7 @@ This example uses local data; application controllers can call services from `ex
 
 ```ts
 import { int } from "@finesoft/front";
-import { definePage, defineWebApp } from "@finesoft/front/web";
+import { definePage, defineWebApp } from "@finesoft/front";
 import { ProductController } from "./lib/controllers/product";
 
 export const product = definePage({
@@ -101,7 +101,7 @@ Typed leaf parameters retain controller types. External URLs still require expli
 Use `handler` when a page only needs a direct data-loading function. It can also access dependencies, cancellation and nested operations through execution context. Handle any required recovery inside the function. Choose either `create` or `handler`.
 
 ```ts
-import { definePage, markPublic } from "@finesoft/front/web";
+import { definePage, markPublic } from "@finesoft/front";
 
 export const home = definePage({
     id: "load-home",
@@ -159,3 +159,78 @@ try {
 The operation declaration defines the input/output contract; the controller supplies the implementation. Exposing the operation over HTTP still requires an explicit endpoint. Registering a controller does not publish an API.
 
 <Ch02RouteResolver />
+
+## Server controllers and request context
+
+Use `BaseServerController` from `@finesoft/front` for pages requiring secrets, HttpOnly cookies, or response mutation. Keep `execute({ params, query, context })`, `fallback({ params, query, context, error })`, and the same `definePage({ create, routes })` registration. The type generator maintains the existing compact `Input` / `Failure` references and selects the context from the base class.
+
+```ts
+import { BaseServerController } from "@finesoft/front";
+import { markPublic } from "@finesoft/front";
+import { loadAccount } from "./account-service";
+
+export class AccountController extends BaseServerController {
+    async execute({ params, context }) {
+        const account = await loadAccount(params.id, context.getCookie("session"));
+        context.responseHeaders.set("Cache-Control", "private, no-store");
+        return markPublic(
+            { id: String(params.id), pageType: "account", title: account.name, account },
+            { account: { id: true, name: true } },
+        );
+    }
+}
+```
+
+Generated annotations are omitted above; `account-service` is application code. The controller may live in any directory. Vite replaces its entire module with browser references, while SSR executes the original implementation directly. Browser navigation uses same-origin `POST /__finesoft/controller`; the server revalidates routes and executes policies and guards. Hydration consumes existing SSR data without another call.
+
+| Capability                                      | Shared page ControllerContext                    | ServerControllerContext                             |
+| ----------------------------------------------- | ------------------------------------------------ | --------------------------------------------------- |
+| `params`, `query`                               | Separate, route-inferred inputs                  | Same                                                |
+| `url`, `path`, `intent`, `isServer`             | Current page and execution environment           | Same; `isServer: true`                              |
+| `getCookie(name)`                               | Browser-readable cookies, or SSR request cookies | Original request cookies, including HttpOnly        |
+| `getHeader(name)`                               | SSR request headers; unavailable in the browser  | Current request headers                             |
+| DI, fetch, signal, operations, logging, tracing | Existing execution capabilities                  | Same                                                |
+| `request`, `responseHeaders`                    | No dedicated interface                           | Original Request and outgoing Headers               |
+| `setCookie`, `deleteCookie`                     | No dedicated interface                           | Write outgoing cookies; leave the request unchanged |
+
+Generated page inputs use `ControllerContext` or `ServerControllerContext`. Portable data operations continue to use `ExecutionContext`. Direct page-operation execution without navigation has empty `url` / `path`. For remote loads, `request.url` names the transport endpoint; use `context.url` for the page address.
+
+### Module isolation
+
+A server controller module may export controller classes and types only. Its local runtime imports are also private to the server; importing these dependencies from client code fails. Use `import type` for shared contracts and separate modules for client implementations. Keep secret-dependent construction inside the protected module or server configuration, rather than arguments to the shared `create` factory.
+
+Client bundles and source maps omit the replaced implementation. The development plugin rejects raw controller assets and direct browser source requests for protected dependencies. It indexes modules once, caches ASTs, and reanalyzes changed files. Dependencies remain protected for the lifetime of a development server; restart when intentionally moving one back into shared code. Computed file paths, `public/` assets, and independently copied source are outside the static import boundary. Development servers still belong on trusted development networks.
+
+Use the framework Vite plugin and a request host such as Node or Worker. Static-only hosting cannot run the remote endpoint. The endpoint loads registered server page controllers; it does not expose arbitrary methods or replace explicit login/registration command endpoints.
+
+### Explicit request and response tools
+
+The framework supplies `request`, `getHeader`, `getCookie`, `fetch`, `responseHeaders`, `setCookie` and `deleteCookie`. Applications own login state, authentication, token storage/refresh and the choice to forward credentials.
+
+Server `context.fetch` uses only caller-supplied headers. It does not inherit Cookie/Authorization from the outer request or copy internal Set-Cookie values to the page response. The credentials option does not create a server-side cookie store. Requests made by the browser retain the browser's native same-origin cookie behavior.
+
+For example, application code can choose to forward Authorization to a particular internal endpoint and copy that endpoint's cookies to the outgoing response:
+
+```ts
+const headers = new Headers();
+const authorization = context.getHeader("authorization");
+if (authorization) headers.set("authorization", authorization);
+
+const response = await context.fetch("/api/account", { headers });
+for (const cookie of response.headers.getSetCookie()) {
+    context.responseHeaders.append("set-cookie", cookie);
+}
+```
+
+The destination and header/cookie selection are application decisions. Reuse a business HttpClient interceptor or request-scoped provider through context.get when several controllers share the policy.
+
+Applications can also construct outgoing cookies directly:
+
+```ts
+context.setCookie("theme", "dark", { path: "/", sameSite: "Lax" });
+context.deleteCookie("theme", { path: "/" });
+```
+
+getCookie always reads the incoming request. Writing a response cookie does not change that request view or update identity. Later business logic uses its own result when it needs a new value. Explicit response headers are assembled into the final response, including error responses, with the framework retaining control of its error body content type and no-store policy.
+
+Client-supplied context or bindings are never accepted as identity. markPublic continues to control data sent to the browser; secrets must also stay out of rendered HTML.

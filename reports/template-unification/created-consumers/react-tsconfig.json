@@ -13,7 +13,12 @@
         "skipLibCheck": true,
         "noEmit": true,
         "rootDir": ".",
-        "jsx": "react-jsx"
+        "jsx": "react-jsx",
+        "paths": {
+            "@finesoft/front": [
+                "./.finesoft/front.d.ts"
+            ]
+        }
     },
     "include": [
         "src/**/*",

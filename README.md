@@ -15,29 +15,20 @@ The CLI copies a complete template with shared application declarations, native 
 
 Full provides product/search/guard examples; minimal provides Feed/detail/Notes with navigation and session restoration. Each tier has the same contracts and behavior in React, Vue and Svelte. See the [template structure](packages/front/docs/engineering/project-structure.md) / [模板约定](packages/front/docs/zh/engineering/project-structure.md).
 
-## Public entries
+## Public API
 
-| Entry                                            | Owner                                                               |
-| ------------------------------------------------ | ------------------------------------------------------------------- |
-| `@finesoft/front`                                | Portable operations, runtime, typed providers and contracts         |
-| `/web`                                           | Page definitions, routes, guarded navigation, public data and state |
-| `/browser`                                       | Instance target, history, hydration, session restore and disposal   |
-| `/ssr`                                           | Page rendering and standard SSR Request/Response assembly           |
-| `/http`                                          | Independent data endpoints and response lifetime                    |
-| `/node`, `/worker`                               | Platform hosts and capabilities                                     |
-| `/vite`                                          | Build plugin and deployment module generation                       |
-| `/renderers/{react,vue,svelte}/{browser,server}` | Selected native UI adapter                                          |
+Every framework API imports from `@finesoft/front`: controllers, routes, Actions, contexts, native UI, browser/SSR startup, HTTP, Node/Worker hosts and Vite configuration. Use `Outlet("react" | "vue" | "svelte")` and `useSnapshot(renderer, app)` for native bindings. Internal platform modules remain isolated; the plugin maintains project-specific declarations for the selected optional peers.
 
 ```ts
-import { definePage, defineWebApp, markPublic } from "@finesoft/front/web";
+import { definePage, defineWebApp, markPublic } from "@finesoft/front";
 const home = definePage({
     id: "load-home",
+    routes: ["/"],
     handler: () => markPublic({ id: "home", pageType: "home" as const, title: "Home" }, []),
 });
 export const app = defineWebApp({
     id: "example",
-    controllers: [home],
-    routes: [home.route("/")],
+    pages: [home],
     getErrorPage: (status, title) => ({ id: String(status), pageType: "error", title }),
 });
 ```

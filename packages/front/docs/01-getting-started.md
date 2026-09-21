@@ -1,6 +1,6 @@
 # Getting started
 
-Use portable execution and explicit Web, browser and SSR entries. The application creates one native React, Vue or Svelte root; its layout and providers surround Outlet. All six templates use this same model.
+All framework APIs use `from "@finesoft/front"`. The application creates one native React, Vue or Svelte root; its layout and providers surround Outlet. All six templates use this same model.
 
 Install dependencies first. Node must satisfy `^22.18.0 || >=24.11.0`; use Vite+ for project tooling. Full demonstrates products, search and guards; minimal demonstrates tabs/stacks, drafts and session restoration.
 
@@ -13,7 +13,7 @@ vp install
 
 ```ts
 // src/app-definition.ts
-import { definePage, defineWebApp, markPublic } from "@finesoft/front/web";
+import { definePage, defineWebApp, markPublic } from "@finesoft/front";
 export const home = definePage({
     id: "home",
     routes: ["/"],
@@ -30,9 +30,10 @@ export const app = defineWebApp({
 
 ```tsx
 // src/App.tsx
-import { Outlet, type WebAppView } from "@finesoft/front/react";
+import { Outlet as selectOutlet, type WebAppView } from "@finesoft/front";
 import Home from "./pages/Home";
 import ErrorPage from "./pages/ErrorPage";
+const Outlet = selectOutlet("react");
 const views = { home: Home, error: ErrorPage };
 export default function App({ app }: { app: WebAppView }) {
     return (
@@ -49,7 +50,7 @@ Page components receive `{ page, app, entry }` and inherit native context from t
 
 ```tsx
 // src/main.tsx
-import { createBrowserApp } from "@finesoft/front/browser";
+import { createBrowserApp } from "@finesoft/front";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { app as definition } from "./app-definition";
 import App from "./App";
@@ -69,14 +70,14 @@ await app.ready;
 ```tsx
 // src/ssr.tsx
 import { renderToString } from "react-dom/server";
-import { createSSRRender } from "@finesoft/front/ssr";
+import { createSSRRender } from "@finesoft/front";
 import { app as definition } from "./app-definition";
 import App from "./App";
 export const render = createSSRRender({
     definition,
     render: (app) => renderToString(<App app={app} />),
 });
-export { serializeServerData } from "@finesoft/front/ssr";
+export { serializeServerData } from "@finesoft/front";
 ```
 
 ## Vite
@@ -84,10 +85,14 @@ export { serializeServerData } from "@finesoft/front/ssr";
 ```ts
 import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
-import { finesoftFrontViteConfig } from "@finesoft/front/vite";
+import { finesoftFrontViteConfig } from "@finesoft/front";
 export default defineConfig({
     plugins: [react(), finesoftFrontViteConfig({ adapter: "node", ssr: { entry: "src/ssr.tsx" } })],
 });
 ```
 
-Vue imports Outlet from `/vue` and uses `createSSRApp` / `createApp` with `renderToString`. Svelte imports Outlet from `/svelte` and uses `hydrate` / `mount` with `render` from `svelte/server`. See the matching templates. Before a fresh Svelte `mount`, clear the target when `hydrate` is false so rejected SSR markup cannot remain beside the new app.
+Vue selects `Outlet("vue")` and uses `createSSRApp` / `createApp` with `renderToString`. Svelte selects `Outlet("svelte")` and uses `hydrate` / `mount` with `render` from `svelte/server`. See the matching templates. Before a fresh Svelte `mount`, clear the target when `hydrate` is false so rejected SSR markup cannot remain beside the new app.
+
+`useSnapshot("react", app)` returns a snapshot, `useSnapshot("vue", app)` a native ref, and `useSnapshot("svelte", app)` a store. Use a string literal for the renderer. The Vite plugin resolves the selected native implementation at build time, preserving component identity, subscriptions and cleanup.
+
+On initialization the plugin generates `.finesoft/front.d.ts` and maintains the exact `@finesoft/front` type path in `tsconfig.json`. Only the selected UI peers are required. Ignore `.finesoft/` in Git and restart development after dependency changes. For standalone `tsc` or Node projects, run `vp exec finesoft-types` first, or call `generateFrontTypes({ root })` from the unified entry. The alias affects types only; runtime imports resolve the published package.

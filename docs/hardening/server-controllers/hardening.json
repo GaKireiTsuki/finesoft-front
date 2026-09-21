@@ -1,0 +1,384 @@
+{
+    "documentType": "codex-security.hardening-analysis",
+    "schemaVersion": "1.0",
+    "analysisId": "server-controllers-20260921",
+    "sourceEvidence": {
+        "kind": "source-and-user-design",
+        "targetRevision": "7d61dc5362098ecb025cf207c6d6a51565e27088",
+        "sourceDrift": "no source drift from the implementation revision; documentation and validation records are committed separately",
+        "documents": [
+            {
+                "path": "packages/core/src/intents/base-controller.ts",
+                "sha256": "ed82ab03920a9113e663f51ef4ecc028155155be842da1a0c4b3bdf054e6bb3f"
+            },
+            {
+                "path": "packages/web/src/application/controller-context.ts",
+                "sha256": "fdedabdfa5c9b16cfaa3df75f4e36f7ccfa314d0bad605990619c67ed52b7f7c"
+            },
+            {
+                "path": "packages/web/src/application/definition.ts",
+                "sha256": "e6e3381fe2f59410520bb11a6e4f09a480fd652d054fd78d1b8764ea844c8dfc"
+            },
+            {
+                "path": "packages/web/src/application/load-page.ts",
+                "sha256": "1af6bfc871a74fd25dc68a5a6f4f1ad48b92a64aa09f36c179f660f1d0d3d1d2"
+            },
+            {
+                "path": "packages/web/src/application/server-controller-proxy.ts",
+                "sha256": "0b9077430ed7fcf0ea66f41c1bdb92ea8a6c635056aeeb947937a0e55273bf88"
+            },
+            {
+                "path": "packages/ssr/src/server-controller.ts",
+                "sha256": "8f84b937524a5dd4acdcfc0f0d696b33f53856aa6cb9fcc034d23c9604f49a24"
+            },
+            {
+                "path": "packages/ssr/src/create-render.ts",
+                "sha256": "21c3a65ad2a51b06a36f539df62116bdc34d0fdfff96c50794c59ff2b482178a"
+            },
+            {
+                "path": "packages/server/src/server-controller-plugin.ts",
+                "sha256": "9c9e4ad567e30613d631feb71ef2fb504e63a9628ec99aeeaee5c60c6e090373"
+            },
+            {
+                "path": "packages/server/src/internal-fetch.ts",
+                "sha256": "e73ea449edffd11aa34db4fce81cf5ce26e03f56981afb181ce5255e30efd0f9"
+            },
+            {
+                "path": "packages/server/src/ssr-handler.ts",
+                "sha256": "85e893b706c9f2fda1e0a3853aaad8d7b42036f9214556dbde8b5d800bb3b5b9"
+            },
+            {
+                "path": "packages/server/src/controller-types.ts",
+                "sha256": "10b57ecf2425a4d2052b30caa5d64024beb97691d96d0669a8befe1bd3fb2cc4"
+            },
+            {
+                "path": "packages/server/test/server-controllers.test.ts",
+                "sha256": "da905c45abd79a9222aeaa83c611e36abf445a0c66cf3f1a9c351e791dcff721"
+            },
+            {
+                "path": "packages/server/test/server-controller-plugin.test.ts",
+                "sha256": "63b83bfa372e77c969b718723bf99ecf3e4695020b4878bc48947a0db03f5975"
+            },
+            {
+                "path": "packages/server/test/ssr-handler.test.ts",
+                "sha256": "758f9838589a371488ff6b78293f8f12501710aec505b03ff51b98716b1f30a4"
+            },
+            {
+                "path": "scripts/verify-server-controllers.mjs",
+                "sha256": "22fa4d7bb784c953234a001aac9d0e7e5f40be762cd3ccc5a58d70ed47b7bc14"
+            },
+            {
+                "path": "packages/server/test/internal-fetch.test.ts",
+                "sha256": "28b4b71c3548663b88b0aec72fe54ceb117bac936febe04eec274a8896da013b"
+            },
+            {
+                "path": "packages/server/src/vite-plugin.ts",
+                "sha256": "ed6bb780e52cf1a8b61757f01532b1138b4b83140e61777c173c8faeac25d63f"
+            },
+            {
+                "path": "templates/react/src/lib/controllers/product-detail.ts",
+                "sha256": "f1f7db1cfdb0ee406f8fb483e3634e5fa41dfb4705da1883510f1596c87e052f"
+            },
+            {
+                "path": "templates/react-minimal/src/lib/controllers/detail.ts",
+                "sha256": "fd4b0d040ac86967b39e1548d10117e1a22dbf91548feee29bcd01cac9ab33ed"
+            },
+            {
+                "path": "scripts/verify-template-renderers.mjs",
+                "sha256": "4a03290d925be02564d570523d4758c50ebb301224833b61b0bf8a23dbb92375"
+            },
+            {
+                "path": "packages/front/package.json",
+                "sha256": "add67db3bcf6c3d6a95fae06a8f913748ee7177782e48becfecd3eb95add9d84"
+            },
+            {
+                "path": "packages/front/src/index.ts",
+                "sha256": "b0da4707c27ebb340e69a795a7d3e2f96e3f3cbf44a171c55e9661029ce95142"
+            },
+            {
+                "path": "packages/front/src/index-node.ts",
+                "sha256": "e0d074da44b3e3ab45649b74ded3bc94012d7bcaa763c39aa57ca40819c9b640"
+            },
+            {
+                "path": "packages/front/src/portable.ts",
+                "sha256": "6113dd01d82a5891208f1333b70a94f6f4dbbca476b6b795d18bf61b075e489b"
+            },
+            {
+                "path": "packages/front/src/host-api.ts",
+                "sha256": "6a4d6c269cfc7bdad8af4d22de99bde63e0c6960f1ade51b88a0c5f7a10addba"
+            },
+            {
+                "path": "packages/front/src/native-api.ts",
+                "sha256": "a795b3c03b329cafbd462e98d0958a618a1745ea810979974ed1a1de97cc1a7d"
+            },
+            {
+                "path": "packages/front/src/native-contract.ts",
+                "sha256": "077e4d720b83704c4ae6fc65f62c50249a522096b44efc38aa357dfc2558e764"
+            },
+            {
+                "path": "packages/server/src/public-types.ts",
+                "sha256": "77081946f9ab4ac5c73fb8c08f52464d2ed408e468022f904d668e8e60d69e4f"
+            },
+            {
+                "path": "packages/server/src/native-bindings.ts",
+                "sha256": "3af96b87e5fb50b3963d760644b0514de0b28191974720c27afa9fe6c5ed7c88"
+            },
+            {
+                "path": "packages/server/test/public-types.test.ts",
+                "sha256": "88dd31f0adbdd7d40702e4fdc4a9b79d6eb16b6ecd4cb629692a23e6329cd0e7"
+            },
+            {
+                "path": "packages/server/test/native-bindings.test.ts",
+                "sha256": "88ff722c0196b92085d7f20dd513354cc52f51d9cb2e2553565393427627ec1e"
+            },
+            {
+                "path": "scripts/prepare-create-cli.mjs",
+                "sha256": "bbebaee317403adf7a46975d82e9bb8f4bbb9ba0524532c4b0100cbbe1b882eb"
+            },
+            {
+                "path": "scripts/verify-created-consumers.mjs",
+                "sha256": "7a105bd2757b654d6db7b774e7a0c868bf1ca6e2372f6242033e1edee7c395ac"
+            }
+        ],
+        "snapshotDigest": "sha256:02d6766367917f72759f16adacba33eb1c0f15b7732a38ded5910db99214e365"
+    },
+    "assessment": {
+        "outcome": "opportunities_identified",
+        "summary": "One class-based server execution boundary plus explicit request/response tools."
+    },
+    "constraints": {
+        "profile": "balanced",
+        "changeHorizons": ["incremental"],
+        "nonNegotiables": [
+            "Preserve shared controllers, DI, actions and public projection",
+            "Keep independent classes and generated compact input references",
+            "Do not expose server implementation to browser builds",
+            "Application code owns login state and explicitly selects request/response propagation"
+        ],
+        "assumptions": ["No production throughput or RSS budget was supplied."]
+    },
+    "opportunities": [
+        {
+            "opportunityId": "server-controllers",
+            "title": "Server execution owned by controller type",
+            "summary": "Class boundary and request context provide isolation and explicit transport tools.",
+            "diagnosis": "Shared imports require a compiler isolation boundary; separate Request/Response objects are connected only by explicit application choices.",
+            "evidence": [
+                {
+                    "claimType": "observed",
+                    "sourceKind": "source",
+                    "path": "packages/server/src/server-controller-plugin.ts",
+                    "claim": "Vite replaces server controller modules and rejects local private dependency imports."
+                },
+                {
+                    "claimType": "observed",
+                    "sourceKind": "test",
+                    "path": "scripts/verify-server-controllers.mjs",
+                    "claim": "Synthetic-secret artifact and real browser probes are repeatable; results are recorded separately."
+                }
+            ],
+            "desiredInvariants": [
+                "Private implementation stays server-side",
+                "Remote loads validate server-side",
+                "Request cookies and headers do not cross requests",
+                "Credential forwarding and copying internal response headers require explicit application code"
+            ],
+            "proposalPath": "proposals/server-controllers.md",
+            "options": [
+                {
+                    "optionId": "manual",
+                    "title": "Explicit manual endpoints",
+                    "kind": "baseline",
+                    "summary": "Explicit manual endpoints",
+                    "diagramPaths": {
+                        "before": "diagrams/server-controllers-before.mmd",
+                        "after": "diagrams/server-controllers-manual-after.mmd"
+                    },
+                    "findingCoverage": [],
+                    "tradeoffs": [
+                        {
+                            "dimension": "security",
+                            "direction": "neutral",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Per-caller source and credential discipline remains necessary.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "performance",
+                            "direction": "neutral",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Existing application transport decisions remain.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "memory",
+                            "direction": "neutral",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Application adapters own credential state.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "reliability",
+                            "direction": "neutral",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Repeated integration can diverge.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "operability",
+                            "direction": "neutral",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "No framework endpoint is added.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "migration",
+                            "direction": "neutral",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Existing base stays; sensitive logic uses explicit endpoints.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        }
+                    ],
+                    "residualRisks": [
+                        "Application authentication and output projection remain required.",
+                        "Computed paths and separately published assets are outside the static dependency boundary."
+                    ],
+                    "implementationReadiness": {
+                        "affectedComponents": [
+                            "packages/core/src/intents/base-controller.ts",
+                            "packages/web/src/application/controller-context.ts",
+                            "packages/web/src/application/definition.ts",
+                            "packages/web/src/application/load-page.ts",
+                            "packages/web/src/application/server-controller-proxy.ts",
+                            "packages/ssr/src/server-controller.ts",
+                            "packages/ssr/src/create-render.ts",
+                            "packages/server/src/server-controller-plugin.ts",
+                            "packages/server/src/internal-fetch.ts",
+                            "packages/server/src/ssr-handler.ts",
+                            "packages/server/src/controller-types.ts"
+                        ],
+                        "workPackages": [
+                            "Context and lifecycle reuse",
+                            "Compiler and remote transport",
+                            "Explicit request and response tools",
+                            "Artifact and browser verification"
+                        ],
+                        "acceptanceCriteria": [
+                            "Client output omits server implementation",
+                            "Remote server guards and cookies work",
+                            "Existing regression checks pass"
+                        ],
+                        "migrationNotes": [
+                            "Use request hosts for server pages; keep commands on explicit endpoints."
+                        ],
+                        "rollback": "Revert the complete feature after moving sensitive work to explicit server endpoints."
+                    }
+                },
+                {
+                    "optionId": "class-boundary",
+                    "title": "Class-based server execution",
+                    "kind": "structural",
+                    "summary": "Class-based server execution",
+                    "diagramPaths": {
+                        "before": "diagrams/server-controllers-before.mmd",
+                        "after": "diagrams/server-controllers-class-boundary-after.mmd"
+                    },
+                    "findingCoverage": [],
+                    "tradeoffs": [
+                        {
+                            "dimension": "security",
+                            "direction": "improves",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Whole-module substitution, private dependency rejection, server validation and request-scoped HTTP tools.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "performance",
+                            "direction": "mixed",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "No SSR network hop; browser server loads require HTTP and development adds cached AST analysis.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "memory",
+                            "direction": "increases",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Cached source ASTs and request-local cookie/header maps.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "reliability",
+                            "direction": "improves",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Existing execution/navigation owners are reused; unsupported mixed modules fail at build time.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "operability",
+                            "direction": "mixed",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "One private endpoint and paired artifacts require a request host.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        },
+                        {
+                            "dimension": "migration",
+                            "direction": "mixed",
+                            "confidence": "medium",
+                            "basis": "source-derived",
+                            "assessment": "Shared APIs remain; server modules must isolate runtime dependencies and value exports.",
+                            "validationPlan": "See verification.md and the repeatable controller/browser acceptance scripts."
+                        }
+                    ],
+                    "residualRisks": [
+                        "Application authentication and output projection remain required.",
+                        "Computed paths and separately published assets are outside the static dependency boundary."
+                    ],
+                    "implementationReadiness": {
+                        "affectedComponents": [
+                            "packages/core/src/intents/base-controller.ts",
+                            "packages/web/src/application/controller-context.ts",
+                            "packages/web/src/application/definition.ts",
+                            "packages/web/src/application/load-page.ts",
+                            "packages/web/src/application/server-controller-proxy.ts",
+                            "packages/ssr/src/server-controller.ts",
+                            "packages/ssr/src/create-render.ts",
+                            "packages/server/src/server-controller-plugin.ts",
+                            "packages/server/src/internal-fetch.ts",
+                            "packages/server/src/ssr-handler.ts",
+                            "packages/server/src/controller-types.ts"
+                        ],
+                        "workPackages": [
+                            "Context and lifecycle reuse",
+                            "Compiler and remote transport",
+                            "Explicit request and response tools",
+                            "Artifact and browser verification"
+                        ],
+                        "acceptanceCriteria": [
+                            "Client output omits server implementation",
+                            "Remote server guards and cookies work",
+                            "Existing regression checks pass"
+                        ],
+                        "migrationNotes": [
+                            "Use request hosts for server pages; keep commands on explicit endpoints."
+                        ],
+                        "rollback": "Revert the complete feature after moving sensitive work to explicit server endpoints."
+                    }
+                }
+            ],
+            "recommendedOptionId": "class-boundary",
+            "recommendation": "Selected by the user for page controllers; explicit endpoints remain suitable for commands."
+        }
+    ],
+    "openQuestions": []
+}

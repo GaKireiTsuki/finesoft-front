@@ -7,7 +7,7 @@ Tabs、Stack、Split 是不可变导航声明。页面引用生成操作目标�
 路径参数和 query 都在路由中声明类型，并分别读取为 `params.id`、`query.tab`。既有 `handler` 仍接收路径参数和执行上下文，第三个参数接收 query：
 
 ```ts
-import { definePage, defineWebApp, int, optional, oneOf } from "@finesoft/front/web";
+import { definePage, defineWebApp, int, optional, oneOf } from "@finesoft/front";
 
 export const product = definePage({
     id: "product",
@@ -54,7 +54,7 @@ export class ProductController extends BaseController {
 
 ```ts
 // app-definition.ts
-import { definePage, int } from "@finesoft/front/web";
+import { definePage, int } from "@finesoft/front";
 import { ProductController } from "./controllers/product";
 
 export const product = definePage({
@@ -104,7 +104,7 @@ export default defineConfig({
 });
 ```
 
-`vp dev` 启动后监听源码变更；`vp check` 与构建也会生成。初次打开项目先运行其中一个命令。将 `.finesoft/` 加入 `.gitignore`，提交类中的框架管理引用。直接使用 `tsc` 或自定义工具链时，先调用 `@finesoft/front/vite` 导出的 `generateControllerTypes({ root })`。`controllerTypes: false` 关闭自动维护。
+`vp dev` 启动后监听源码变更；`vp check` 与构建也会生成。初次打开项目先运行其中一个命令。将 `.finesoft/` 加入 `.gitignore`，提交类中的框架管理引用。直接使用 `tsc` 或自定义工具链时，先调用 `@finesoft/front` 导出的 `generateControllerTypes({ root })`。`controllerTypes: false` 关闭自动维护。
 
 `createBrowserApp({ definition, target })` 返回的 `app`、`createWebSession` 和 SSR 的 `render(app)` 都保留该定义的参数关联：
 
@@ -113,7 +113,7 @@ await app.perform({ kind: "push", intent: "product", params: { id: 42 } });
 // id: "42"、缺少 id 或未知 intent 都会产生编译错误。
 ```
 
-`route()` 和页面引用的 `.route()` 返回值也保留已声明的 codec 类型。保留工厂返回值的推导；不要用宽类型 `WebAppDefinition` 注解覆盖 `definition`。显式标为 `PageRoute` 的变量允许省略 codec，接收方类型也必须考虑未配置 codec 的情况；需要校验声明形状时可用 `satisfies PageRoute` 保留具体类型。组件需要显式声明应用类型时使用 `WebAppView<typeof definition>`（或 `ViewProps<Page, typeof definition>`），无需再写参数接口。通用 `WebAppView` 仍用于与任意应用兼容的布局和 Outlet。
+`route()` 和页面引用的 `.route()` 返回值也保留已声明的 codec 类型。保留工厂返回值的推导；不要用宽类型 `WebAppDefinition` 注解覆盖 `definition`。显式标为 `PageRoute` 的变量允许省略 codec，接收方类型也必须考虑未配置 codec 的情况；需要校验声明形状时可用 `satisfies PageRoute` 保留具体类型。组件需要显式声明应用类型时使用 `WebAppView<typeof definition>`（或 `ViewProps<ProductPage, typeof definition>`），无需再写参数接口。通用 `WebAppView` 仍用于与任意应用兼容的布局和 Outlet。
 
 字符串数组如 `routes: ["/items/:id", "/products/:id"]` 继续支持多个别名，未声明 codec 的路径参数为 `string`，`:tab?` 为可选字符串。不同别名的参数结构不同时，控制器接收联合类型，需要先判断对应属性。相同参数匹配多个别名时，结构化目标需提供 `url` 指明路径，例如 `product.leaf({ id: 42 }, { url: "/products/42" })`。
 
@@ -151,7 +151,7 @@ Query 的字段名不限于路径占位符；`optional` 允许缺失，`withDefa
 ## Tree / 导航树
 
 ```ts
-import { stack, tabs, split } from "@finesoft/front/web";
+import { stack, tabs, split } from "@finesoft/front";
 import { home, product } from "./pages";
 export const navigation = tabs({
     active: "catalog",
@@ -191,3 +191,5 @@ export const navigation = tabs({
 拒绝返回带 `rejection` 的未提交快照，空树也能表达拒绝。会话恢复会在替换 scope 和业务 slice 前检查是否提交。浏览器首屏拒绝显示错误页，不提交导航或记录页面访问；后续拒绝保留当前草稿。扁平和导航 SSR 都执行相同策略，不输出被拒绝页面的数据或公开缓存许可。CSR 空壳继续由浏览器执行导航。
 
 自有历史条目的后退或前进被拒绝时，History 补偿回已提交条目并保持滚动身份；附加元数据让刷新后仍可识别所有权与位置。缺少兼容元数据的外部条目会给出诊断，不猜测应跨越几个历史位置。异步策略应把 `signal` 传给自身 I/O；取消不会回滚已经完成的业务写入。
+
+底层宿主配置 `createWebSession({ createContext })` 时，回调直接返回 `NavigationContext`。执行作用域提供 DI 容器和取消信号，请求 cookie 与 header 由宿主上下文提供。会话默认使用应用的 `getErrorPage`，也可显式覆盖。

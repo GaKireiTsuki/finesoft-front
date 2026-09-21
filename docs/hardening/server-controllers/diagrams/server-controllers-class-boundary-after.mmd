@@ -1,0 +1,15 @@
+flowchart LR
+  Definition[Shared Web definition] --> Compiler[Class boundary in Vite]
+  Compiler --> Proxy[Browser Controller reference]
+  Compiler --> Real[Server Controller implementation]
+  Proxy --> Gate[Same-origin bounded POST]
+  Gate --> Pipeline[Route codecs, guards and policies]
+  SSR[SSR request] --> Pipeline
+  Pipeline --> Real
+  Request[Incoming request and read-only cookies] --> Real
+  Real -- Application-selected request headers --> API[Internal API calls]
+  API -- Response for application to handle --> Real
+  Real -- Explicit writes --> Headers[Outgoing response headers]
+  Real --> Public[Public data projection]
+  Public --> Browser[Browser page data]
+  Headers --> Response[Final response]

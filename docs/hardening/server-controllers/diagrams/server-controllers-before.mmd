@@ -1,0 +1,7 @@
+flowchart LR
+  Definition[Shared Web definition] --> Controller[Shared Controller implementation]
+  Controller --> Browser[Browser bundle]
+  Controller --> SSR[SSR execution]
+  SSR --> Internal[Internal API fetch]
+  Incoming[Incoming credentials] -. manual forwarding .-> Internal
+  Internal -. manual Set-Cookie propagation .-> Response[HTML response]

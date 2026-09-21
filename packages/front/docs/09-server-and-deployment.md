@@ -6,7 +6,7 @@ Portable data handlers return standard Responses. Bind the same operation to Nod
 
 ```ts
 import { defineApp, defineOperation, createRuntime, ExecutionError } from "@finesoft/front";
-import { defineEndpoint } from "@finesoft/front/http";
+import { defineEndpoint } from "@finesoft/front";
 export const double = defineOperation({
     id: "double",
     kind: "query",
@@ -36,8 +36,8 @@ export function createDataApp() {
 
 ```ts
 // node.ts
-import { startNodeHandler } from "@finesoft/front/node";
-import { createHttpHandler } from "@finesoft/front/http";
+import { startNodeHandler } from "@finesoft/front";
+import { createHttpHandler } from "@finesoft/front";
 import { createDataApp } from "./data-app";
 const options = createDataApp();
 const handler = createHttpHandler(options);
@@ -49,19 +49,19 @@ const server = await startNodeHandler({
 // await server.dispose();
 
 // worker.ts (a separate host entry)
-import { createHttpHandler } from "@finesoft/front/worker";
+import { createHttpHandler } from "@finesoft/front";
 import { createDataApp } from "./data-app";
 export default createHttpHandler(createDataApp);
 ```
 
-The HTTP owner executes requests through `handler.fetch(request, bindings, host)`. Node and Worker use the same object. A factory argument initializes once inside the first request, avoiding Runtime creation during workerd module evaluation; bindings, cancellation and task hosts remain per request. `createWorkerHandler` has been removed.
+The HTTP owner executes requests through `handler.fetch(request, bindings, host)`. Node and Worker use the same object; `startNodeHandler` takes the object rather than a detached function. A factory argument initializes once inside the first request, avoiding Runtime creation during workerd module evaluation; bindings, cancellation and task hosts remain per request. `createWorkerHandler` has been removed.
 
 ## Web build / 页面构建
 
 ```ts
 import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
-import { finesoftFrontViteConfig } from "@finesoft/front/vite";
+import { finesoftFrontViteConfig } from "@finesoft/front";
 export default defineConfig({
     plugins: [
         react(),
@@ -74,6 +74,8 @@ export default defineConfig({
 ```
 
 Node’s host requires `@hono/node-server`. Worker fetch has no Node compatibility requirement for the portable graph. DNS enforcement belongs to the Node host; an unavailable required capability fails explicitly. Browser networking uses an explicit browser policy. Streaming resources live until consumption, cancellation or failure. Background work uses `runManagedTask` and host `waitUntil`; detached tasks must not retain response-owned resources. The Vite adapters emit thin host modules using the same SSR response assembler; building locally does not deploy or publish.
+
+When `setup` is a module path, that module must `export default` its setup function. Development, preview and generated hosts use this explicit export; named functions are not discovered automatically.
 
 ## Static hosting boundary
 

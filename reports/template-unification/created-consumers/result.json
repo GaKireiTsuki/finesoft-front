@@ -1,48 +1,54 @@
 {
-  "tarball": "/Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries/reports/template-unification/packed/finesoft-front-0.5.1.tgz",
-  "tarballSha256": "65d369f29606dadf824b7653508823c40333d5a360470693cd3195c84e2de100",
+  "tarball": "/Users/megumi/Desktop/projects/finesoft-front/reports/application-boundaries/packed/finesoft-front-0.5.1.tgz",
+  "tarballSha256": "2b790bbd7cde8cec7b05c5f2639afa7acb120fc8cd51edb63e8a108dd60cd492",
   "result": [
     {
       "name": "react",
       "independentConfiguration": "passed",
       "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 143543
+      "development": "tsconfigPaths enabled; forced cold dependency scan, hydration and remote controller navigation passed",
+      "ssrBytes": 154035
     },
     {
       "name": "react-minimal",
       "independentConfiguration": "passed",
       "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 141008
+      "development": "tsconfigPaths enabled; forced cold dependency scan, hydration and remote controller navigation passed",
+      "ssrBytes": 150134
     },
     {
       "name": "vue",
       "independentConfiguration": "passed",
       "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 150969
+      "development": "tsconfigPaths enabled; forced cold dependency scan, hydration and remote controller navigation passed",
+      "ssrBytes": 161467
     },
     {
       "name": "vue-minimal",
       "independentConfiguration": "passed",
       "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 144267
+      "development": "tsconfigPaths enabled; forced cold dependency scan, hydration and remote controller navigation passed",
+      "ssrBytes": 153529
     },
     {
       "name": "svelte",
       "independentConfiguration": "passed",
       "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 205902
+      "development": "tsconfigPaths enabled; forced cold dependency scan, hydration and remote controller navigation passed",
+      "ssrBytes": 219171
     },
     {
       "name": "svelte-minimal",
       "independentConfiguration": "passed",
       "typecheck": "TypeScript and native component checker passed",
       "build": "installed local tarball and built client/SSR outside workspace",
-      "ssrBytes": 202119
+      "development": "tsconfigPaths enabled; forced cold dependency scan, hydration and remote controller navigation passed",
+      "ssrBytes": 214161
     }
   ]
 }

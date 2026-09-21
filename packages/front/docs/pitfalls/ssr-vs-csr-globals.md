@@ -1,15 +1,15 @@
 # Environment boundaries
 
-Import portable operations from the root; browser DOM, Node capabilities and Vite tooling are explicit entries.
+All APIs import from `@finesoft/front`; each API still requires its appropriate runtime. The package and compiler select internal implementations without loading unused UI or platform peers.
 
 ## Boundaries / 边界
 
 ```ts
 import { defineOperation } from "@finesoft/front";
-// Browser entry: @finesoft/front/browser
-// Node host entry: @finesoft/front/node
-// Worker host entry: @finesoft/front/worker
-// Build config only: @finesoft/front/vite
+// createBrowserApp: browser
+// startNodeHandler: Node
+// createHttpHandler: Request/Response host (Node or Worker)
+// finesoftFrontViteConfig: build configuration
 ```
 
 Do not read window/document/storage at module evaluation in shared application declarations. UI bindings select only the chosen framework. Node DNS and filesystem code must remain out of browser/Worker graphs. Test the built installed package in its actual runtime; source alias imports can hide missing artifacts.

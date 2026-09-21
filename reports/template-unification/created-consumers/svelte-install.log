@@ -1,22 +1,24 @@
 Progress: resolved 1, reused 0, downloaded 0, added 0
-Packages: +111
+Packages: +114
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Packages are cloned from the content-addressable store to the virtual store.
   Content-addressable store is at: /Users/megumi/Library/pnpm/store/v11
   Virtual store is at:             node_modules/.pnpm
-Progress: resolved 189, reused 111, downloaded 0, added 111, done
+Progress: resolved 192, reused 114, downloaded 0, added 114, done
 [WARN] Issues with peer dependencies found. Run "pnpm peers check" to list them.
 
 dependencies:
 + @finesoft/front 0.5.1
-+ svelte 5.57.0
++ svelte 5.57.1
 + vite <- @voidzero-dev/vite-plus-core 0.2.8 (0.3.3 is available)
 
 devDependencies:
++ @hono/node-server 2.1.1
 + @sveltejs/vite-plugin-svelte 7.3.0
++ @types/node 22.20.4 (26.6.2 is available)
 + hono 4.13.8
 + svelte-check 4.7.6
 + typescript 6.0.3 (7.0.2 is available)
 + vite-plus 0.2.8 (0.3.3 is available)
 
-Done in 658ms using pnpm v11.20.0
+Done in 675ms using pnpm v11.20.0

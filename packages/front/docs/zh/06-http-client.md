@@ -28,7 +28,7 @@ export class UserApi extends HttpClient {
 
 ```ts
 // Node 主机代码；浏览器和 Worker 模块不要引入此入口。
-import { nodeSafeFetchOptions } from "@finesoft/front/node";
+import { nodeSafeFetchOptions } from "@finesoft/front";
 const api = new UserApi({ baseUrl: "https://api.example.com", fetch, ...nodeSafeFetchOptions });
 ```
 

@@ -2,7 +2,7 @@
 
 > **Language:** English (this page) · **[简体中文](./zh/README.md)**
 
-Portable TypeScript execution with explicit Web, browser, SSR, HTTP and platform entries. Standard UI adapters support React, Vue and Svelte. Local artifact tests distinguish Node, workerd and browser Worker from an actual deployment.
+Portable TypeScript execution, Web, browser, SSR, HTTP and platform APIs through `@finesoft/front`. Standard UI adapters support React, Vue and Svelte. Local artifact tests distinguish Node, workerd and browser Worker from an actual deployment.
 
 ## Three entry points
 

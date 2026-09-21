@@ -41,7 +41,7 @@ The old navigation commands and forwarding methods are removed. All other tree o
 Pass `onModal(page, { app, snapshot })` to `createBrowserApp`, then call:
 
 ```ts
-import { makeFlowAction } from "@finesoft/front/web";
+import { makeFlowAction } from "@finesoft/front";
 await app.perform(makeFlowAction("/items/42", "modal"));
 ```
 

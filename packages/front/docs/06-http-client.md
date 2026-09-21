@@ -28,7 +28,7 @@ export class UserApi extends HttpClient {
 
 ```ts
 // Node host code; keep this import out of browser and Worker modules.
-import { nodeSafeFetchOptions } from "@finesoft/front/node";
+import { nodeSafeFetchOptions } from "@finesoft/front";
 const api = new UserApi({ baseUrl: "https://api.example.com", fetch, ...nodeSafeFetchOptions });
 ```
 

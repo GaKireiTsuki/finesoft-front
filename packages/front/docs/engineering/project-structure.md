@@ -34,7 +34,7 @@ Full additionally keeps its product data, mapper, HTTP client and guards under `
 
 All six templates use `BaseController`: classes in `lib/controllers/` implement business loading, while `app-definition.ts` registers factories with `definePage({ id, create: () => new HomeController() })` and reuses the returned `route()`, `leaf()` and `bindView()` references. `views.ts` binds native components, which receive the result through `page`.
 
-Import the controller from `@finesoft/front`, and Web page types and `markPublic` from `@finesoft/front/web`. Controllers are created for actual execution; entry drafts and global profile state belong to page instances and the application store respectively. The `getErrorPage` factory creates error pages. See [routes, controllers and typed pages](../02-routing-and-controllers.md) for parameters, DI, `fallback` and function handlers.
+Import controllers, Web page types and `markPublic` from `@finesoft/front`. Controllers are created for actual execution; entry drafts and global profile state belong to page instances and the application store respectively. The `getErrorPage` factory creates error pages. See [routes, controllers and typed pages](../02-routing-and-controllers.md) for parameters, DI, `fallback` and function handlers.
 
 ## State and locale
 

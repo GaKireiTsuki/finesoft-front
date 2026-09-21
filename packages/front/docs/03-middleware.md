@@ -5,7 +5,7 @@ URL, SSR and structured navigation use the same guarded page loader. Global, rou
 ## Guard / 守卫
 
 ```ts
-import { next, redirect, type BeforeLoadGuard } from "@finesoft/front/web";
+import { next, redirect, type BeforeLoadGuard } from "@finesoft/front";
 export const signedIn: BeforeLoadGuard = (context) =>
     context.getCookie("session")
         ? next()

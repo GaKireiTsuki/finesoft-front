@@ -6,16 +6,7 @@ This is `@finesoft/front`, a TypeScript framework built with Vite+ workspaces. P
 
 `core ← web ← browser / ssr`; `core ← server/http ← Node / Worker`. SSR response assembly uses the Web renderer through an explicit SSR entry. Vite owns build and deployment module generation. `front` bundles the private packages into isolated public entries.
 
-| Public entry | Responsibility |
-| --- | --- |
-| `@finesoft/front` | Portable operations, definitions, runtime, providers and utilities |
-| `/web` | Typed pages, routes, navigation, public projection and state |
-| `/browser` | Browser instance lifecycle, history, hydration and restore |
-| `/ssr` | Page rendering and standard Request/Response assembly |
-| `/http` | Portable data endpoints and response lifetime |
-| `/node`, `/worker` | Platform hosts and platform capabilities |
-| `/vite` | Vite plugin and thin deployment generators |
-| `/react`, `/vue`, `/svelte` | Native Outlet and snapshot subscriptions; optional peers |
+All public APIs import from `@finesoft/front`. Internal `portable`, Node, Vite and native UI modules remain separate physical build entries, selected through package conditions and the compiler. `Outlet("react" | "vue" | "svelte")` and `useSnapshot(renderer, app)` retain native behavior. The plugin maintains `.finesoft/front.d.ts` and an exact TypeScript `paths` mapping so only selected peers are resolved. Old public subpaths are not exported.
 
 `create-app` publishes the scaffolder; site, six templates and adversarial apps are private consumers. Consumer code imports only public front entries.
 
@@ -114,7 +105,7 @@ Release locally with `vp run changeset` followed by `vp run release`. The automa
 ### Exports
 
 - Private runtime packages build ESM/CJS with declarations; public front is ESM only.
-- Root is portable; environment/UI dependencies belong only to explicit subentries.
+- Public imports use one root; environment/UI dependencies remain in isolated internal implementations and are loaded only on selection.
 - `vite.config.ts` pack blocks are the active build settings. `deps.alwaysBundle` bundles private owners into front; declarations must not leak private workspace imports.
 - Actual local tarballs use `vp pm pack`; `vp pack` builds a library.
 

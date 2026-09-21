@@ -1,0 +1,7 @@
+flowchart LR
+  Browser[Shared Controller] --> Endpoint[Hand-written endpoint]
+  Endpoint --> Service[Private service]
+  SSR[SSR Controller] --> Service
+  Request[Request identity] --> Adapter[Manual credential and cookie adapter]
+  Adapter --> Endpoint
+  Adapter --> Response[Final response]

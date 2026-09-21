@@ -8,12 +8,15 @@
     "preview": "vp preview"
   },
   "dependencies": {
-    "@finesoft/front": "file:/Users/megumi/Desktop/projects/finesoft-front/.worktrees/application-boundaries/reports/template-unification/packed/finesoft-front-0.5.1.tgz",
+    "@finesoft/front": "file:/Users/megumi/Desktop/projects/finesoft-front/reports/application-boundaries/packed/finesoft-front-0.5.1.tgz",
     "vue": "^3.5.41"
   },
   "devDependencies": {
+    "@hono/node-server": "^2.1.0",
+    "@types/node": "^22.20.1",
     "@vitejs/plugin-vue": "^6.0.8",
     "hono": "^4.13.1",
+    "typescript": "^6.0.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.8",
     "vite-plus": "0.2.8"
   },

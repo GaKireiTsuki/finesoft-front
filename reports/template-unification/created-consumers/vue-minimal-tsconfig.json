@@ -13,7 +13,12 @@
         "skipLibCheck": true,
         "noEmit": true,
         "rootDir": ".",
-        "jsx": "preserve"
+        "jsx": "preserve",
+        "paths": {
+            "@finesoft/front": [
+                "./.finesoft/front.d.ts"
+            ]
+        }
     },
     "include": [
         "src/**/*",

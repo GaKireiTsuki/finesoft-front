@@ -7,7 +7,7 @@ Tabs, Stack and Split are immutable navigation declarations. Page references der
 Declare path and query types in the route and read them separately as `params.id` and `query.tab`. Existing handlers keep path parameters and context as the first two arguments; the third receives query:
 
 ```ts
-import { definePage, defineWebApp, int, optional, oneOf } from "@finesoft/front/web";
+import { definePage, defineWebApp, int, optional, oneOf } from "@finesoft/front";
 
 export const product = definePage({
     id: "product",
@@ -54,7 +54,7 @@ export class ProductController extends BaseController {
 
 ```ts
 // app-definition.ts
-import { definePage, int } from "@finesoft/front/web";
+import { definePage, int } from "@finesoft/front";
 import { ProductController } from "./controllers/product";
 
 export const product = definePage({
@@ -104,7 +104,7 @@ export default defineConfig({
 });
 ```
 
-`vp dev` watches source changes; `vp check` and builds also generate declarations. Run one of these commands when first opening a project. Ignore `.finesoft/` in Git and commit the managed source references. With standalone `tsc` or a custom toolchain, first call `generateControllerTypes({ root })` from `@finesoft/front/vite`. Set `controllerTypes: false` to disable maintenance.
+`vp dev` watches source changes; `vp check` and builds also generate declarations. Run one of these commands when first opening a project. Ignore `.finesoft/` in Git and commit the managed source references. With standalone `tsc` or a custom toolchain, first call `generateControllerTypes({ root })` from `@finesoft/front`. Set `controllerTypes: false` to disable maintenance.
 
 The app returned by `createBrowserApp({ definition, target })`, `createWebSession`, and the SSR `render(app)` callback retain the definition's parameter map:
 
@@ -113,7 +113,7 @@ await app.perform({ kind: "push", intent: "product", params: { id: 42 } });
 // A string id, missing id, or unknown intent produces a type error.
 ```
 
-`route()` and page reference `.route()` results retain their declared codec types. Keep the inferred factory return types instead of annotating `definition` with the broad `WebAppDefinition`. An explicit `PageRoute` annotation permits absent codecs, so inferred inputs must also account for that possibility; use `satisfies PageRoute` to check the declaration without erasing its concrete type. Components needing an explicit app type can use `WebAppView<typeof definition>` or `ViewProps<Page, typeof definition>` without repeating parameter interfaces. The default `WebAppView` remains suitable for generic layouts and Outlets.
+`route()` and page reference `.route()` results retain their declared codec types. Keep the inferred factory return types instead of annotating `definition` with the broad `WebAppDefinition`. An explicit `PageRoute` annotation permits absent codecs, so inferred inputs must also account for that possibility; use `satisfies PageRoute` to check the declaration without erasing its concrete type. Components needing an explicit app type can use `WebAppView<typeof definition>` or `ViewProps<ProductPage, typeof definition>` without repeating parameter interfaces. The default `WebAppView` remains suitable for generic layouts and Outlets.
 
 String arrays such as `routes: ["/items/:id", "/products/:id"]` still declare aliases. Unspecified path codecs produce strings; `:tab?` is optional. Different alias parameter shapes produce a union that the controller must narrow. When several aliases match the same parameters, provide `url` on the structured destination to select a path, for example `product.leaf({ id: 42 }, { url: "/products/42" })`.
 
@@ -151,7 +151,7 @@ Query names are not restricted to path placeholders. `optional` permits missing 
 ## Tree / 导航树
 
 ```ts
-import { stack, tabs, split } from "@finesoft/front/web";
+import { stack, tabs, split } from "@finesoft/front";
 import { home, product } from "./pages";
 export const navigation = tabs({
     active: "catalog",
@@ -187,7 +187,7 @@ All navigation uses `app.perform(action)`. URLs use `{ kind: "flow", url }`; str
 `defineWebApp({ beforeNavigate, beforeCommit })` adds optional whole-tree policies. Each policy in its array runs once per transaction, even when the target tree is empty. Definition policies run before controller-local policies. `beforeLoad` / `afterLoad` still run for each visible page.
 
 ```ts
-import { next, deny, type BeforeCommitPolicy } from "@finesoft/front/web";
+import { next, deny, type BeforeCommitPolicy } from "@finesoft/front";
 import { hasUnsavedDraft } from "./editor-state";
 export const preserveDraft: BeforeCommitPolicy = ({ from, candidate }) => {
     // Inspect application-owned draft state and both trees here.
@@ -206,3 +206,5 @@ Admission receives `from`, candidate `tree`, stable `transitionId`, active `exec
 A denial returns an uncommitted snapshot with `rejection`, including for empty trees. Session restore rejects it before replacing scopes or slices. Initial browser denial renders the error without committing navigation or recording a page visit; later denial preserves the displayed draft. Both flat and navigation SSR honor these policies and emit no rejected page data or public-cache permission. CSR shells still defer navigation to the browser.
 
 Owned back/forward rejection compensates to the committed history entry and restores its scroll identity. Additive history metadata preserves ownership and position across reloads. Entries without compatible ownership metadata are diagnosed; the framework cannot infer a safe traversal distance for external entries.
+
+Low-level hosts configuring `createWebSession({ createContext })` return a `NavigationContext` directly. The execution supplies its DI container and cancellation signal; request cookies and headers stay in the host context. The session uses the application's `getErrorPage` unless explicitly overridden.

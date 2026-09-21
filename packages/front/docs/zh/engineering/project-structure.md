@@ -34,7 +34,7 @@ Full 的商品数据、mapper、HTTP 客户端和守卫继续放在 `src/lib/`�
 
 六个模板都使用 `BaseController`：`lib/controllers/` 中的类实现业务加载，`app-definition.ts` 用 `definePage({ id, create: () => new HomeController() })` 注册工厂，并复用返回引用的 `route()`、`leaf()` 和 `bindView()`。`views.ts` 绑定原生组件，组件通过 `page` 接收结果。
 
-控制器从 `@finesoft/front` 导入，Web 页面类型和 `markPublic` 从 `@finesoft/front/web` 导入。控制器在实际执行时创建，页面草稿和全局资料分别交给页面实例与应用 store。错误页由 `getErrorPage` 工厂生成。完整的参数、DI、`fallback` 和函数 `handler` 用法见[路由、控制器与类型化页面](../02-routing-and-controllers.md)。
+控制器、Web 页面类型和 `markPublic` 统一从 `@finesoft/front` 导入。控制器在实际执行时创建，页面草稿和全局资料分别交给页面实例与应用 store。错误页由 `getErrorPage` 工厂生成。完整的参数、DI、`fallback` 和函数 `handler` 用法见[路由、控制器与类型化页面](../02-routing-and-controllers.md)。
 
 ## 状态与语言
 

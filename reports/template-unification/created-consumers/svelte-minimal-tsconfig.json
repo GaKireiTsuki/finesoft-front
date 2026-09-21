@@ -12,7 +12,12 @@
         "forceConsistentCasingInFileNames": true,
         "skipLibCheck": true,
         "noEmit": true,
-        "rootDir": "."
+        "rootDir": ".",
+        "paths": {
+            "@finesoft/front": [
+                "./.finesoft/front.d.ts"
+            ]
+        }
     },
     "include": [
         "src/**/*",
