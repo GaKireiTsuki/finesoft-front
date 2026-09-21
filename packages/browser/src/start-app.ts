@@ -34,6 +34,7 @@ import { createSessionBridge, type BrowserSession } from "./session-bridge";
 import { createWebStorage } from "./web-storage";
 import { createDomRestore, type DomRestore } from "./dom-restore";
 import { createBrowserContext } from "./middleware/context";
+import { inspectHydration } from "./hydration";
 
 export interface BrowserSessionConfig {
     readonly providers?: readonly SessionStateProvider[];
@@ -160,11 +161,17 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
     try {
         const initialUrl =
             config.url ?? (browserHistory ? win.location.pathname + win.location.search : "/");
+        const serverDataScript =
+            config.serverDataSource === undefined
+                ? target.querySelector<HTMLScriptElement>("script[data-fs-server-data]")
+                : config.serverDataSource;
+        // The fingerprint describes this exact container, never another app or the whole page.
+        const expectedDOM =
+            serverDataScript?.parentNode === target
+                ? serverDataScript.getAttribute("data-fs-dom")
+                : undefined;
         const wire = deserializeServerData({
-            script:
-                config.serverDataSource === undefined
-                    ? target.querySelector<HTMLScriptElement>("script[data-fs-server-data]")
-                    : config.serverDataSource,
+            script: serverDataScript,
             buildId: config.buildId,
         });
         const configuration = definition.configuration ?? {};
@@ -523,8 +530,20 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
         };
         target.addEventListener("click", onClick);
         cleanups.push(() => target.removeEventListener("click", onClick));
+        const hydration = inspectHydration(target, wire.status === "ready", expectedDOM);
+        if (hydration.changedDOM)
+            log.info(
+                hydration.shouldHydrate
+                    ? "SSR DOM changed before mount; retaining native hydration to avoid discarding browser state"
+                    : "SSR DOM changed before mount; rendering a fresh native root with the existing server data",
+                {
+                    source: "hydration",
+                    code: "dom-changed",
+                    recovery: hydration.shouldHydrate ? "deferred" : "native-mount",
+                },
+            );
         return Object.assign(controller, {
-            shouldHydrate: wire.status === "ready" && target.hasChildNodes(),
+            shouldHydrate: hydration.shouldHydrate,
             ready,
             dispose,
         });

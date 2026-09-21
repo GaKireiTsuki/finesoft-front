@@ -130,6 +130,66 @@ test("a native root acknowledges the first committed browser view", async () => 
     expect(attributes.has("data-fs-app")).toBe(false);
 });
 
+test("DOM recovery reuses SSR page data without executing the controller again", async () => {
+    const { target } = targetFixture();
+    const handler = vi.fn(() => ({ id: "home", pageType: "home", title: "Fresh" }));
+    const definition = defineWebApp({
+        id: "dom-recovery",
+        pages: routePages([{ id: "home", handler }], [{ path: "/", intentId: "home" }]),
+        getErrorPage: (_status, title) => ({ id: "error", pageType: "error", title }),
+    });
+    Object.assign(target.ownerDocument, { activeElement: null, getSelection: () => null });
+    Object.assign(target, {
+        scrollTop: 0,
+        scrollLeft: 0,
+        contains: () => false,
+        hasChildNodes: () => true,
+        childNodes: [],
+        removeChild: vi.fn(),
+        querySelectorAll: () => [
+            {
+                localName: "svg",
+                tagName: "svg",
+                closest: () => target,
+                getAttributeNames: () => ["data-unknown-tool"],
+                hasAttribute: () => false,
+            },
+        ],
+    });
+    const app = await createBrowserApp({
+        definition,
+        target,
+        history: "memory",
+        serverDataSource: {
+            parentNode: target,
+            getAttribute: () => "v1:modified",
+            textContent: JSON.stringify({
+                protocolVersion: 2,
+                buildId: "unbundled",
+                payload: {
+                    tree: { kind: "leaf", entryId: "ssr-home", intent: "home", params: {} },
+                    pages: [
+                        {
+                            entryId: "ssr-home",
+                            intent: { id: "home", params: {} },
+                            data: { id: "home", pageType: "home", title: "Server" },
+                        },
+                    ],
+                },
+            }),
+        } as unknown as HTMLScriptElement,
+    });
+    try {
+        expect(app.shouldHydrate).toBe(false);
+        expect(handler).not.toHaveBeenCalled();
+        expect(app.getSnapshot().entries[0].page.title).toBe("Server");
+        app.commit(app.getSnapshot().revision);
+        await app.ready;
+    } finally {
+        await app.dispose();
+    }
+});
+
 test("page type reset discards unmount change events after the native acknowledgement", async () => {
     const { target } = targetFixture();
     let pageType = "home";

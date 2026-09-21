@@ -8,4 +8,6 @@ Outlet subscribes to stable `AppSnapshot` values. EntryId keeps its wrapper stab
 
 SSR materializes public projections while request resources are alive and performs one native render. Hydration explicitly carries `{ tree, pages }`, with page results associated with entries. Protocol/build mismatches trigger fresh loading; persisted sessions have their own version. Denied data does not enter the wire.
 
+The standard SSR assembler fingerprints the initial DOM. Before native mounting, changed markup can select a fresh mount with the same SSR data when no protected browser state would be discarded. This does not require extension-specific rules. See [hydration recovery and its limits](./pitfalls/ssr-hydration-mismatch.md).
+
 CSR returns an HTML shell. Prerender produces static HTML. Runtime public HTML reuse still executes current guards and rendering, so it is not a render-skipping guarantee. During cleanup, await session disposal before unmounting the application's native root.

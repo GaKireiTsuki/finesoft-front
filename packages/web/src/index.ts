@@ -30,6 +30,7 @@ export {
 } from "./models/page";
 export { safeErrorPage, type SafeErrorPageOptions } from "./models/safe-error-page";
 export { PrefetchedIntents } from "./prefetched-intents/prefetched-intents";
+export { createHydrationDigest } from "./hydration-digest";
 export type { PrefetchedIntent } from "./prefetched-intents/prefetched-intents";
 export { route } from "./bootstrap/define-routes";
 export type { RenderMode } from "./bootstrap/define-routes";

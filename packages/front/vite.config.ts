@@ -58,6 +58,8 @@ export default defineConfig({
                 ...internal.map((name) => `@finesoft/${name}`),
                 "undici",
                 "magic-string",
+                "parse5",
+                "entities",
             ],
         },
     },

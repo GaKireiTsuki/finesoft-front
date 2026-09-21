@@ -1,6 +1,7 @@
 /**
  * injectSSRContent — 将 SSR 渲染结果注入 HTML 模板
  */
+import { stampHydrationDOM } from "./hydration";
 
 /** SSR HTML 模板占位符常量 */
 export const SSR_PLACEHOLDERS = {
@@ -42,7 +43,7 @@ export function injectSSRContent(options: InjectSSROptions): string {
         result = applyLocaleToHtml(result, locale);
     }
 
-    return result;
+    return stampHydrationDOM(result);
 }
 
 /**

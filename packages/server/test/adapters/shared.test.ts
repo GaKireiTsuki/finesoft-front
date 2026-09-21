@@ -321,7 +321,7 @@ describe("shared adapter helpers", () => {
             '<html lang="fr-FR" dir="ltr">',
         );
         expect(results.find((result) => result.url === "/blog")?.html).toContain(
-            '<script data-fs-server-data type="application/json">',
+            '<script data-fs-server-data type="application/json" data-fs-dom="v1:',
         );
         expect(warn).toHaveBeenCalledWith(
             "  [prerender] Failed to render /fr/blog:",

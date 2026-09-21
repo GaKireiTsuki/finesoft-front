@@ -10,6 +10,7 @@ catalog:
     "@types/node": ^22.20.1
     "@vitest/coverage-v8": 4.1.10
     miniflare: 5.20260911.0-alpha
+    parse5: ^8.0.1
     playwright: ^1.63.0
     typescript: ^6.0.3
     vite: npm:@voidzero-dev/vite-plus-core@0.2.8

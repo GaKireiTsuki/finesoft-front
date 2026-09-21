@@ -51,8 +51,8 @@ describe("SSR injection helpers", () => {
         expect(result).toContain("<style>.app{color:red}</style>");
         expect(result).toContain("<main>Hello</main>");
         expect(result).toContain('<link rel="preload">');
-        expect(result).toContain(
-            '<script data-fs-server-data type="application/json">{"ok":true}</script>',
+        expect(result).toMatch(
+            /<script data-fs-server-data type="application\/json" data-fs-dom="v1:[a-f0-9]+:[a-f0-9]+">\{"ok":true\}<\/script>/,
         );
     });
 
@@ -80,7 +80,9 @@ describe("SSR injection helpers", () => {
         expect(result).toContain('<html class="shell">');
         expect(result).not.toContain("<style>");
         expect(result).toContain("<main>Plain</main>");
-        expect(result).toContain('<script data-fs-server-data type="application/json">{}</script>');
+        expect(result).toMatch(
+            /<script data-fs-server-data type="application\/json" data-fs-dom="v1:[a-f0-9]+:[a-f0-9]+">\{\}<\/script>/,
+        );
         expect(result).not.toContain("<!--ssr-missing-->");
     });
 

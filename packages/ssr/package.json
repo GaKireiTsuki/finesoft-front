@@ -39,6 +39,7 @@
     },
     "dependencies": {
         "@finesoft/core": "workspace:*",
-        "@finesoft/web": "workspace:*"
+        "@finesoft/web": "workspace:*",
+        "parse5": "catalog:"
     }
 }
