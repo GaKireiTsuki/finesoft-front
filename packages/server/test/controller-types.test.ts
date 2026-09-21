@@ -12,8 +12,8 @@ import {
 import { finesoftFrontViteConfig } from "../src/vite-plugin";
 
 // These fixtures build real TypeScript programs. Cold compilation with coverage
-// can exceed five seconds, especially while other CI suites are running.
-vi.setConfig({ testTimeout: 15_000 });
+// exceeds 15 seconds on hosted CI runners while other suites are running.
+vi.setConfig({ testTimeout: 30_000 });
 
 const roots: string[] = [];
 const watchers: ReturnType<typeof createControllerTypeWatcher>[] = [];
