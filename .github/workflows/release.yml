@@ -69,14 +69,19 @@ jobs:
                   vp run release:auto:changeset
                   vp run version
                   vp install --lockfile-only --no-frozen-lockfile
-                  git add .changeset packages/*/package.json packages/*/CHANGELOG.md pnpm-lock.yaml
-                  git commit -m "chore(release): version packages"
 
             - name: Build release
               run: vp run -r build
 
             - name: Verify publish transforms
               run: vp exec node scripts/verify-publish-transforms.mjs
+
+            # The pre-commit hook loads the root Vite config and needs built packages.
+            - name: Commit release versions
+              if: github.event_name == 'push'
+              run: |
+                  git add .changeset packages/*/package.json packages/*/CHANGELOG.md pnpm-lock.yaml
+                  git commit -m "chore(release): version packages"
 
             # A normal fast-forward push must succeed before any package is published.
             # GITHUB_TOKEN pushes do not recursively trigger the push workflow.
