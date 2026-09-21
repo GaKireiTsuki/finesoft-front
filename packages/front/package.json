@@ -3,6 +3,11 @@
     "version": "0.5.1",
     "description": "Application runtime, routing, native UI and platform hosts through one public API",
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/GaKireiTsuki/finesoft-front.git",
+        "directory": "packages/front"
+    },
     "bin": {
         "finesoft-types": "./dist/typegen-cli.mjs"
     },
@@ -29,6 +34,10 @@
             "node": "./dist/index-node.mjs",
             "default": "./dist/index.mjs"
         }
+    },
+    "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org/"
     },
     "scripts": {
         "build": "vp pack && node ../../scripts/prepare-svelte-entry.mjs",

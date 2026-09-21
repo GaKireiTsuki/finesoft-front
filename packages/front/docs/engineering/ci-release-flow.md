@@ -17,9 +17,37 @@ vp exec node scripts/verify-runtime-boundaries.mjs
 
 ## Repository automation
 
-Quality runs both `vp check` and coverage. CodeQL includes `packages/{core,web,browser,ssr,server,front}/src/**`. The checked-in workflows under `.github/workflows/` are authoritative for triggers and release sequencing; organization permissions and branch rules are managed separately.
+Pull requests run Quality (`vp check` and `vp test --coverage`). A push to `main` starts Release, which calls the same Quality workflow and waits for both checks to pass. CodeQL runs independently over `packages/{core,web,browser,ssr,server,front}/src/**`.
 
-Changesets version the two public packages. A local build or tarball test does not publish, deploy, push a commit or validate an external environment. Follow the repository's release workflow and obtain the appropriate release authorization before performing those operations. This architecture migration changes no release workflow.
+Release checks out the tested commit, generates a patch changeset for both public packages, applies Changesets (including any explicit minor/major changesets), updates the lockfile and builds. It then pushes the version commit to `main` with the built-in `GITHUB_TOKEN` before publishing to npm. If another push advances `main`, publication stops; the newer push gets its own validation and release. The workflow never rebases an already-built artifact or overwrites newer commits. Git tags are pushed after npm publication succeeds.
+
+The publishing job uses a GitHub-hosted runner with `id-token: write`, no dependency cache and no npm token. Changesets invokes the repository's pnpm 11 through Vite+; pnpm supports npm OIDC and automatic provenance natively. Both public packages declare their source repository and public registry. `RELEASE_PUSH_TOKEN` and `NPM_TOKEN` are no longer used.
+
+### npm configuration
+
+In Settings for **each** of `@finesoft/front` and `@finesoft/create-app`, add a GitHub Actions trusted publisher:
+
+| Field                | Value                                                 |
+| -------------------- | ----------------------------------------------------- |
+| Organization or user | `GaKireiTsuki`                                        |
+| Repository           | `finesoft-front`                                      |
+| Workflow filename    | `release.yml`                                         |
+| Environment name     | Leave empty; the workflow does not use an environment |
+| Allow npm publish    | Enabled for this automatic release workflow           |
+
+Keep “Require two-factor authentication and disallow bypass 2fa tokens” selected; it is compatible with trusted publishing. This pipeline publishes directly, so a stage-only connection cannot authorize it. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/). Saving the connection alone does not prove publication works: verify the first Release run and the actual versions on npm.
+
+### Retry a failed release
+
+After fixing the cause, select **Release → Run workflow → main**, or run:
+
+```sh
+gh workflow run release.yml --ref main
+```
+
+Manual dispatch validates and builds the versions already in `main`; it does **not** create another changeset or bump versions. Changesets skips versions already present on npm, so partial publication can be retried. The tag step restores missing release tags. If failure occurred before the version commit reached `main`, retry the original push run while its commit is still the branch head, or push the correction to start a new release.
+
+Local versioning uses `vp run changeset` and `vp run version`. `vp run release` builds and publishes; `vp run release:publish` only publishes an existing build. A local build or tarball test does not publish, deploy, push a commit or validate an external environment.
 
 ## Application projects
 

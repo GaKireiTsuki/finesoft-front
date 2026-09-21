@@ -1,57 +1,59 @@
 name: Release
 
-# 单 workflow 内联发布：每次 push 到 main，本 workflow 内完成
-#   auto-changeset → version bump → build → npm publish → push 回 main
-# 不再依赖 changesets/action 的 release PR 二次合并触发链。
-#
-# 历史背景：之前用 changesets/action + auto-merge 时，release PR 被 GITHUB_TOKEN
-# 合并不会触发本 workflow（GitHub 安全策略：GITHUB_TOKEN push 不递归触发 workflow），
-# 导致 publish 步骤永远不跑。本设计去掉 release PR 这一中转。
-
 on:
     push:
         branches:
             - main
+    # Retry the versions already committed to main without another version bump.
+    workflow_dispatch:
 
-# 同一时间只允许一个 release 跑；并发的 push 排队执行（不取消），避免版本号竞态
-concurrency: release-${{ github.ref }}
+concurrency:
+    group: release-main
+    cancel-in-progress: false
+
+permissions:
+    contents: read
 
 env:
     CI: true
-    NPM_CONFIG_PROVENANCE: false
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+    quality:
+        name: Quality
+        if: github.ref == 'refs/heads/main'
+        uses: ./.github/workflows/quality.yml
+
     release:
-        name: Release
+        name: Publish packages
+        needs: quality
         runs-on: ubuntu-latest
-        # 防递归：bot 自己 push 的版本 commit 不再触发新一轮。
-        # 双保险，因 GITHUB_TOKEN push 本来就不会触发其它 workflow。
-        if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+        timeout-minutes: 30
         permissions:
             contents: write
+            id-token: write
         steps:
-            # 显式 checkout `main` 引用而非 trigger 时的 SHA：
-            # 配合下面的 concurrency queue，若并发 push 排队，第二个 run 启动时
-            # main 已是前一个 run 推送后的状态，避免 push 时 non-fast-forward。
-            #
-            # 用 fine-grained PAT (RELEASE_PUSH_TOKEN) 而非默认 GITHUB_TOKEN：
-            # repo ruleset 不允许 github-actions[bot] 作为 bypass actor（UI 搜不到该 system bot），
-            # 改用 admin user PAT 推送即可命中已有的 RepositoryRole=5 (admin) bypass。
-            # PAT 仅授予 Contents: Read & Write，权限范围最小化。
-            - name: Checkout main
+            # Build the same source revision that passed Quality.
+            - name: Checkout tested revision
               uses: actions/checkout@v5
               with:
-                  ref: main
+                  ref: ${{ github.sha }}
                   fetch-depth: 0
-                  persist-credentials: true
-                  token: ${{ secrets.RELEASE_PUSH_TOKEN }}
+
+            - name: Check main has not advanced
+              run: |
+                  git fetch origin main
+                  if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+                      echo "::error::main has advanced. Let the newer push run, or dispatch Release on main to retry."
+                      exit 1
+                  fi
 
             - name: Setup Vite+
               uses: voidzero-dev/setup-vp@v1
               with:
                   node-version: 24
-                  cache: true
+                  run-install: false
+                  cache: false
 
             - name: Install dependencies
               run: vp install --frozen-lockfile
@@ -61,158 +63,54 @@ jobs:
                   git config user.name "github-actions[bot]"
                   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-            - name: Configure npm auth
-              env:
-                  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-              run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-
-            # 双保险刷新：checkout 后到此 step 之间 main 仍可能被推新 commit
-            # （concurrency queue 也只是序列化本 workflow，不阻挡外部 push）。
-            # reset --hard origin/main 保证从最新 main 开始 bump，缩小 push race 窗口。
-            - name: Refresh to latest main
+            - name: Version packages
+              if: github.event_name == 'push'
               run: |
-                  git fetch origin main
-                  git reset --hard origin/main
-
-            # 自愈：若 main 上的 @finesoft/front 版本领先于 npm（前次 publish 失败留下的空洞），
-            # 先用当前 main 状态做一次 catch-up publish 把 npm 对齐。
-            # 用 semver-aware 比较：仅当 main > npm 时 catch-up；npm 领先则报错（异常状态）。
-            # changeset publish 会跳过 npm 上已存在的版本，因此幂等安全。
-            - name: Reconcile npm registry with main
-              id: reconcile
-              run: |
-                  LOCAL=$(node -p "require('./packages/front/package.json').version")
-                  REMOTE=$(npm view @finesoft/front version 2>/dev/null || echo "0.0.0")
-                  echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
-                  echo "remote=$REMOTE" >> "$GITHUB_OUTPUT"
-
-                  if [[ "$LOCAL" == "$REMOTE" ]]; then
-                      echo "catch_up=false" >> "$GITHUB_OUTPUT"
-                      echo "main and npm in sync at $LOCAL"
-                  else
-                      # sort -V 是 GNU 版本排序（semver-aware）；较大者在末尾
-                      HIGHER=$(printf '%s\n%s\n' "$LOCAL" "$REMOTE" | sort -V | tail -n1)
-                      if [[ "$HIGHER" == "$LOCAL" ]]; then
-                          echo "::notice::Catch-up publish: main=$LOCAL is ahead of npm=$REMOTE"
-                          echo "catch_up=true" >> "$GITHUB_OUTPUT"
-                      else
-                          echo "::error::npm ($REMOTE) is ahead of main ($LOCAL); manual investigation required"
-                          exit 1
-                      fi
-                  fi
-
-            - name: Catch-up publish (sync npm with main)
-              if: steps.reconcile.outputs.catch_up == 'true'
-              run: vp run release
-
-            # 为本次新提交生成 changeset
-            - name: Generate auto changeset
-              run: vp run release:auto:changeset
-
-            - name: Apply version bump
-              run: vp run version
-
-            - name: Detect bumped version
-              id: bump
-              run: |
-                  if git diff --quiet; then
-                      echo "::warning::Auto-changeset produced no version bump; skipping publish."
-                      echo "should_publish=false" >> "$GITHUB_OUTPUT"
-                  else
-                      NEW=$(node -p "require('./packages/front/package.json').version")
-                      echo "version=$NEW" >> "$GITHUB_OUTPUT"
-                      echo "should_publish=true" >> "$GITHUB_OUTPUT"
-                  fi
-
-            - name: Commit version bump
-              if: steps.bump.outputs.should_publish == 'true'
-              run: |
-                  git add -A
+                  vp run release:auto:changeset
+                  vp run version
+                  vp install --lockfile-only --no-frozen-lockfile
+                  git add .changeset packages/*/package.json packages/*/CHANGELOG.md pnpm-lock.yaml
                   git commit -m "chore(release): version packages"
 
-            - name: Build and publish to npm
-              if: steps.bump.outputs.should_publish == 'true'
-              run: vp run release
+            - name: Build release
+              run: vp run -r build
 
-            # Push 策略：
-            # - checkout(ref:main) + refresh(reset --hard origin/main) 已最大程度缩小 race window；
-            # - concurrency: release-${{ github.ref }} 序列化本 workflow 的并发 run；
-            # - changeset publish 对 npm 上已存在的版本自动 skip（idempotent），
-            #   所以即使 push 失败、下次 run 重做也无副作用；
-            # - 极端 race（外部并行 push 或 GitHub API 延迟）下首次 push 失败时
-            #   做有限次 retry：fetch + reset 后重新 cherry-pick 文件变更并重 publish。
-            #   重 publish 仍然 idempotent。
-            - name: Push commit and tags to main (with rebase retry)
-              if: steps.bump.outputs.should_publish == 'true'
+            - name: Verify publish transforms
+              run: vp exec node scripts/verify-publish-transforms.mjs
+
+            # A normal fast-forward push must succeed before any package is published.
+            # GITHUB_TOKEN pushes do not recursively trigger the push workflow.
+            - name: Push version commit to main
+              run: git push origin HEAD:main
+
+            # pnpm 11 (selected by vp/Changesets) supports npm OIDC natively.
+            # Both npm packages must trust this repository's release.yml workflow.
+            - name: Publish with npm trusted publishing
+              id: publish
               env:
-                  NEW_VERSION: ${{ steps.bump.outputs.version }}
+                  NPM_CONFIG_PROVENANCE: true
+              run: vp run release:publish
+
+            # Recover missing tags too, including a retry after npm publish succeeded.
+            - name: Push release tags
+              id: tags
               run: |
-                  set -e
+                  vp run changeset tag
+                  git push origin --tags
 
-                  push_once() {
-                      git push --follow-tags origin HEAD:main
-                  }
-
-                  if push_once; then
-                      echo "Pushed $NEW_VERSION on first attempt"
-                      exit 0
-                  fi
-
-                  for attempt in 2 3 4; do
-                      echo "::warning::Push attempt $((attempt - 1)) failed; rebasing onto latest origin/main"
-
-                      # 保存版本变更对应的文件清单
-                      CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
-
-                      # 拉最新 main 并 stash 我们的 commit
-                      git fetch origin main
-                      git reset --soft origin/main
-
-                      # 检查 main 是否已经包含该版本（可能并发 run 抢先 push 了相同版本）
-                      REMOTE_VERSION=$(git show HEAD:packages/front/package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
-                      if [[ "$REMOTE_VERSION" == "$NEW_VERSION" ]]; then
-                          echo "::notice::origin/main already at $NEW_VERSION (parallel run pushed); accepting upstream"
-                          # 丢弃我们的本地变更
-                          git checkout -- .
-                          exit 0
-                      fi
-
-                      # main 跑前了但不是我们这个版本——重新 stage 我们的文件并提交在新 main 之上
-                      git add -A
-                      if git diff --cached --quiet; then
-                          echo "::warning::No file changes after rebase; nothing to commit"
-                          exit 0
-                      fi
-                      git commit -m "chore(release): version packages"
-
-                      if push_once; then
-                          echo "Pushed $NEW_VERSION on attempt $attempt"
-                          exit 0
-                      fi
-                  done
-
-                  echo "::error::Push failed after retries. npm has @finesoft/front@$NEW_VERSION published but main HEAD was not updated."
-                  echo "::error::Next push to main will trigger reconcile and self-heal."
-                  exit 1
-
-            - name: Summarize release result
+            - name: Summarize release
               if: always()
               env:
-                  CATCH_UP: ${{ steps.reconcile.outputs.catch_up }}
-                  LOCAL: ${{ steps.reconcile.outputs.local }}
-                  REMOTE: ${{ steps.reconcile.outputs.remote }}
-                  NEW_VERSION: ${{ steps.bump.outputs.version }}
-                  PUBLISHED: ${{ steps.bump.outputs.should_publish }}
+                  PUBLISH_RESULT: ${{ steps.publish.outcome }}
+                  TAGS_RESULT: ${{ steps.tags.outcome }}
               run: |
                   {
-                      echo "## Release workflow"
-                      echo
-                      if [[ "$CATCH_UP" == "true" ]]; then
-                          echo "- Reconciled npm: published \`$LOCAL\` to catch up with main (npm was at \`$REMOTE\`)"
-                      fi
-                      if [[ "$PUBLISHED" == "true" ]]; then
-                          echo "- Published \`@finesoft/front@$NEW_VERSION\` and pushed version commit back to main"
+                      echo "## Release"
+                      echo "- npm publish: ${PUBLISH_RESULT:-not run}"
+                      echo "- Git tags: ${TAGS_RESULT:-not run}"
+                      if [[ "$PUBLISH_RESULT" == "success" && "$TAGS_RESULT" == "success" ]]; then
+                          node -e 'for (const dir of ["front", "create-app"]) { const p = require(`./packages/${dir}/package.json`); console.log(`- ${p.name}@${p.version}`); }'
                       else
-                          echo "- No version bump produced; nothing published"
+                          echo "- After resolving the failure, run Release manually on main to retry the committed versions."
                       fi
                   } >> "$GITHUB_STEP_SUMMARY"

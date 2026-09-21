@@ -33,6 +33,7 @@ jobs:
               uses: voidzero-dev/setup-vp@v1
               with:
                   node-version: 24
+                  run-install: false
                   cache: true
 
             - name: Initialize CodeQL

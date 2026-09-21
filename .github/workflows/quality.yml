@@ -1,13 +1,11 @@
 name: Quality
 
 on:
-    push:
-        branches:
-            - main
     pull_request:
     workflow_dispatch:
+    workflow_call:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency: quality-${{ github.workflow }}-${{ github.ref }}
 
 permissions:
     contents: read
@@ -28,6 +26,7 @@ jobs:
               uses: voidzero-dev/setup-vp@v1
               with:
                   node-version: 24
+                  run-install: false
                   cache: true
 
             - name: Install dependencies
@@ -47,6 +46,7 @@ jobs:
               uses: voidzero-dev/setup-vp@v1
               with:
                   node-version: 24
+                  run-install: false
                   cache: true
 
             - name: Install dependencies

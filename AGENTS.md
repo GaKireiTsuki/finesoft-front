@@ -81,7 +81,7 @@ vp run -r build               # Build all packages in dependency order
 vp ready                      # Alias: fmt + lint + build (full validation)
 ```
 
-Release locally with `vp run changeset` followed by `vp run release`. The automated release workflow versions and publishes both `@finesoft/front` and `@finesoft/create-app`; `core`, `browser`, `ssr`, `server`, `site`, templates, and the adversarial app remain private.
+Release locally with `vp run changeset`, `vp run version`, then `vp run release`. On a main push, Release calls Quality before versioning, building, pushing the version commit with `GITHUB_TOKEN` and publishing both `@finesoft/front` and `@finesoft/create-app` through npm OIDC. Manual Release dispatch retries the committed versions without another bump. Both npm packages must trust `release.yml`; no PAT or npm token is used. `core`, `browser`, `ssr`, `server`, `site`, templates, and the adversarial app remain private.
 
 ## Code Style
 
