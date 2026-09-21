@@ -1,4 +1,4 @@
-import { type AfterLoadGuard, next, rewrite } from "@finesoft/front/web";
+import { type AfterLoadGuard, next, rewrite } from "@finesoft/front";
 
 /**
  * SEO guard — normalizes URLs after data load.

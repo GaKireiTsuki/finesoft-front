@@ -1,5 +1,5 @@
 import { appId } from "./config";
-import { definePage, defineWebApp, int, str, withDefault } from "@finesoft/front/web";
+import { definePage, defineWebApp, int, str, withDefault } from "@finesoft/front";
 import { AboutController } from "./lib/controllers/about";
 import { HomeController } from "./lib/controllers/home";
 import { ProductDetailController } from "./lib/controllers/product-detail";

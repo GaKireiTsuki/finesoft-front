@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { Outlet, useSnapshot, type WebAppView } from "@finesoft/front/vue";
+import { Outlet as selectOutlet, useSnapshot, type WebAppView } from "@finesoft/front";
 import { onMounted, onUnmounted, ref } from "vue";
 import { TAB_LABELS } from "./lib/navigation";
 import { views } from "./views";
+const Outlet = selectOutlet("vue");
 
 defineOptions({ inheritAttrs: false });
 const { app } = defineProps<{ app: WebAppView }>();
-const snapshot = useSnapshot(app);
+const snapshot = useSnapshot("vue", app);
 // Start empty on both server and client; restore the profile after hydration.
 const name = ref("");
 let unregister: (() => void) | undefined;

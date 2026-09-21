@@ -1,4 +1,4 @@
-import { finesoftFrontViteConfig } from "@finesoft/front/vite";
+import { finesoftFrontViteConfig } from "@finesoft/front";
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, lazyPlugins } from "vite-plus";
 

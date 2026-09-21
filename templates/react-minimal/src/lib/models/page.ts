@@ -1,4 +1,4 @@
-import type { BasePage } from "@finesoft/front/web";
+import type { BasePage } from "@finesoft/front";
 
 export interface FeedItem {
     readonly id: string;

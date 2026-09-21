@@ -1,6 +1,6 @@
 import { renderToString } from "react-dom/server";
 import { createElement } from "react";
-import { createSSRRender, serializeServerData } from "@finesoft/front/ssr";
+import { createSSRRender, serializeServerData } from "@finesoft/front";
 import ReactApp from "./ReactApp.tsx";
 import { definition } from "./definition";
 export async function render(url: string, structured = false) {

@@ -1,4 +1,4 @@
-import type { RouteAddOptions } from "@finesoft/front/web";
+import type { RouteAddOptions } from "@finesoft/front";
 
 export interface SampleRoute {
     pattern: string;

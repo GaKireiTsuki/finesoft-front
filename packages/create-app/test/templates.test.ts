@@ -15,7 +15,7 @@ test.each(["react", "react-minimal", "vue", "vue-minimal", "svelte", "svelte-min
         expect(main).toContain("./App");
         expect(
             read("src/App." + (ui === "react" ? "tsx" : ui === "vue" ? "vue" : "svelte")),
-        ).toContain(`@finesoft/front/${ui}`);
+        ).toContain(`selectOutlet("${ui}")`);
         const ssr = read("src/ssr.ts");
         expect(ssr).toContain("app-definition");
         expect(ssr).toContain("./App");
@@ -90,7 +90,8 @@ test.each(frameworks.flatMap((framework) => [framework, framework + "-minimal"])
         const root = templates + name + "/";
         const config = JSON.parse(readFileSync(root + "tsconfig.json", "utf8"));
         expect(config.extends).toBeUndefined();
-        expect(config.compilerOptions.paths).toBeUndefined();
+        expect(Object.keys(config.compilerOptions.paths)).toEqual(["@finesoft/front"]);
+        expect(config.compilerOptions.paths["@finesoft/front"]).toEqual(["./.finesoft/front.d.ts"]);
         for (const file of sourceFiles(root + "src/")) {
             const source = readFileSync(root + "src/" + file, "utf8");
             expect(source, file).not.toMatch(
@@ -101,7 +102,7 @@ test.each(frameworks.flatMap((framework) => [framework, framework + "-minimal"])
                 file.startsWith("lib/models/") ||
                 file === "app-definition.ts"
             ) {
-                expect(source, file).not.toContain("@finesoft/front/browser");
+                expect(source, file).not.toMatch(/from ["']@finesoft\/front\//);
                 expect(source, file).not.toMatch(/from ["'](?:react|vue|svelte)["']/);
             }
         }

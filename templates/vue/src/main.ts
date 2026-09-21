@@ -1,4 +1,4 @@
-import { createBrowserApp } from "@finesoft/front/browser";
+import { createBrowserApp } from "@finesoft/front";
 import { createApp, createSSRApp } from "vue";
 import { app } from "./app-definition";
 import App from "./App.vue";

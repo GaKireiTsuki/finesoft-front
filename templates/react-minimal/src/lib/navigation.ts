@@ -1,4 +1,4 @@
-import { isStackNode, isTabsNode, type NavigationSnapshot } from "@finesoft/front/web";
+import { isStackNode, isTabsNode, type NavigationSnapshot } from "@finesoft/front";
 
 export const TAB_LABELS: Readonly<Record<string, string>> = { home: "Feed", notes: "Notes" };
 

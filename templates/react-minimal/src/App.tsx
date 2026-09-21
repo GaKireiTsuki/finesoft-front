@@ -1,9 +1,10 @@
-import { Outlet, useSnapshot, type WebAppView } from "@finesoft/front/react";
+import { Outlet as selectOutlet, useSnapshot, type WebAppView } from "@finesoft/front";
 import { useLayoutEffect, useRef, useState } from "react";
 import { TAB_LABELS } from "./lib/navigation";
 import { views } from "./views";
+const Outlet = selectOutlet("react");
 export default function App({ app }: { readonly app: WebAppView }) {
-    const snapshot = useSnapshot(app);
+    const snapshot = useSnapshot("react", app);
     // Start empty on both server and client; restore the profile after hydration.
     const [name, setName] = useState("");
     const current = useRef(name);

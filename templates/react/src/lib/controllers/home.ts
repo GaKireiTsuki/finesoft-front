@@ -1,6 +1,6 @@
 import { PRODUCTS } from "../data/products";
 import { BaseController, type ControllerInput } from "@finesoft/front";
-import { markPublic, makeFlowAction } from "@finesoft/front/web";
+import { markPublic, makeFlowAction } from "@finesoft/front";
 import type { HomePage, ProductShelf } from "../models/product";
 
 export class HomeController extends BaseController<

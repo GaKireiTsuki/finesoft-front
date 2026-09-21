@@ -133,13 +133,15 @@ function checkGraph(file) {
         `UI global in ${file.pathname}`,
     );
 }
-for (const entry of ["index", "http", "worker"])
-    checkGraph(new URL(`../packages/front/dist/${entry}.mjs`, import.meta.url));
+// The unified package root exposes Web APIs too. Data-only consumer bundles must
+// still eliminate those owners, including on Workers without Node compatibility.
+for (const entry of ["node/business", "worker/worker"])
+    checkGraph(new URL(`../adversarial/runtime-app/dist/${entry}.mjs`, import.meta.url));
 const workerSource = readFileSync(
     new URL("../adversarial/runtime-app/dist/worker/worker.mjs", import.meta.url),
     "utf8",
 );
 assert.doesNotMatch(workerSource, /(?:from|import)\s*["'](?:node:|hono|vite|react|vue|svelte)/);
 console.log(
-    `portable built entry graph: ${visited.size} modules, no external Node/Hono/Vite/UI imports or UI globals`,
+    `bundled data application graph: ${visited.size} modules, no external Node/Hono/Vite/UI imports or UI globals`,
 );

@@ -1,5 +1,5 @@
 import { BaseController, type ControllerInput } from "@finesoft/front";
-import type { BasePage } from "@finesoft/front/web";
+import type { BasePage } from "@finesoft/front";
 
 export class HomeController extends BaseController<
     ControllerInput<Record<string, string>>,

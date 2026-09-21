@@ -1,5 +1,5 @@
 import { BaseController, type ControllerInput } from "@finesoft/front";
-import { markPublic } from "@finesoft/front/web";
+import { markPublic } from "@finesoft/front";
 import type { AboutPage } from "../models/product";
 
 export class AboutController extends BaseController<

@@ -1,8 +1,9 @@
 <script lang="ts">
-import { Outlet, type WebAppView } from "@finesoft/front/svelte";
+import { Outlet as selectOutlet, type WebAppView } from "@finesoft/front";
 import { setContext, untrack } from "svelte";
 import Other from "./SvelteOther.svelte";
 import Probe from "./SvelteProbe.svelte";
+const Outlet = selectOutlet("svelte");
 let { app }: { app: WebAppView } = $props();
 let locale = $state({ value: untrack(() => app.locale?.lang ?? "missing") });
 setContext("native-locale", locale);

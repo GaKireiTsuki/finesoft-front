@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ViewProps } from "@finesoft/front/vue";
+import type { ViewProps } from "@finesoft/front";
 import { computed } from "vue";
 import type { HomePage } from "../lib/models/page";
 import { getHomeLocale } from "../lib/locale";

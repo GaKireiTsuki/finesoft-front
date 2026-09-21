@@ -1,6 +1,6 @@
 import { render as renderSvelte } from "svelte/server";
-import { createSSRRender } from "@finesoft/front/ssr";
-export { serializeServerData } from "@finesoft/front/ssr";
+import { createSSRRender } from "@finesoft/front";
+export { serializeServerData } from "@finesoft/front";
 import App from "./SvelteApp.svelte";
 import { definition } from "./definition";
 export const render = createSSRRender({

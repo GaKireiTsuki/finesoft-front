@@ -8,7 +8,7 @@ import {
     type BeforeLoadGuard,
     type MiddlewareResult,
     type NavigationContext,
-} from "@finesoft/front/web";
+} from "@finesoft/front";
 import { computed, reactive, ref } from "vue";
 import Pipeline from "../primitives/Pipeline.vue";
 

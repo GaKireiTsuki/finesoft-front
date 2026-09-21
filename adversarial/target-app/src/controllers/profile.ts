@@ -1,5 +1,5 @@
 import { BaseController, type ControllerInput } from "@finesoft/front";
-import { markPublic, type BasePage } from "@finesoft/front/web";
+import { markPublic, type BasePage } from "@finesoft/front";
 
 interface ProfileParams extends Record<string, string | undefined> {
     userId?: string;

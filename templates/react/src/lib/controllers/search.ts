@@ -1,6 +1,6 @@
 import { PRODUCTS } from "../data/products";
 import { BaseController } from "@finesoft/front";
-import { markPublic } from "@finesoft/front/web";
+import { markPublic } from "@finesoft/front";
 import type { SearchPage } from "../models/product";
 import type { SearchControllerInput as Input } from "../../../.finesoft/controller-types";
 

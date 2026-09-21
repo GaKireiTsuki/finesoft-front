@@ -1,4 +1,4 @@
-import { definePage, defineWebApp } from "@finesoft/front/web";
+import { definePage, defineWebApp } from "@finesoft/front";
 import { HomeController } from "./controllers/home";
 import { ImageProxyController } from "./controllers/image-proxy";
 import { AdminSecretsController } from "./controllers/admin-secrets";

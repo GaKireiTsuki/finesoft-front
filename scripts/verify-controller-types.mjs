@@ -48,6 +48,7 @@ try {
         path.join(root, "package.json"),
         JSON.stringify({
             name: "controller-types-probe",
+            devDependencies: { vite: "*", hono: "*", "@types/node": "*" },
             type: "module",
             packageManager: "pnpm@11.20.0",
         }),
@@ -70,7 +71,7 @@ try {
     fs.writeFileSync(
         path.join(root, "vite.config.ts"),
         `import { defineConfig, lazyPlugins } from "vite-plus";
-import { finesoftFrontViteConfig } from "@finesoft/front/vite";
+import { finesoftFrontViteConfig } from "@finesoft/front";
 const front = finesoftFrontViteConfig({controllerTypes:{root:import.meta.dirname}});
 export default defineConfig({plugins:lazyPlugins(()=>[front]),lint:{options:{typeCheck:true,typeAware:true}}});\n`,
     );
@@ -89,7 +90,7 @@ export class ItemController extends BaseController {
     );
     fs.writeFileSync(
         routes,
-        `import {definePage,int,str} from "@finesoft/front/web";
+        `import {definePage,int,str} from "@finesoft/front";
 import {ItemController} from "./controller";
 export const page=definePage({id:"item",routes:[{path:"/items/:id",params:{id:int()},query:{q:str()}}],create:()=>new ItemController()});\n`,
     );

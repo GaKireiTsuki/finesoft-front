@@ -1,4 +1,4 @@
-import type { BasePage } from "@finesoft/front/web";
+import type { BasePage } from "@finesoft/front";
 interface BaseItem {
     readonly id: string;
 }

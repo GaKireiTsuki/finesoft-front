@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { preview, createServer } from "vite-plus";
+import { preview, createServer, createLogger } from "vite-plus";
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -76,6 +76,17 @@ async function open(page, url) {
     return response;
 }
 
+function isControllerResponse(response) {
+    return new URL(response.url()).pathname === "/__finesoft/controller";
+}
+
+async function checkProductCookie(page, id) {
+    const cookie = (await page.context().cookies()).find(({ name }) => name === "last_product");
+    assert.equal(cookie?.value, id);
+    assert.equal(cookie.httpOnly, true);
+    assert.ok(!(await page.evaluate(() => document.cookie)).includes("last_product"));
+}
+
 try {
     for (const name of [
         "react",
@@ -85,18 +96,34 @@ try {
         "svelte",
         "svelte-minimal",
     ]) {
+        const dist = root + "templates/" + name + "/dist/";
+        const marker = name.endsWith("-minimal") ? "x-demo-request-method" : "last_product";
+        assert.ok((await fs.readFile(dist + "server/ssr.js", "utf8")).includes(marker));
+        for (const file of await fs.readdir(dist + "client", { recursive: true })) {
+            if (/\.(js|map|html)$/.test(file))
+                assert.ok(
+                    !(await fs.readFile(dist + "client/" + file, "utf8")).includes(marker),
+                    name + "/" + file + " contains server controller implementation",
+                );
+        }
         const server = await preview({
             root: root + "templates/" + name,
             preview: { port: 5198, strictPort: true, host: "127.0.0.1" },
         });
         const page = await browser.newPage();
         const errors = captureErrors(page);
+        let remoteCalls = 0;
+        page.on("request", (request) => {
+            if (isControllerResponse(request)) remoteCalls++;
+        });
         try {
             const base = "http://127.0.0.1:5198";
             const contents = {};
             if (name.endsWith("-minimal")) {
                 const response = await open(page, base + "/item/2");
                 assert.ok((await response.text()).includes("Item 2"));
+                assert.equal(await response.headerValue("x-demo-request-method"), "GET");
+                assert.equal(remoteCalls, 0, "hydration must reuse the SSR result");
                 await page.locator('input[name="note"]').fill("retained detail");
                 await page.locator('input[placeholder="anon"]').fill("Alice");
                 await page.locator('input[placeholder="anon"]').blur();
@@ -134,9 +161,13 @@ try {
                     path: evidence + "/" + name + "-home.png",
                     fullPage: true,
                 });
+                const loaded = page.waitForResponse(isControllerResponse);
                 await page
                     .getByRole("button", { name: "Session restoration", exact: true })
                     .click();
+                const remote = await loaded;
+                assert.equal(remote.status(), 200);
+                assert.equal(await remote.headerValue("x-demo-request-method"), "POST");
                 await page.getByRole("heading", { name: "Item 2", exact: true }).waitFor();
                 assert.equal(await page.locator('input[name="note"]').inputValue(), "");
                 contents.detail = await captureView(page.locator(".page:visible"));
@@ -154,6 +185,10 @@ try {
             } else {
                 const response = await open(page, base + "/products/2");
                 assert.ok((await response.text()).includes("Product 2"));
+                assert.equal(await response.headerValue("cache-control"), "private, no-store");
+                assert.match(await response.headerValue("set-cookie"), /last_product=2;/);
+                await checkProductCookie(page, "2");
+                assert.equal(remoteCalls, 0, "hydration must reuse the SSR result");
                 await page.getByRole("heading", { name: "Product 2", exact: true }).waitFor();
                 contents.detail = await captureView(page.locator(".page:visible"));
                 await page.evaluate(() => {
@@ -190,8 +225,13 @@ try {
                     path: evidence + "/" + name + "-home.png",
                     fullPage: true,
                 });
-                await page.locator(".product-card").nth(1).getByRole("link").click();
-                await page.getByRole("heading", { name: "Product 2", exact: true }).waitFor();
+                const loaded = page.waitForResponse(isControllerResponse);
+                await page.locator(".product-card").first().getByRole("link").click();
+                const remote = await loaded;
+                assert.equal(remote.status(), 200);
+                assert.match(await remote.headerValue("set-cookie"), /last_product=1;/);
+                await page.getByRole("heading", { name: "Product 1", exact: true }).waitFor();
+                await checkProductCookie(page, "1");
                 // A real modified click opens a separate page and preserves this application's route.
                 const popupPromise = page.context().waitForEvent("page");
                 await page
@@ -200,7 +240,7 @@ try {
                 const popup = await popupPromise;
                 await popup.waitForLoadState("domcontentloaded");
                 assert.equal(new URL(popup.url()).pathname, "/");
-                assert.equal(new URL(page.url()).pathname, "/products/2");
+                assert.equal(new URL(page.url()).pathname, "/products/1");
                 await popup.close();
                 await open(page, base + "/admin");
                 assert.equal(new URL(page.url()).pathname, "/login");
@@ -239,6 +279,7 @@ try {
                 name,
                 artifact: "production preview",
                 status: "passed",
+                serverController: { sourceIsolated: true, hydrationCalls: 0, remoteCalls },
                 contents,
                 errors,
             });
@@ -250,16 +291,55 @@ try {
             );
         }
     }
-    // Exercise the generated locale loader and multiple independently mounted applications in every native UI.
-    for (const name of ["react-minimal", "vue-minimal", "svelte-minimal"]) {
+    // Cold dependency scans must respect the same server boundary as ordinary module loads.
+    for (const name of [
+        "react",
+        "react-minimal",
+        "vue",
+        "vue-minimal",
+        "svelte",
+        "svelte-minimal",
+    ]) {
+        const serverErrors = [];
+        const logger = createLogger();
+        const logError = logger.error.bind(logger);
+        logger.error = (message, options) => {
+            serverErrors.push(message);
+            logError(message, options);
+        };
         const dev = await createServer({
             root: root + "templates/" + name,
+            customLogger: logger,
+            optimizeDeps: { force: true },
             server: { port: 5199, strictPort: true, host: "127.0.0.1" },
         });
         await dev.listen();
         const page = await browser.newPage();
         const errors = captureErrors(page);
         try {
+            await dev.environments.client.depsOptimizer?.scanProcessing;
+            assert.deepEqual(serverErrors, []);
+            if (!name.endsWith("-minimal")) {
+                const response = await open(page, "http://127.0.0.1:5199/products/2");
+                assert.ok((await response.text()).includes("Product 2"));
+                await checkProductCookie(page, "2");
+                await page.getByRole("link", { name: "Home", exact: true }).click();
+                const loaded = page.waitForResponse(isControllerResponse);
+                await page.locator(".product-card").first().getByRole("link").click();
+                assert.match(await (await loaded).headerValue("set-cookie"), /last_product=1;/);
+                await page.getByRole("heading", { name: "Product 1", exact: true }).waitFor();
+                await checkProductCookie(page, "1");
+                assert.deepEqual(errors, []);
+                assert.deepEqual(serverErrors, []);
+                results.push({
+                    name,
+                    artifact: "development cold scan and server controller",
+                    status: "passed",
+                });
+                console.log(name, "cold scan and server controller passed");
+                continue;
+            }
+            // Exercise locale loading and independent mounts in every minimal native UI.
             const response = await open(page, "http://127.0.0.1:5199/");
             assert.ok((await response.text()).includes("当前语言"));
             await page.getByText("浏览器接管后，翻译器仍然可用。").waitFor();
@@ -329,9 +409,10 @@ try {
             await first.getByRole("button", { name: "Notes", exact: true }).click();
             await first.getByRole("heading", { name: "Notes", exact: true }).waitFor();
             assert.deepEqual(errors, []);
+            assert.deepEqual(serverErrors, []);
             results.push({
                 name,
-                artifact: "development generated loader and independent mounts",
+                artifact: "development cold scan, generated loader and independent mounts",
                 status: "passed",
             });
             console.log(name, "generated-loader and independent mounts passed");

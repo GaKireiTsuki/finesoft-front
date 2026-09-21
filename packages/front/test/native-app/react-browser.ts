@@ -1,9 +1,9 @@
-import { createBrowserApp } from "@finesoft/front/browser";
+import { createBrowserApp } from "@finesoft/front";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { createElement } from "react";
 import ReactApp from "./ReactApp.tsx";
 import { definition } from "./definition";
-import type { BeforeLoadGuard } from "@finesoft/front/web";
+import type { BeforeLoadGuard } from "@finesoft/front";
 const changes = new WeakMap<object, (type: string) => void>();
 const guards = new WeakMap<object, { beforeLoad?: BeforeLoadGuard }>();
 export const setType = (app: object, type: string) => changes.get(app)?.(type);

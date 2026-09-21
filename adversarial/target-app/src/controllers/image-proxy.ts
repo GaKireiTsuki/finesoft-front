@@ -1,6 +1,6 @@
 import type { ControllerInput } from "@finesoft/front";
 import { BaseController, DEP_KEYS, HostGuardError, HttpClient } from "@finesoft/front";
-import type { BasePage } from "@finesoft/front/web";
+import type { BasePage } from "@finesoft/front";
 
 class GenericHttpClient extends HttpClient {
     fetchRoot(): Promise<unknown> {

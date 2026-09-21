@@ -1,5 +1,5 @@
 import { render as renderSvelte } from "svelte/server";
-import { createSSRRender, serializeServerData } from "@finesoft/front/ssr";
+import { createSSRRender, serializeServerData } from "@finesoft/front";
 import App from "./SvelteApp.svelte";
 import { definition } from "./definition";
 export async function render(url: string, structured = false) {

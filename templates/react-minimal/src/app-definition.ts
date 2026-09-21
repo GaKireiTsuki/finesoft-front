@@ -8,7 +8,7 @@ import {
     tabs,
     type LeafNode,
     type RouteMatch,
-} from "@finesoft/front/web";
+} from "@finesoft/front";
 import { DetailController } from "./lib/controllers/detail";
 import { HomeController } from "./lib/controllers/home";
 import { NotesController } from "./lib/controllers/notes";

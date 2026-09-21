@@ -1,4 +1,4 @@
-import type { ViewProps } from "@finesoft/front/react";
+import type { ViewProps } from "@finesoft/front";
 import type { HomePage } from "../lib/models/page";
 import { getHomeLocale } from "../lib/locale";
 

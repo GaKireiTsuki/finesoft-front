@@ -1,6 +1,6 @@
 import type { ControllerInput } from "@finesoft/front";
 import { BaseController } from "@finesoft/front";
-import { safeErrorPage, type BasePage } from "@finesoft/front/web";
+import { safeErrorPage, type BasePage } from "@finesoft/front";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 

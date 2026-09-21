@@ -1,4 +1,4 @@
-import { createBrowserApp } from "@finesoft/front/browser";
+import { createBrowserApp } from "@finesoft/front";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { app } from "./app-definition";
 import App from "./App";

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { ViewProps } from "@finesoft/front/svelte";
+    import type { ViewProps } from "@finesoft/front";
     import type { HomePage } from "../lib/models/page";
     import { getHomeLocale } from "../lib/locale";
 

@@ -93,7 +93,8 @@ function rewriteTemplateTsconfig(file) {
     const config = JSON.parse(fs.readFileSync(file, "utf8"));
     delete config.extends;
     config.compilerOptions = { ...base.compilerOptions, ...config.compilerOptions };
-    delete config.compilerOptions.paths;
+    // Drop workspace aliases, retaining only the project-generated public type facade.
+    config.compilerOptions.paths = { "@finesoft/front": ["./.finesoft/front.d.ts"] };
     fs.writeFileSync(file, JSON.stringify(config, null, 4) + "\n");
 }
 

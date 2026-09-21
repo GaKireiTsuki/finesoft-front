@@ -1,5 +1,5 @@
-import { createHttpHandler } from "@finesoft/front/http";
-import { startNodeHandler } from "@finesoft/front/node";
+import { createHttpHandler } from "@finesoft/front";
+import { startNodeHandler } from "@finesoft/front";
 import { createFixture } from "./business";
 import { fixtureConfig } from "../config";
 export async function startFixture() {

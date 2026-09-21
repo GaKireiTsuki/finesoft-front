@@ -1,6 +1,6 @@
 import type { ControllerInput } from "@finesoft/front";
 import { BaseController, DEP_KEYS, HostGuardError } from "@finesoft/front";
-import type { BasePage } from "@finesoft/front/web";
+import type { BasePage } from "@finesoft/front";
 
 interface ShareParams extends Record<string, string | undefined> {
     next?: string;

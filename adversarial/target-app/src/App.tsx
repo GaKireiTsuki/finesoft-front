@@ -1,6 +1,7 @@
-import { Outlet, type WebAppView } from "@finesoft/front/react";
-import type { BasePage } from "@finesoft/front/web";
+import { Outlet as selectOutlet, type WebAppView } from "@finesoft/front";
+import type { BasePage } from "@finesoft/front";
 import { views } from "./views";
+const Outlet = selectOutlet("react");
 
 interface AppProps {
     readonly app: WebAppView;

@@ -1,5 +1,5 @@
 import { BaseController, type ExecutionContext, type ControllerInput } from "@finesoft/front";
-import { markPublic, type BasePage } from "@finesoft/front/web";
+import { markPublic, type BasePage } from "@finesoft/front";
 import { timingSafeEqual } from "node:crypto";
 
 interface AdminSecretsPage extends BasePage {

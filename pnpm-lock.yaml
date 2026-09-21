@@ -296,6 +296,9 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
     devDependencies:
+      '@hono/node-server':
+        specifier: ^2.1.0
+        version: 2.1.0(hono@4.13.1)
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
@@ -333,6 +336,9 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
     devDependencies:
+      '@hono/node-server':
+        specifier: ^2.1.0
+        version: 2.1.0(hono@4.13.1)
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
@@ -367,6 +373,9 @@ importers:
         specifier: ^5.56.8
         version: 5.56.8(@typescript-eslint/types@8.57.1)
     devDependencies:
+      '@hono/node-server':
+        specifier: ^2.1.0
+        version: 2.1.0(hono@4.13.1)
       '@sveltejs/vite-plugin-svelte':
         specifier: ^7.3.0
         version: 7.3.0(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(svelte@5.56.8(@typescript-eslint/types@8.57.1))
@@ -395,6 +404,9 @@ importers:
         specifier: ^5.56.8
         version: 5.56.8(@typescript-eslint/types@8.57.1)
     devDependencies:
+      '@hono/node-server':
+        specifier: ^2.1.0
+        version: 2.1.0(hono@4.13.1)
       '@sveltejs/vite-plugin-svelte':
         specifier: ^7.3.0
         version: 7.3.0(@voidzero-dev/vite-plus-core@0.2.8(@types/node@22.20.1)(typescript@6.0.3))(svelte@5.56.8(@typescript-eslint/types@8.57.1))
@@ -423,6 +435,9 @@ importers:
         specifier: ^3.5.41
         version: 3.5.41(typescript@6.0.3)
     devDependencies:
+      '@hono/node-server':
+        specifier: ^2.1.0
+        version: 2.1.0(hono@4.13.1)
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
@@ -451,6 +466,9 @@ importers:
         specifier: ^3.5.41
         version: 3.5.41(typescript@6.0.3)
     devDependencies:
+      '@hono/node-server':
+        specifier: ^2.1.0
+        version: 2.1.0(hono@4.13.1)
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1

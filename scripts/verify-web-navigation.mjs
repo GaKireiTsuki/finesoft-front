@@ -30,7 +30,7 @@ fs.writeFileSync(
 fs.writeFileSync(
     path.join(root, "src/app.ts"),
     `
-import { defineWebApp, markPublic } from "@finesoft/front/web";
+import { defineWebApp, markPublic } from "@finesoft/front";
 export default defineWebApp({
     id: "production-probe",
     pages: [{
@@ -48,9 +48,9 @@ export default defineWebApp({
 fs.writeFileSync(
     path.join(root, "src/ssr.ts"),
     `
-import { createSSRRender } from "@finesoft/front/ssr";
+import { createSSRRender } from "@finesoft/front";
 import definition from "./app";
-export { serializeServerData } from "@finesoft/front/ssr";
+export { serializeServerData } from "@finesoft/front";
 export const render = createSSRRender({ definition, render: app => ({ html: "<main>" + app.getSnapshot().entries.at(-1).page.title + "</main>", head: "", css: "" }) });
 `,
 );

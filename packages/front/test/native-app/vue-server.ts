@@ -1,6 +1,6 @@
 import { createSSRApp } from "vue";
 import { renderToString } from "vue/server-renderer";
-import { createSSRRender, serializeServerData } from "@finesoft/front/ssr";
+import { createSSRRender, serializeServerData } from "@finesoft/front";
 import App from "./VueApp.vue";
 import { definition } from "./definition";
 export async function render(url: string, structured = false) {

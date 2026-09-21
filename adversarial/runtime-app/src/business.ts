@@ -6,7 +6,7 @@ import {
     ExecutionError,
     provide,
 } from "@finesoft/front";
-import { defineEndpoint, type HttpHandlerOptions } from "@finesoft/front/http";
+import { defineEndpoint, type HttpHandlerOptions } from "@finesoft/front";
 import type { FixtureBindings } from "../config";
 
 const tenantResource = createToken<{ tenant: FixtureBindings["TENANT"]; live: boolean }>(

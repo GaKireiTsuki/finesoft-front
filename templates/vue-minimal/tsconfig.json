@@ -8,7 +8,10 @@
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
         "skipLibCheck": true,
-        "noEmit": true
+        "noEmit": true,
+        "paths": {
+            "@finesoft/front": ["./.finesoft/front.d.ts"]
+        }
     },
     "include": ["src/**/*", "env.d.ts", "vite.config.ts"]
 }

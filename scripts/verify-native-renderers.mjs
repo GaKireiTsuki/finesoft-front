@@ -28,6 +28,18 @@ if (!process.env.NATIVE_FIX_ONLY)
             emptyOutDir: true,
         },
     });
+// The fixture owns its HTTP routes; exercise the public plugin's compiler hooks.
+const { finesoftFrontViteConfig } = await import("../packages/front/dist/index-node.mjs");
+const compilerPlugin = finesoftFrontViteConfig({ controllerTypes: false });
+const compilerHooks = {
+    name: "finesoft-native-fixture",
+    enforce: "pre",
+    configResolved: (config) => compilerPlugin.configResolved(config),
+    resolveId(...args) {
+        return compilerPlugin.resolveId.apply(this, args);
+    },
+    transform: compilerPlugin.transform,
+};
 const fixture = "/test/native-app/";
 // Full and focused runs compile with different modes; never reuse their SSR prebundles.
 await fs.mkdir(root + "reports/native-renderers", { recursive: true });
@@ -48,7 +60,7 @@ const server = await createServer({
             "svelte/store",
         ],
     },
-    plugins: [react(), vue(), svelte({ configFile: false })],
+    plugins: [compilerHooks, react(), vue(), svelte({ configFile: false })],
     server: {
         port: 5197,
         host: "127.0.0.1",
@@ -76,7 +88,7 @@ for (const ui of process.env.NATIVE_ERRORS_ONLY || process.env.NATIVE_FIX_ONLY
     await build({
         configFile: false,
         root: root + "packages/front",
-        plugins: [react(), vue(), svelte({ configFile: false })],
+        plugins: [compilerHooks, react(), vue(), svelte({ configFile: false })],
         ssr: { noExternal: true },
         build: {
             ssr: root + "packages/front" + fixture + ui + "-static-root.ts",

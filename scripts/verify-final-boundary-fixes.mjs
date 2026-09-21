@@ -232,7 +232,7 @@ const options = {
     target: ts.ScriptTarget.ESNext,
     module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
-    paths: { "@finesoft/front/vite": [declaration] },
+    paths: { "@finesoft/front": [declaration] },
 };
 try {
     for (const name of [
@@ -261,7 +261,7 @@ try {
             diagnostics,
         });
     }
-    const types = `import {defineWebApp, type BeforeNavigatePolicy, type BeforeCommitPolicy, type NavigationCommitContext} from '@finesoft/front/web';
+    const types = `import {defineWebApp, type BeforeNavigatePolicy, type BeforeCommitPolicy, type NavigationCommitContext} from '@finesoft/front';
 const admission: BeforeNavigatePolicy = ctx => { const signal: AbortSignal=ctx.signal; const id: string=ctx.transitionId; return {kind:'redirect',url:'/login',status:302}; };
 const commit: BeforeCommitPolicy = ctx => ({kind:'deny',status:409,message:ctx.candidate.destinations.length ? 'draft' : 'empty'});
 const app=defineWebApp({id:'typed',pages:[],getErrorPage:()=>({id:'error',pageType:'error',title:'error'}),beforeNavigate:[admission],beforeCommit:[commit]});
@@ -277,7 +277,7 @@ app.beforeNavigate!.push(admission);
     fs.writeFileSync(file, types);
     const program = ts.createProgram([file], {
         ...options,
-        paths: { "@finesoft/front/web": [path.join(root, "packages/front/dist/web.d.mts")] },
+        paths: { "@finesoft/front": [path.join(root, "packages/front/dist/web.d.mts")] },
     });
     assert.deepEqual(
         ts

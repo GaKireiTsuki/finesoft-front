@@ -6,7 +6,7 @@ import {
     tabs,
     split,
     type BeforeLoadGuard,
-} from "@finesoft/front/web";
+} from "@finesoft/front";
 type ProbeState = { pageType: string; beforeLoad?: BeforeLoadGuard };
 export function definition(
     locale = "en",

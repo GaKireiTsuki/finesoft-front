@@ -13,6 +13,7 @@
         "react-dom": "^19.2.8"
     },
     "devDependencies": {
+        "@hono/node-server": "^2.1.0",
         "@types/node": "catalog:",
         "@types/react": "^19.2.18",
         "@types/react-dom": "^19.2.4",

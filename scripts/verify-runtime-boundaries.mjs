@@ -93,14 +93,21 @@ function imports(source, file) {
     visit(ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true));
     return names;
 }
-async function graph(entry, dist) {
+async function graph(entry, dist, platform = "portable") {
     const visited = new Set(),
         external = new Set();
     async function walk(file) {
         if (visited.has(file)) return;
         visited.add(file);
         for (const spec of imports(await fs.readFile(file, "utf8"), file)) {
-            if (spec.startsWith(".")) await walk(path.resolve(path.dirname(file), spec));
+            if (spec === "#finesoft/implementation")
+                await walk(
+                    path.join(
+                        dist,
+                        platform === "portable" ? "load-portable.mjs" : "load-node.mjs",
+                    ),
+                );
+            else if (spec.startsWith(".")) await walk(path.resolve(path.dirname(file), spec));
             else external.add(spec);
         }
     }
@@ -111,13 +118,16 @@ async function graph(entry, dist) {
     };
 }
 const typeSource = `import { defineApp, defineOperation, createRuntime, BaseController } from '@finesoft/front';
-import { definePage, defineWebApp, int, str, route, type WebAppView } from '@finesoft/front/web';
-import { createHttpHandler, defineEndpoint } from '@finesoft/front/http';
-import { createHttpHandler as createWorkerHttpHandler } from '@finesoft/front/worker';
-import { createBrowserApp } from '@finesoft/front/browser';
-import { createSSRHandler, createSSRRender } from '@finesoft/front/ssr';
+import { definePage, defineWebApp, int, str, route, Router, type WebAppView } from '@finesoft/front';
+import { createHttpHandler, defineEndpoint } from '@finesoft/front';
+import { createHttpHandler as createWorkerHttpHandler } from '@finesoft/front';
+import { createBrowserApp } from '@finesoft/front';
+import { createSSRHandler, createSSRRender } from '@finesoft/front';
 const double = defineOperation({id:'double',kind:'query',handler:(n:number)=>n*2});
 const runtime=createRuntime({app:defineApp({id:'packed',operations:[double]})});
+const router=new Router().add('/', 'home', {renderMode:'csr'});
+// @ts-expect-error Router metadata uses options, not the removed string overload.
+router.add('/old', 'old', 'csr');
 const promise:Promise<number>=runtime.execute(double,3);
 // @ts-expect-error Operation input stays typed through the packed declaration.
 runtime.execute(double,'3');
@@ -195,7 +205,12 @@ createSSRRender({definition:app,render:(view)=>{
 void browserTypes;
 void [promise,bad,app,createBrowserApp,createHttpHandler,defineEndpoint,createWorkerHttpHandler,createSSRHandler];`;
 function typecheck(file, selected) {
+    const config = ts.readConfigFile(path.dirname(file) + "/tsconfig.json", (name) =>
+        ts.sys.readFile(name),
+    );
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(file));
     const program = ts.createProgram([file], {
+        ...parsed.options,
         target: ts.ScriptTarget.ESNext,
         module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -230,6 +245,7 @@ try {
                     private: true,
                     type: "module",
                     packageManager: "pnpm@11.20.0",
+                    devDependencies: { typescript: ts.version },
                     dependencies: {
                         "@finesoft/front": "file:" + tarball,
                         ...peers[selected],
@@ -261,7 +277,29 @@ try {
         const dist = await fs.realpath(cwd + "/node_modules/@finesoft/front/dist");
         const manifest = JSON.parse(await fs.readFile(path.resolve(dist, "../package.json")));
         assert.equal(manifest.devDependencies, undefined);
-        assert.equal(manifest.exports["./core"], undefined);
+        assert.deepEqual(Object.keys(manifest.exports), ["."]);
+        for (const name of [
+            "web",
+            "browser",
+            "ssr",
+            "http",
+            "node",
+            "worker",
+            "vite",
+            "react",
+            "vue",
+            "svelte",
+        ])
+            assert.throws(() => requireFromConsumer.resolve("@finesoft/front/" + name), {
+                code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
+            });
+        await fs.writeFile(
+            cwd + "/tsconfig.json",
+            JSON.stringify({ compilerOptions: { noEmit: true, strict: true } }),
+        );
+        const api = await import(pathToFileURL(requireFromConsumer.resolve("@finesoft/front")));
+        api.generateFrontTypes({ root: cwd });
+        assert.equal(typeof api.definePage, "function");
         assert.ok(!JSON.stringify(manifest).includes("workspace:"));
         for (const file of await files(dist)) {
             assert.ok(!file.endsWith(".map"), "No source maps in packed files");
@@ -274,14 +312,14 @@ try {
         }
         const entries =
             selected === "portable"
-                ? ["index", "web", "http", "worker", "browser", "ssr"]
+                ? ["index", "portable", "web", "http", "worker", "browser", "ssr"]
                 : selected === "node"
                   ? ["node"]
                   : selected === "tooling"
                     ? ["vite"]
                     : [selected];
         for (const entry of entries) {
-            const info = await graph(entry + ".mjs", dist);
+            const info = await graph(entry + ".mjs", dist, selected);
             result.graphs[entry] = info;
             if (selected === "portable")
                 assert.deepEqual(
@@ -294,7 +332,7 @@ try {
                     assert.ok(
                         spec === selected ||
                             spec.startsWith(selected + "/") ||
-                            spec.startsWith("@finesoft/front/") ||
+                            spec === "@finesoft/front" ||
                             (selected === "react" && /^react-dom(?:\/|$)/.test(spec)),
                         "Unselected UI/environment: " + spec,
                     );
@@ -309,20 +347,35 @@ try {
         }
         let source = typeSource;
         if (["react", "vue", "svelte"].includes(selected))
-            source += `\nimport * as nativeBinding from '@finesoft/front/${selected}';\nvoid nativeBinding;`;
+            source += `
+import { Outlet, useSnapshot, type NativeViews } from '@finesoft/front';
+const NativeOutlet = Outlet('${selected}');
+// @ts-expect-error Unknown or uninstalled renderer is not a valid choice.
+Outlet('unavailable');
+function nativeTypes(app: WebAppView, views: NativeViews<'${selected}'>) {
+    const snapshot = useSnapshot('${selected}', app);
+    // @ts-expect-error Snapshot must retain its real native type, not any.
+    snapshot.notARealSnapshotProperty;
+    return [NativeOutlet, snapshot, views];
+}
+void nativeTypes;`;
         if (selected === "node")
-            source +=
-                "\nimport { startNodeHandler, nodeSafeFetchOptions } from '@finesoft/front/node'; void [startNodeHandler,nodeSafeFetchOptions];";
+            source += `\nimport { startNodeHandler, nodeSafeFetchOptions } from '@finesoft/front';
+const owner=createHttpHandler({runtime,endpoints:[]});
+void startNodeHandler({handler:owner});
+// @ts-expect-error Node takes the HTTP owner, not the removed function form.
+void startNodeHandler({handler:owner.fetch.bind(owner)});
+void nodeSafeFetchOptions;`;
         if (selected === "tooling")
             source +=
-                "\nimport { finesoftFrontViteConfig, staticAdapter } from '@finesoft/front/vite'; void [finesoftFrontViteConfig,staticAdapter];";
+                "\nimport { finesoftFrontViteConfig, staticAdapter } from '@finesoft/front'; void [finesoftFrontViteConfig,staticAdapter];";
+        if (["react", "vue"].includes(selected)) assert.ok(api.Outlet(selected));
         await fs.writeFile(cwd + "/consumer.ts", source);
         typecheck(cwd + "/consumer.ts", selected);
         await fs.copyFile(cwd + "/consumer.ts", evidence + "/consumer-" + selected + ".ts.txt");
         await fs.copyFile(cwd + "/package.json", evidence + "/package-" + selected + ".json");
         if (selected === "node") {
-            const { secureFetch } = await import(pathToFileURL(dist + "/index.mjs"));
-            const { nodeSafeFetchOptions } = await import(pathToFileURL(dist + "/node.mjs"));
+            const { secureFetch, nodeSafeFetchOptions } = api;
             // Exercise the lazy transport from the tarball without an installed undici peer.
             // The trailing dot deliberately leaves this decision to connection-time DNS.
             await assert.rejects(

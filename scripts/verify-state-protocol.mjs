@@ -38,19 +38,19 @@ fs.writeFileSync(
 );
 fs.writeFileSync(
     path.join(root, "vite.config.ts"),
-    `import { finesoftFrontViteConfig } from '@finesoft/front/vite'; export default { build: { modulePreload: false }, plugins: [finesoftFrontViteConfig({ adapter: 'node', ssr: { entry: 'src/ssr.ts' } })] };`,
+    `import { finesoftFrontViteConfig } from '@finesoft/front'; export default { build: { modulePreload: false }, plugins: [finesoftFrontViteConfig({ adapter: 'node', ssr: { entry: 'src/ssr.ts' } })] };`,
 );
 fs.writeFileSync(
     path.join(root, "src/client.ts"),
-    `import { getFrameworkBuildId, decodeWireEnvelope, deserializeServerData } from '@finesoft/front/browser'; globalThis.__stateProtocolProbe = { buildId: getFrameworkBuildId(), decode: decodeWireEnvelope, read: deserializeServerData };`,
+    `import { getFrameworkBuildId, decodeWireEnvelope, deserializeServerData } from '@finesoft/front'; globalThis.__stateProtocolProbe = { buildId: getFrameworkBuildId(), decode: decodeWireEnvelope, read: deserializeServerData };`,
 );
 fs.writeFileSync(
     path.join(root, "src/app.ts"),
-    `import { defineWebApp, markPublic } from '@finesoft/front/web'; export default defineWebApp({ id:'probe', pages:[{id:'home',routes:[{path:'/',renderMode:'prerender',cache:'public'}],handler:()=>markPublic({id:'home',pageType:'home',title:'Home',user:{name:'Alice',secret:'SECRET'}},{user:{name:true}})}], getErrorPage:(status,message)=>({id:String(status),pageType:'error',title:message}) });`,
+    `import { defineWebApp, markPublic } from '@finesoft/front'; export default defineWebApp({ id:'probe', pages:[{id:'home',routes:[{path:'/',renderMode:'prerender',cache:'public'}],handler:()=>markPublic({id:'home',pageType:'home',title:'Home',user:{name:'Alice',secret:'SECRET'}},{user:{name:true}})}], getErrorPage:(status,message)=>({id:String(status),pageType:'error',title:message}) });`,
 );
 fs.writeFileSync(
     path.join(root, "src/ssr.ts"),
-    `import { createSSRRender } from '@finesoft/front/ssr'; import definition from './app'; export { serializeServerData } from '@finesoft/front/ssr'; export const render=createSSRRender({definition,render:app=>({html:app.getSnapshot().entries.at(-1)?.page.title ?? '',head:'',css:''})});`,
+    `import { createSSRRender } from '@finesoft/front'; import definition from './app'; export { serializeServerData } from '@finesoft/front'; export const render=createSSRRender({definition,render:app=>({html:app.getSnapshot().entries.at(-1)?.page.title ?? '',head:'',css:''})});`,
 );
 const ids = [];
 for (let round = 0; round < 2; round++) {

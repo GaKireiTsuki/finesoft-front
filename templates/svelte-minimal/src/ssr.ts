@@ -1,5 +1,5 @@
 import { render as renderSvelte } from "svelte/server";
-import { createSSRRender } from "@finesoft/front/ssr";
+import { createSSRRender } from "@finesoft/front";
 import { app } from "./app-definition";
 import App from "./App.svelte";
 
@@ -10,4 +10,4 @@ export const render = createSSRRender({
         return { html: result.body, head: result.head, css: "" };
     },
 });
-export { serializeServerData } from "@finesoft/front/ssr";
+export { serializeServerData } from "@finesoft/front";

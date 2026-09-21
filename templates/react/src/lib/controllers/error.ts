@@ -1,4 +1,4 @@
-import { markPublic } from "@finesoft/front/web";
+import { markPublic } from "@finesoft/front";
 import type { ErrorPage } from "../models/product";
 
 export function getErrorPage(status: number, message: string): ErrorPage {
