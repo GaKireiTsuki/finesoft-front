@@ -6,6 +6,7 @@
 
 ```sh
 vp install
+vp run --filter '@finesoft/front...' build
 vp check
 vp test --coverage
 vp run -r build
@@ -16,6 +17,8 @@ vp exec node scripts/verify-runtime-boundaries.mjs
 `vp pack` 构建库，`vp pm pack` 生成本地安装包。Front 的 prepack/postpack 成对改写并恢复原始发布清单；准备失败也会恢复。脚手架准备脚本复制六套当前模板，并生成可独立安装的依赖与 TypeScript 配置。
 
 ## 仓库自动化
+
+Quality 的两个作业都会先构建 front 及其工作区依赖。根 Vite 配置加载的控制器类型生成器会导入 core 的构建产物，因此全新检出必须先完成这一步。
 
 PR 运行 Quality（`vp check` 和 `vp test --coverage`）。推送到 `main` 时启动 Release，复用同一份 Quality 工作流，并等待两项检查通过。CodeQL 独立扫描 `packages/{core,web,browser,ssr,server,front}/src/**`。
 

@@ -11,6 +11,10 @@ import {
 } from "../src/controller-types";
 import { finesoftFrontViteConfig } from "../src/vite-plugin";
 
+// These fixtures build real TypeScript programs. Cold compilation with coverage
+// can exceed five seconds, especially while other CI suites are running.
+vi.setConfig({ testTimeout: 15_000 });
+
 const roots: string[] = [];
 const watchers: ReturnType<typeof createControllerTypeWatcher>[] = [];
 afterEach(() => {
@@ -115,50 +119,44 @@ function diagnostics(root: string) {
         }));
 }
 
-// This cold compiler check creates two TypeScript programs; coverage and parallel
-// suites can exceed the default five seconds without a compiler failure.
-test(
-    "server controllers infer server request and cookie capabilities while shared controllers get page metadata",
-    { timeout: 15_000 },
-    () => {
-        const f = fixture();
-        fs.writeFileSync(
-            f.controller,
-            fs
-                .readFileSync(f.controller, "utf8")
-                .replace(
-                    'import { BaseController } from "@finesoft/front";',
-                    'import { BaseServerController } from "@finesoft/front";',
-                )
-                .replace("extends BaseController", "extends BaseServerController")
-                .replace(
-                    "String(context.signal.aborted)",
-                    'context.request.url + context.path + context.getCookie("session")',
-                ),
-        );
-        generateControllerTypes({ root: f.root });
-        expect(fs.readFileSync(f.output, "utf8")).toContain(
-            'import("@finesoft/front").ServerControllerContext',
-        );
-        expect(diagnostics(f.root)).toEqual([]);
-        fs.writeFileSync(
-            f.controller,
-            fs
-                .readFileSync(f.controller, "utf8")
-                .replace(
-                    'import { BaseServerController } from "@finesoft/front";',
-                    'import { BaseController } from "@finesoft/front";',
-                )
-                .replace("extends BaseServerController", "extends BaseController")
-                .replace("context.request.url + context.path", "context.url + context.path"),
-        );
-        generateControllerTypes({ root: f.root });
-        expect(fs.readFileSync(f.output, "utf8")).toContain(
-            'import("@finesoft/front").ControllerContext',
-        );
-        expect(diagnostics(f.root)).toEqual([]);
-    },
-);
+test("server controllers infer server request and cookie capabilities while shared controllers get page metadata", () => {
+    const f = fixture();
+    fs.writeFileSync(
+        f.controller,
+        fs
+            .readFileSync(f.controller, "utf8")
+            .replace(
+                'import { BaseController } from "@finesoft/front";',
+                'import { BaseServerController } from "@finesoft/front";',
+            )
+            .replace("extends BaseController", "extends BaseServerController")
+            .replace(
+                "String(context.signal.aborted)",
+                'context.request.url + context.path + context.getCookie("session")',
+            ),
+    );
+    generateControllerTypes({ root: f.root });
+    expect(fs.readFileSync(f.output, "utf8")).toContain(
+        'import("@finesoft/front").ServerControllerContext',
+    );
+    expect(diagnostics(f.root)).toEqual([]);
+    fs.writeFileSync(
+        f.controller,
+        fs
+            .readFileSync(f.controller, "utf8")
+            .replace(
+                'import { BaseServerController } from "@finesoft/front";',
+                'import { BaseController } from "@finesoft/front";',
+            )
+            .replace("extends BaseServerController", "extends BaseController")
+            .replace("context.request.url + context.path", "context.url + context.path"),
+    );
+    generateControllerTypes({ root: f.root });
+    expect(fs.readFileSync(f.output, "utf8")).toContain(
+        'import("@finesoft/front").ControllerContext',
+    );
+    expect(diagnostics(f.root)).toEqual([]);
+});
 
 test("independent class inputs derive from routes and generation is idempotent", () => {
     const app = fixture();

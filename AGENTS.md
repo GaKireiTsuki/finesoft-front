@@ -126,6 +126,8 @@ Release locally with `vp run changeset`, `vp run version`, then `vp run release`
 
 ## CI Scope
 
+Quality builds `@finesoft/front` and its workspace dependencies before loading the root Vite config, whose controller generator imports the built core package. For a fresh local checkout, run `vp run --filter '@finesoft/front...' build` before `vp check` or `vp test` too.
+
 - `Quality` runs `vp check` and `vp test --coverage`; coverage includes `packages/{core,web,browser,ssr,server,front}/src/**` and excludes tests, generated output, templates, scripts, docs, `create-app`, and `site`.
 - `CodeQL` runs for pushes, pull requests, manual dispatch, and its weekly schedule over the six runtime package source trees.
 

@@ -32,6 +32,10 @@ jobs:
             - name: Install dependencies
               run: vp install --frozen-lockfile
 
+            # The root config's controller generator imports the built core package.
+            - name: Build framework packages
+              run: vp run --filter '@finesoft/front...' build
+
             - name: Run formatting, lint, and type checks
               run: vp check
 
@@ -51,6 +55,9 @@ jobs:
 
             - name: Install dependencies
               run: vp install --frozen-lockfile
+
+            - name: Build framework packages
+              run: vp run --filter '@finesoft/front...' build
 
             - name: Run coverage
               run: vp test --coverage

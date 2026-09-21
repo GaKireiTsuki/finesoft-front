@@ -6,6 +6,7 @@
 
 ```sh
 vp install
+vp run --filter '@finesoft/front...' build
 vp check
 vp test --coverage
 vp run -r build
@@ -16,6 +17,8 @@ vp exec node scripts/verify-runtime-boundaries.mjs
 `vp pack` is the library build command. `vp pm pack` creates a local package tarball. Front's paired prepack/postpack scripts rewrite its publish manifest and restore the exact working manifest, including when preparation fails. Scaffolder preparation copies the current six templates and makes their package and TypeScript configuration standalone.
 
 ## Repository automation
+
+Both Quality jobs first build front and its workspace dependencies. The root Vite configuration loads the controller type generator, which imports the built core package; this preparation is required on a fresh checkout.
 
 Pull requests run Quality (`vp check` and `vp test --coverage`). A push to `main` starts Release, which calls the same Quality workflow and waits for both checks to pass. CodeQL runs independently over `packages/{core,web,browser,ssr,server,front}/src/**`.
 
