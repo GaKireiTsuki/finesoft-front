@@ -131,10 +131,8 @@ function createProxyHandler(config: ProxyRouteConfig) {
         if (config.auth) {
             // Edge runtimes need not expose a Node process object. Authentication remains
             // unset there unless the host supplies its own proxy registration config.
-            const token =
-                typeof process !== "undefined" && process.env
-                    ? process.env[config.auth.envKey]
-                    : undefined;
+            const token = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+                .process?.env?.[config.auth.envKey];
             if (!token) {
                 console.warn(
                     `[Proxy ${config.prefix}] Auth env var "${config.auth.envKey}" is not set`,

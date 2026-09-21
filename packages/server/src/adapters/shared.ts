@@ -49,9 +49,9 @@ export const NODE_BUILTINS = [
 export function generateSSREntry(ctx: AdapterContext, opts: GenerateSSREntryOptions): string {
     return `
 import { Hono } from "hono";
-import { createSSRHandler, registerProxyRoutes } from "@finesoft/front/ssr";
+import { createSSRHandler, registerProxyRoutes } from "@finesoft/front";
 ${opts.platformImport}
-${opts.dnsPolicy === "hostname" ? "" : 'import { nodeSafeFetchOptions as _safeFetchOptions } from "@finesoft/front/node";'}
+${opts.dnsPolicy === "hostname" ? "" : 'import { nodeSafeFetchOptions as _safeFetchOptions } from "@finesoft/front";'}
 import { render, serializeServerData } from "./${ctx.ssrEntry}";
 ${ctx.setupPath ? `import _setupDefault from "./${ctx.setupPath}";` : ""}
 const TEMPLATE = ${JSON.stringify(ctx.templateHtml)};

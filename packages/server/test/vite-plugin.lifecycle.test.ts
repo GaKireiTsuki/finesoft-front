@@ -1,6 +1,6 @@
 vi.mock("@finesoft/web", async () => import("../../web/src/index.ts"));
 import * as nodePath from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
 const {
@@ -23,6 +23,9 @@ const {
         readonly route = vi.fn();
         readonly get = vi.fn((path: string, handler: unknown) => {
             this.handlers.set(`GET ${path}`, handler);
+        });
+        readonly all = vi.fn((path: string, handler: unknown) => {
+            this.handlers.set(`ALL ${path}`, handler);
         });
         readonly fetch = vi.fn(async (...args: unknown[]) => ({ args }));
         readonly handlers = new Map<string, unknown>();
@@ -62,10 +65,10 @@ const {
 
 vi.mock("@finesoft/core", async () => {
     // Tests run before core is built; import LruMap directly from its source path.
-    const { LruMap } = await import("../../core/src/utils/lru-map");
+    const actual = await import("../../core/src/index.ts");
     return {
+        ...actual,
         getLocaleAttributes,
-        LruMap,
     };
 });
 
@@ -123,6 +126,39 @@ afterEach(() => {
 });
 
 describe("finesoftFrontViteConfig lifecycle", () => {
+    test.each([
+        { ssr: false, conditions: ["browser"], entry: "index.mjs" },
+        { ssr: true, conditions: ["node"], entry: "index-node.mjs" },
+        { ssr: true, conditions: ["browser", "worker"], entry: "index.mjs" },
+    ])(
+        "resolves the generated type alias during scans: $conditions → $entry",
+        async ({ ssr, conditions, entry }) => {
+            const root = fileURLToPath(new URL("../../../templates/react", import.meta.url));
+            const plugin = finesoftFrontViteConfig({ controllerTypes: false });
+            plugin.configResolved({ root, command: "serve" });
+            const resolve = vi.fn(async (id: string) => ({
+                id: id === "@finesoft/front" ? nodePath.join(root, ".finesoft/front.d.ts") : id,
+            }));
+            const result = await plugin.resolveId.call(
+                { resolve, environment: { config: { resolve: { conditions } } } },
+                "@finesoft/front",
+                nodePath.join(root, "src/main.ts"),
+                { ssr, scan: true },
+            );
+            expect(nodePath.basename(result.id)).toBe(entry);
+            expect(resolve).toHaveBeenCalledTimes(2);
+        },
+    );
+
+    test("preserves a user-owned runtime alias", async () => {
+        const plugin = finesoftFrontViteConfig({ controllerTypes: false });
+        const resolve = vi.fn(async () => ({ id: "/project/custom-front.ts" }));
+        expect(await plugin.resolveId.call({ resolve }, "@finesoft/front")).toEqual({
+            id: "/project/custom-front.ts",
+        });
+        expect(resolve).toHaveBeenCalledTimes(1);
+    });
+
     test("returns minimal config during sub-builds when i18n is not configured", () => {
         process.env.__FINESOFT_SUB_BUILD__ = "1";
         const plugin = finesoftFrontViteConfig() as VitePluginShape & {
@@ -285,6 +321,32 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         expect(result).toBeUndefined();
     });
 
+    test.each(["setup", "utility"])(
+        "rejects a dev setup module with only a %s export",
+        async (name) => {
+            let called = false;
+            const plugin = finesoftFrontViteConfig({
+                controllerTypes: false,
+                setup: "src/setup.ts",
+            }) as VitePluginShape;
+            const server = {
+                ssrLoadModule: async () => ({
+                    [name]: () => {
+                        called = true;
+                    },
+                }),
+            };
+            dynamicImport.mockImplementation(async (specifier: string) => {
+                if (specifier === "hono") return { Hono: HonoMock };
+                if (specifier === "@hono/node-server") return { getRequestListener: () => {} };
+                throw new Error(`Unexpected import: ${specifier}`);
+            });
+            const configure = plugin.configureServer(server);
+            await expect(configure?.()).rejects.toThrow();
+            expect(called).toBe(false);
+        },
+    );
+
     test("configures the dev server with proxy routes, setup modules, and SSR middleware", async () => {
         const plugin = finesoftFrontViteConfig({
             proxies: [{ prefix: "/api", target: "https://example.com" }],
@@ -298,7 +360,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
             close: vi.fn(async () => {}),
             watcher: { on: vi.fn(), off: vi.fn() },
             httpServer: { close: vi.fn((callback: () => void) => callback()) },
-            ssrLoadModule: vi.fn(async () => ({ utility: setupFn })),
+            ssrLoadModule: vi.fn(async () => ({ default: setupFn })),
             middlewares: { use: vi.fn() },
         };
         const listener = vi.fn();
@@ -546,7 +608,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         );
 
         const app = HonoMock.latest();
-        const handler = app.handlers.get("GET *") as
+        const handler = app.handlers.get("ALL *") as
             | ((context: PreviewContext) => Promise<Response>)
             | undefined;
         if (!handler) {
@@ -655,7 +717,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         await configure?.();
 
         const app = HonoMock.latest();
-        const handler = app.handlers.get("GET *") as
+        const handler = app.handlers.get("ALL *") as
             | ((context: PreviewContext) => Promise<Response>)
             | undefined;
         if (!handler) {
@@ -731,7 +793,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         ]);
         expect(setup).toHaveBeenCalledWith(app);
 
-        const handler = app.handlers.get("GET *") as
+        const handler = app.handlers.get("ALL *") as
             | ((context: PreviewContext) => Promise<Response>)
             | undefined;
         if (!handler) {
@@ -748,7 +810,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         expect(serializeServerData).toHaveBeenCalledTimes(1002);
     });
 
-    test("uses named setup exports when preview setup modules load successfully", async () => {
+    test("uses the default setup export when preview setup modules load successfully", async () => {
         const setup = vi.fn(async () => {});
         const plugin = finesoftFrontViteConfig({
             setup: "src/setup.ts",
@@ -789,7 +851,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
                 return { getRequestListener };
             }
             if (specifier === setupModuleUrl) {
-                return { setup };
+                return { default: setup };
             }
             if (specifier === ssrModuleUrl) {
                 return {

@@ -47,7 +47,7 @@ describe("deployment adapters", () => {
         expect(mockGenerateSSREntry).toHaveBeenCalledWith(
             ctx,
             expect.objectContaining({
-                platformImport: expect.stringContaining("@finesoft/front/node"),
+                platformImport: expect.stringContaining("@finesoft/front"),
                 platformMiddleware: expect.stringContaining("prerenderDir"),
                 platformExport: expect.stringContaining(
                     "startNodeHandler({ handler: { fetch: async request => app.fetch(request) }, port, disposeApp: ssr.dispose }",

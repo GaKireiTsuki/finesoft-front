@@ -104,7 +104,7 @@ describe("shared adapter helpers", () => {
         expect(code).toContain('const RENDER_MODES = {"/docs":"prerender"};');
         expect(code).toContain('const DEFAULT_LOCALE = "en-US";');
         expect(code).toContain(
-            'import { createSSRHandler, registerProxyRoutes } from "@finesoft/front/ssr";',
+            'import { createSSRHandler, registerProxyRoutes } from "@finesoft/front";',
         );
         expect(code).toContain(
             'registerProxyRoutes(app, [{"prefix":"/api","target":"https://example.com"}]);',

@@ -20,7 +20,7 @@ export function nodeAdapter(): Adapter {
             const { path, root } = ctx;
 
             const entrySource = generateSSREntry(ctx, {
-                platformImport: `import { startNodeHandler } from "@finesoft/front/node";
+                platformImport: `import { startNodeHandler } from "@finesoft/front";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";`,

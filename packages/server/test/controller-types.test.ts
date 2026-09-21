@@ -48,10 +48,19 @@ function fixture() {
                 types: [],
                 paths: {
                     "@finesoft/front": [
-                        fileURLToPath(new URL("../../core/src/index.ts", import.meta.url)),
+                        fileURLToPath(new URL("../../front/src/portable.ts", import.meta.url)),
                     ],
-                    "@finesoft/front/web": [
-                        fileURLToPath(new URL("../../front/src/web.ts", import.meta.url)),
+                    "@finesoft/browser": [
+                        fileURLToPath(new URL("../../browser/src/index.ts", import.meta.url)),
+                    ],
+                    "@finesoft/ssr": [
+                        fileURLToPath(new URL("../../ssr/src/index.ts", import.meta.url)),
+                    ],
+                    "@finesoft/server/*": [
+                        fileURLToPath(new URL("../../server/src/*", import.meta.url)),
+                    ],
+                    "@finesoft/ssr/inject": [
+                        fileURLToPath(new URL("../../ssr/src/inject.ts", import.meta.url)),
                     ],
                     "@finesoft/core": [
                         fileURLToPath(new URL("../../core/src/index.ts", import.meta.url)),
@@ -82,7 +91,7 @@ export class ItemController extends BaseController {
     const definition = path.join(root, "src/app.ts");
     fs.writeFileSync(
         definition,
-        `import { definePage, int, optional, str } from "@finesoft/front/web";
+        `import { definePage, int, optional, str } from "@finesoft/front";
 import { ItemController } from "./item";
 export const item = definePage({id: "item", routes: [{path: "/items/:id", params: {id: int()}, query: {tab: optional(str())}}], create: () => new ItemController()});
 `,
@@ -105,6 +114,45 @@ function diagnostics(root: string) {
             message: ts.flattenDiagnosticMessageText(error.messageText, "\n"),
         }));
 }
+
+test("server controllers infer server request and cookie capabilities while shared controllers get page metadata", () => {
+    const f = fixture();
+    fs.writeFileSync(
+        f.controller,
+        fs
+            .readFileSync(f.controller, "utf8")
+            .replace(
+                'import { BaseController } from "@finesoft/front";',
+                'import { BaseServerController } from "@finesoft/front";',
+            )
+            .replace("extends BaseController", "extends BaseServerController")
+            .replace(
+                "String(context.signal.aborted)",
+                'context.request.url + context.path + context.getCookie("session")',
+            ),
+    );
+    generateControllerTypes({ root: f.root });
+    expect(fs.readFileSync(f.output, "utf8")).toContain(
+        'import("@finesoft/front").ServerControllerContext',
+    );
+    expect(diagnostics(f.root)).toEqual([]);
+    fs.writeFileSync(
+        f.controller,
+        fs
+            .readFileSync(f.controller, "utf8")
+            .replace(
+                'import { BaseServerController } from "@finesoft/front";',
+                'import { BaseController } from "@finesoft/front";',
+            )
+            .replace("extends BaseServerController", "extends BaseController")
+            .replace("context.request.url + context.path", "context.url + context.path"),
+    );
+    generateControllerTypes({ root: f.root });
+    expect(fs.readFileSync(f.output, "utf8")).toContain(
+        'import("@finesoft/front").ControllerContext',
+    );
+    expect(diagnostics(f.root)).toEqual([]);
+});
 
 test("independent class inputs derive from routes and generation is idempotent", () => {
     const app = fixture();
@@ -260,7 +308,7 @@ test("retained analysis follows imported params and query schema edits", () => {
     const schema = path.join(app.root, "src/schema.ts");
     fs.writeFileSync(
         schema,
-        'import {int,str} from "@finesoft/front/web"; export const idSchema = int(); export const tabSchema = str();',
+        'import {int,str} from "@finesoft/front"; export const idSchema = int(); export const tabSchema = str();',
     );
     fs.writeFileSync(
         app.definition,
@@ -274,7 +322,7 @@ test("retained analysis follows imported params and query schema edits", () => {
     const controller = fs.readFileSync(app.controller, "utf8");
     fs.writeFileSync(
         schema,
-        'import {int,str} from "@finesoft/front/web"; export const idSchema = str(); export const tabSchema = int();',
+        'import {int,str} from "@finesoft/front"; export const idSchema = str(); export const tabSchema = int();',
     );
     generateControllerTypes({ root: app.root });
     const result = fs.readFileSync(app.output, "utf8");
@@ -290,11 +338,11 @@ test("retained analysis resolves changed config paths and newly added controller
     const app = fixture();
     fs.writeFileSync(
         path.join(app.root, "src/number.ts"),
-        'export {int as codec} from "@finesoft/front/web";',
+        'export {int as codec} from "@finesoft/front";',
     );
     fs.writeFileSync(
         path.join(app.root, "src/string.ts"),
-        'export {str as codec} from "@finesoft/front/web";',
+        'export {str as codec} from "@finesoft/front";',
     );
     fs.writeFileSync(
         app.definition,
@@ -330,11 +378,11 @@ test("resolution snapshots preserve import modes and refresh changed package exp
     fs.mkdirSync(dependency, { recursive: true });
     fs.writeFileSync(
         path.join(dependency, "number.d.mts"),
-        'export {int as codec} from "@finesoft/front/web";',
+        'export {int as codec} from "@finesoft/front";',
     );
     fs.writeFileSync(
         path.join(dependency, "string.d.cts"),
-        'export {str as codec} from "@finesoft/front/web";',
+        'export {str as codec} from "@finesoft/front";',
     );
     const manifest = path.join(dependency, "package.json");
     const metadata = {
@@ -372,7 +420,7 @@ test("analysis recreates deleted declarations and resolves replacement schema fi
     const app = fixture();
     const schema = path.join(app.root, "src/schema.ts");
     const declarations = path.join(app.root, "src/schema.d.ts");
-    fs.writeFileSync(schema, 'export {int as codec} from "@finesoft/front/web";');
+    fs.writeFileSync(schema, 'export {int as codec} from "@finesoft/front";');
     fs.writeFileSync(
         app.definition,
         'import {codec} from "./schema";\n' +
@@ -382,7 +430,7 @@ test("analysis recreates deleted declarations and resolves replacement schema fi
     expect(fs.readFileSync(app.output, "utf8")).toContain("id: number");
     fs.rmSync(app.output);
     fs.rmSync(schema);
-    fs.writeFileSync(declarations, 'export {str as codec} from "@finesoft/front/web";');
+    fs.writeFileSync(declarations, 'export {str as codec} from "@finesoft/front";');
     generateControllerTypes({ root: app.root });
     expect(fs.readFileSync(app.output, "utf8")).toContain("id: string");
     expect(diagnostics(app.root).filter((error) => error.message.includes("toFixed"))).toHaveLength(
@@ -453,7 +501,7 @@ test("watch cache handles duplicate saves and reuses previously verified route v
 test("watch cache invalidates imported schemas and accounts for every file in a save burst", () => {
     const app = fixture();
     const schema = path.join(app.root, "src/schema.ts");
-    fs.writeFileSync(schema, 'export {int as codec} from "@finesoft/front/web";');
+    fs.writeFileSync(schema, 'export {int as codec} from "@finesoft/front";');
     fs.writeFileSync(
         app.definition,
         'import {codec} from "./schema";\n' +
@@ -467,7 +515,7 @@ test("watch cache invalidates imported schemas and accounts for every file in a 
     fs.writeFileSync(app.definition, original);
     expect(watcher.update([app.definition], true)?.cache).toBe("reused");
     fs.writeFileSync(app.definition, changed);
-    fs.writeFileSync(schema, 'export {str as codec} from "@finesoft/front/web";');
+    fs.writeFileSync(schema, 'export {str as codec} from "@finesoft/front";');
     expect(watcher.update([app.definition, schema], true)).toBeUndefined();
     watcher.update([app.definition, schema]);
     expect(fs.readFileSync(app.output, "utf8")).toContain("id: string");
@@ -532,7 +580,7 @@ test("native type watchers observe node_modules schemas and release their subscr
     const dependency = path.join(app.root, "src/node_modules/schema-codec");
     fs.mkdirSync(dependency, { recursive: true });
     const schema = path.join(dependency, "index.d.ts");
-    fs.writeFileSync(schema, 'export {int as codec} from "@finesoft/front/web";');
+    fs.writeFileSync(schema, 'export {int as codec} from "@finesoft/front";');
     fs.writeFileSync(
         app.definition,
         'import {codec} from "schema-codec";\n' +
@@ -544,7 +592,7 @@ test("native type watchers observe node_modules schemas and release their subscr
         events.push(file);
         watcher.update([file]);
     });
-    fs.writeFileSync(schema, 'export {str as codec} from "@finesoft/front/web";');
+    fs.writeFileSync(schema, 'export {str as codec} from "@finesoft/front";');
     await vi.waitFor(() => expect(fs.readFileSync(app.output, "utf8")).toContain("id: string"), {
         timeout: 3000,
         interval: 10,
@@ -552,7 +600,7 @@ test("native type watchers observe node_modules schemas and release their subscr
     expect(events).toContain(schema);
     // A new source file takes precedence over the previously resolved declaration file.
     const replacement = path.join(dependency, "index.ts");
-    fs.writeFileSync(replacement, 'export {int as codec} from "@finesoft/front/web";');
+    fs.writeFileSync(replacement, 'export {int as codec} from "@finesoft/front";');
     await vi.waitFor(() => expect(fs.readFileSync(app.output, "utf8")).toContain("id: number"), {
         timeout: 3000,
         interval: 10,
@@ -561,7 +609,7 @@ test("native type watchers observe node_modules schemas and release their subscr
     watcher.close();
     const generated = fs.readFileSync(app.output, "utf8");
     const count = events.length;
-    fs.writeFileSync(replacement, 'export {str as codec} from "@finesoft/front/web";');
+    fs.writeFileSync(replacement, 'export {str as codec} from "@finesoft/front";');
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(events).toHaveLength(count);
     expect(fs.readFileSync(app.output, "utf8")).toBe(generated);
@@ -858,12 +906,12 @@ test("imported schema outputs keep same-named path and query fields separate", (
     const app = fixture();
     fs.writeFileSync(
         path.join(app.root, "src/schemas.ts"),
-        `import { int, optional, str } from "@finesoft/front/web";
+        `import { int, optional, str } from "@finesoft/front";
 export const routes = [{path: "/items/:id", params:{id:int()}, query:{id:str(), tab:optional(str())}}] as const;`,
     );
     fs.writeFileSync(
         app.definition,
-        `import { definePage } from "@finesoft/front/web";
+        `import { definePage } from "@finesoft/front";
 import { routes } from "./schemas";
 import { ItemController } from "./item";
 export const page = definePage({id:"item", routes, create:()=>new ItemController()});`,

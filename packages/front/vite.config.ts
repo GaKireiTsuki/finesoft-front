@@ -4,6 +4,11 @@ export default defineConfig({
     pack: {
         entry: [
             "src/index.ts",
+            "src/index-node.ts",
+            "src/portable.ts",
+            "src/typegen.ts",
+            "src/typegen-cli.ts",
+            "src/native-contract.ts",
             "src/browser.ts",
             "src/web.ts",
             "src/ssr.ts",
@@ -14,6 +19,8 @@ export default defineConfig({
             "src/react.ts",
             "src/vue.ts",
             "src/svelte.ts",
+            "src/load-node.ts",
+            "src/load-portable.ts",
         ],
         format: "esm",
         dts: true,
@@ -37,6 +44,7 @@ export default defineConfig({
         },
         deps: {
             neverBundle: [
+                "#finesoft/implementation",
                 "hono",
                 "@hono/node-server",
                 "vite",
@@ -46,7 +54,11 @@ export default defineConfig({
                 /^svelte(?:\/|$)/,
                 /\.svelte$/,
             ],
-            alwaysBundle: [...internal.map((name) => `@finesoft/${name}`), "undici"],
+            alwaysBundle: [
+                ...internal.map((name) => `@finesoft/${name}`),
+                "undici",
+                "magic-string",
+            ],
         },
     },
 });

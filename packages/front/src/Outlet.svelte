@@ -2,7 +2,7 @@
     import { tick, untrack } from "svelte";
     import type { Component } from "svelte";
     import type { ViewProps, WebAppView } from "@finesoft/web";
-    import { useSnapshot } from "@finesoft/front/svelte";
+    import { useSnapshot } from "./svelte";
     let {
         app,
         views,

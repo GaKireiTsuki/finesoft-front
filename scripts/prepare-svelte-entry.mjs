@@ -7,10 +7,12 @@ const dist = resolve(packageRoot, "dist");
 const component = await readFile(resolve(source, "Outlet.svelte"), "utf8");
 await writeFile(
     resolve(dist, "Outlet.svelte"),
-    component.replaceAll('"@finesoft/web"', '"@finesoft/front/web"'),
+    component
+        .replaceAll('"@finesoft/web"', '"@finesoft/front"')
+        .replace('"./svelte"', '"./svelte.mjs"'),
 );
 const declaration = await readFile(resolve(source, "Outlet.svelte.d.ts"), "utf8");
 await writeFile(
     resolve(dist, "Outlet.svelte.d.ts"),
-    declaration.replaceAll('"@finesoft/web"', '"@finesoft/front/web"'),
+    declaration.replaceAll('"@finesoft/web"', '"@finesoft/front"'),
 );

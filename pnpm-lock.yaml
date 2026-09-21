@@ -212,6 +212,9 @@ importers:
       '@finesoft/web':
         specifier: workspace:*
         version: link:../web
+      magic-string:
+        specifier: ^0.30.21
+        version: 0.30.21
       undici:
         specifier: 7.29.0
         version: 7.29.0

@@ -9,7 +9,8 @@
             "@finesoft/server": ["../server/src/index.ts"],
             "@finesoft/web": ["../web/src/index.ts"],
             "@finesoft/ssr/inject": ["../ssr/src/inject.ts"],
-            "@finesoft/server/*": ["../server/src/*"]
+            "@finesoft/server/*": ["../server/src/*"],
+            "#finesoft/implementation": ["./src/load-node.ts"]
         },
         "jsx": "react-jsx"
     },

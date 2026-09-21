@@ -1,4 +1,6 @@
 import { createSSRHandler } from "./ssr-handler";
+import { createRequire } from "node:module";
+import path from "node:path";
 /**
  * finesoftFrontViteConfig — Vite 插件
  *
@@ -17,6 +19,9 @@ import type { Adapter } from "./adapters/types";
 import { createSSRApp, type SSRModule } from "./app";
 import { dynamicImport } from "./dynamic-import";
 import { registerProxyRoutes, type ProxyRouteConfig } from "./proxy";
+import { serverControllerModules } from "./server-controller-plugin";
+import { nativeBindings } from "./native-bindings";
+import { generateFrontTypes } from "./public-types";
 import {
     createControllerTypeWatcher,
     generateControllerTypes,
@@ -93,16 +98,6 @@ export interface FinesoftFrontViteOptions {
 }
 
 /**
- * 从 setup 模块中查找 setup 函数：优先 default，其次 setup 命名导出。
- */
-function resolveSetupFn(mod: Record<string, unknown>): ((app: any) => void | Promise<void>) | null {
-    if (typeof mod.default === "function") return mod.default as any;
-    if (typeof mod.setup === "function") return mod.setup as any;
-    const first = Object.values(mod).find((v) => typeof v === "function");
-    return (first as any) ?? null;
-}
-
-/**
  * 匹配 Vite 配置级别的 renderMode 覆盖。
  * 精确路径优先，然后 glob 模式。
  */
@@ -151,10 +146,13 @@ async function resolveMessagesDir(root: string, messagesDir: string): Promise<st
 }
 
 export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) {
+    if (!process.env.__FINESOFT_SUB_BUILD__) generateFrontTypes(options.controllerTypes || {});
     if (options.controllerTypes !== false && !process.env.__FINESOFT_SUB_BUILD__)
         generateControllerTypes(options.controllerTypes);
     const ssrEntry = options.ssr?.entry ?? "src/ssr.ts";
     let root = process.cwd();
+    const serverControllers = serverControllerModules(() => root);
+    const native = nativeBindings(() => root);
     let buildId = options.buildId ?? crypto.randomUUID();
     let resolvedCommand: string | undefined;
     let resolvedResolve: unknown;
@@ -164,6 +162,7 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
 
     return {
         name: "finesoft-front",
+        enforce: "pre" as const,
 
         config(userConfig: Record<string, any>) {
             const inherited = userConfig.define?.__FINESOFT_BUILD_ID__;
@@ -184,6 +183,8 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
         },
 
         configResolved(config: Record<string, any>) {
+            if (!process.env.__FINESOFT_SUB_BUILD__)
+                generateFrontTypes({ root: config.root, ...options.controllerTypes });
             if (options.controllerTypes !== false && !process.env.__FINESOFT_SUB_BUILD__)
                 generateControllerTypes({
                     ...options.controllerTypes,
@@ -195,14 +196,62 @@ export function finesoftFrontViteConfig(options: FinesoftFrontViteOptions = {}) 
             root = config.root as string;
         },
 
-        resolveId(id: string) {
+        resolveId(
+            this: any,
+            id: string,
+            importer?: string,
+            buildOptions?: { ssr?: boolean; scan?: boolean },
+        ) {
+            if (id.startsWith("virtual:finesoft-front/native/"))
+                return native.resolve(id, importer);
+            serverControllers.guard(id, buildOptions?.ssr, this);
+            if (id === "@finesoft/front") {
+                return (async () => {
+                    const resolveOptions = { ...buildOptions, skipSelf: true };
+                    const resolved = await this.resolve(id, importer, resolveOptions);
+                    // TypeScript's project facade must never become executable code,
+                    // including during dependency scans that bypass load hooks.
+                    if (
+                        !resolved ||
+                        normalizePathForGlob(resolved.id.split("?")[0]) !==
+                            normalizePathForGlob(path.resolve(root, ".finesoft/front.d.ts"))
+                    )
+                        return resolved;
+                    const front = createRequire(path.join(root, "package.json")).resolve(id);
+                    const server =
+                        buildOptions?.ssr ?? this.environment?.config?.consumer === "server";
+                    const conditions: string[] | undefined =
+                        this.environment?.config?.resolve?.conditions;
+                    const node = server && (!conditions || conditions.includes("node"));
+                    return this.resolve(
+                        path.join(path.dirname(front), node ? "index-node.mjs" : "index.mjs"),
+                        importer,
+                        resolveOptions,
+                    );
+                })();
+            }
             if (id === GENERATED_I18N_LOADER_ID && options.i18n?.messagesDir) {
                 return RESOLVED_GENERATED_I18N_LOADER_ID;
+            }
+            if (buildOptions?.scan) {
+                return (async () => {
+                    const resolved = await this.resolve(id, importer, { skipSelf: true });
+                    // Dependency scans read files without load hooks. Keep recognized server
+                    // implementations opaque; ordinary loading still emits their browser proxies.
+                    if (
+                        resolved &&
+                        (await serverControllers.load(this, resolved.id, buildOptions.ssr))
+                    )
+                        return `\0finesoft:server-controller-scan:${resolved.id}`;
+                    return resolved;
+                })();
             }
             return null;
         },
 
-        async load(id: string) {
+        async load(this: any, id: string, buildOptions?: { ssr?: boolean }) {
+            const server = await serverControllers.load(this, id, buildOptions?.ssr);
+            if (server) return server;
             if (id !== RESOLVED_GENERATED_I18N_LOADER_ID || !options.i18n?.messagesDir) {
                 return null;
             }
@@ -222,6 +271,16 @@ export async function loadMessages(locale) {
   return messages ?? undefined;
 }
 `;
+        },
+
+        async buildStart(this: any) {
+            await serverControllers.start(this);
+        },
+
+        transform: (code: string, id: string) => native.transform(code, id),
+
+        watchChange(file: string) {
+            serverControllers.invalidate(file);
         },
 
         /**
@@ -391,8 +450,7 @@ export async function loadMessages(locale) {
                     await options.setup(app);
                 } else if (typeof options.setup === "string") {
                     const mod = await server.ssrLoadModule("/" + options.setup);
-                    const fn = resolveSetupFn(mod);
-                    if (fn) await fn(app);
+                    await mod.default(app);
                 }
 
                 const ssrApp = createSSRApp({
@@ -446,8 +504,7 @@ export async function loadMessages(locale) {
                             path.resolve(root, "dist/server/setup.mjs"),
                         ).href;
                         const mod = await dynamicImport(setupPath);
-                        const fn = resolveSetupFn(mod as Record<string, unknown>);
-                        if (fn) await fn(app);
+                        await mod.default(app);
                     } catch {
                         console.warn(
                             "[finesoft] Could not load setup module for preview. API routes disabled.",
@@ -471,7 +528,7 @@ export async function loadMessages(locale) {
                     defaultLocale: options.defaultLocale,
                     onError: (error) => console.error("[SSR Preview Error]", error),
                 });
-                app.get("*", (c: any) => owner.fetch(c.req.raw, c.env));
+                app.all("*", (c: any) => owner.fetch(c.req.raw, c.env));
                 const close = server.httpServer.close.bind(server.httpServer);
                 server.httpServer.close = (callback?: (error?: Error) => void) =>
                     close((error?: Error) => {
