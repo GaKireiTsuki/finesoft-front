@@ -1,5 +1,11 @@
 # @finesoft/front
 
+## 0.5.2
+
+### Patch Changes
+
+- Auto-generated patch release from CI (2021f0b).
+
 ## 0.5.1
 
 ### Patch Changes
