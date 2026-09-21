@@ -50,7 +50,7 @@ describe("deployment adapters", () => {
                 platformImport: expect.stringContaining("@finesoft/front/node"),
                 platformMiddleware: expect.stringContaining("prerenderDir"),
                 platformExport: expect.stringContaining(
-                    "startNodeHandler({ handler: request => app.fetch(request), port, disposeApp: ssr.dispose }",
+                    "startNodeHandler({ handler: { fetch: async request => app.fetch(request) }, port, disposeApp: ssr.dispose }",
                 ),
             }),
         );

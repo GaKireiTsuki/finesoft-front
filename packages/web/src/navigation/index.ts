@@ -15,7 +15,6 @@ export {
     type NavigationPath,
     type NavigationPathStep,
     type NavigationSnapshot,
-    type Page,
     type ResolvedDestination,
     type SplitColumn,
     type SplitNode,
@@ -37,8 +36,6 @@ export {
     type SplitColumnInit,
     type TabsInit,
 } from "./nodes";
-
-// ===== Islands（条目类型 + 共享标记构造器）=====
 
 // ===== Keys（稳定身份键）=====
 export { resourceKey } from "./keys";
@@ -100,5 +97,4 @@ export {
     type NavigationContextInput,
     type WebSession,
     type WebSessionOptions,
-    type NavigationDispatchContext,
 } from "../application/session";

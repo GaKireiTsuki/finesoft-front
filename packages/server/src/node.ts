@@ -1,10 +1,13 @@
-import { serve, type ServerType } from "@hono/node-server";
+import type { Server } from "node:http";
+import type { Http2Server, Http2SecureServer } from "node:http2";
 import type { RuntimeHandle } from "@finesoft/core";
 import type { HttpHandler } from "./http";
+import { dynamicImport } from "./dynamic-import";
+type ServerType = Server | Http2Server | Http2SecureServer;
 export { nodeDnsLookup } from "./node/dns";
 export { nodeSafeFetchOptions } from "./node/fetch-policy";
 export interface NodeHandlerOptions {
-    handler: HttpHandler | HttpHandler["fetch"];
+    handler: HttpHandler;
     port?: number;
     hostname?: string;
     bindings?: Readonly<Record<string, unknown>>;
@@ -20,10 +23,8 @@ export interface NodeHandlerServer {
 }
 /** Node only listener and managed-task drain; execution remains in the portable handler. */
 export async function startNodeHandler(options: NodeHandlerOptions): Promise<NodeHandlerServer> {
-    const fetch =
-        typeof options.handler === "function"
-            ? options.handler
-            : options.handler.fetch.bind(options.handler);
+    const { serve } = await dynamicImport("@hono/node-server");
+    const fetch = options.handler.fetch.bind(options.handler);
     const tasks = new Set<Promise<void>>();
     const requests = new Set<Promise<void>>();
     const trackRequest = (work: Promise<unknown>) => {

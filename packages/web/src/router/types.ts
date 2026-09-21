@@ -12,7 +12,7 @@ export interface RouteIntent<T = unknown> extends Intent<T> {
     readonly query?: RouteParams;
 }
 
-/** Keep empty-query identity compatible with existing URL and hydration entries. */
+/** Absent and empty query values share one cache identity. */
 export function routeIntent<T = unknown>(
     id: string,
     params: RouteParams = {},

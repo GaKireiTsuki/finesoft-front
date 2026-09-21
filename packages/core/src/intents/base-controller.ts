@@ -10,22 +10,24 @@ import { ExecutionError, type ExecutionContext } from "../application/types";
 export interface ControllerInput<
     TParams extends Record<string, unknown> = Record<string, unknown>,
     TQuery extends Record<string, unknown> = Record<string, unknown>,
+    TContext extends ExecutionContext = ExecutionContext,
 > {
     readonly params: TParams;
     readonly query: TQuery;
-    readonly context: ExecutionContext;
+    readonly context: TContext;
 }
 
 // perform supplies only these three fields; extra required fields cannot be fulfilled.
 type InputFor<T extends ControllerInput> = T extends ControllerInput
-    ? ControllerInput<T["params"], T["query"]> extends T
+    ? ControllerInput<T["params"], T["query"], T["context"]> extends T
         ? T
         : never
     : never;
 export interface ControllerFailure<
     TParams extends Record<string, unknown> = Record<string, unknown>,
     TQuery extends Record<string, unknown> = Record<string, unknown>,
-> extends ControllerInput<TParams, TQuery> {
+    TContext extends ExecutionContext = ExecutionContext,
+> extends ControllerInput<TParams, TQuery, TContext> {
     readonly error: Error;
 }
 
@@ -60,6 +62,9 @@ export abstract class BaseController<
     TInput extends ControllerInput = ControllerInput,
     TResult = unknown,
 > {
+    protected prepareContext(context: ExecutionContext): TInput["context"] {
+        return context as TInput["context"];
+    }
     /**
      * 执行业务逻辑 — 子类必须实现
      *
@@ -94,7 +99,7 @@ export abstract class BaseController<
         const input = {
             params,
             query: query[0] ?? {},
-            context,
+            context: this.prepareContext(context),
         } as InputFor<TInput>;
         try {
             context.signal.throwIfAborted();

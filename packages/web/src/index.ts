@@ -86,14 +86,12 @@ export type {
     BeforeCommitResult,
     NavigationTransactionContext,
     NavigationCommitContext,
-    NavigationDispatchContext,
     NavigationNode,
     NavigationNodeKind,
     NavigationPath,
     NavigationPathStep,
     NavigationRouterLike,
     NavigationSnapshot,
-    Page,
     ResolvedDestination,
     SerializedLeaf,
     SerializedNavigation,
@@ -168,3 +166,9 @@ export { definePage, type PageReference } from "./application/page";
 export { parseCookieString } from "./middleware/cookies";
 
 export { NavigationCommitError } from "./application/session";
+export * from "./application/controller-context";
+export {
+    ServerControllerProxy,
+    SERVER_CONTROLLER_PATH,
+    type ServerControllerRequest,
+} from "./application/server-controller-proxy";

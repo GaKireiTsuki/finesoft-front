@@ -174,7 +174,7 @@ describe("createFullStateCodec — encode/decode round-trip", () => {
         expect(codec.decode(url, realRouter())).toEqual(tree);
     });
 
-    test("a single leaf round-trips (full-state path is backward compatible)", () => {
+    test("a single leaf round-trips through the full-state URL codec", () => {
         const codec = createFullStateCodec();
         const tree = leaf("product", { id: 42, sort: "asc" });
         const url = codec.encode(tree, realRouter());

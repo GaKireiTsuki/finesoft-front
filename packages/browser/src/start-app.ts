@@ -276,20 +276,12 @@ export async function createBrowserApp(config: BrowserAppConfig): Promise<Browse
             if (result !== controller!.getSnapshot())
                 throw new ExecutionError("denied", "Navigation was not committed");
         }
-        const createContext = ({
-            intent,
-            params,
-            query,
-            url,
-            execution,
-        }: NavigationContextInput) => ({
-            container: execution.container,
-            navigation: createBrowserContext({
+        const createContext = ({ intent, params, query, url, execution }: NavigationContextInput) =>
+            createBrowserContext({
                 url: url ?? initialUrl,
                 intent: { id: intent, params, query },
                 container: execution.container,
-            }),
-        });
+            });
         const followRedirect = async (value: { url: string }, candidate: NavigationSnapshot) => {
             const url = browserUrl(value.url);
             if (url.origin !== win.location.origin) {

@@ -4,6 +4,82 @@ const template =
     "<html><head><!--ssr-head--></head><body><!--ssr-body--><!--ssr-extra--><!--ssr-data--></body></html>";
 const base = { html: "hello", head: "title", css: "body{}", serverData: { public: true } };
 
+test("SSR leaves internal credential and response header forwarding to application code", async () => {
+    const requests: Request[] = [];
+    const handler = createSSRHandler({
+        template,
+        serializeServerData: JSON.stringify,
+        fetch: async (request) => {
+            requests.push(request);
+            return new Response("ok", {
+                headers: [
+                    ["set-cookie", "theme=dark; Path=/"],
+                    ["set-cookie", "session=fresh; HttpOnly; Path=/"],
+                ],
+            });
+        },
+        render: async (url, context) => {
+            const explicit = url === "/explicit";
+            const headers = new Headers();
+            if (explicit) headers.set("cookie", context!.request.headers.get("cookie")!);
+            const response = await context!.fetch!("/api/data", { headers });
+            await response.text();
+            expect(context!.requestState!.responseHeaders.getSetCookie()).toEqual([]);
+            expect(context!.requestState!.cookies.get("session")).toBe("original");
+            if (explicit)
+                context!.requestState!.responseHeaders.append(
+                    "set-cookie",
+                    response.headers.getSetCookie()[0]!,
+                );
+            return base;
+        },
+    });
+    try {
+        for (const path of ["/implicit", "/explicit"]) {
+            const response = await handler.fetch(
+                new Request("https://app.test" + path, {
+                    headers: { cookie: "session=original", authorization: "Bearer original" },
+                }),
+            );
+            expect(response.status).toBe(200);
+            expect(response.headers.getSetCookie()).toEqual(
+                path === "/explicit" ? ["theme=dark; Path=/"] : [],
+            );
+        }
+        expect(requests[0]!.headers.has("cookie")).toBe(false);
+        expect(requests[1]!.headers.get("cookie")).toBe("session=original");
+        expect(requests.every((request) => !request.headers.has("authorization"))).toBe(true);
+    } finally {
+        await handler.dispose();
+    }
+});
+
+test("explicit response headers survive a later renderer failure", async () => {
+    const handler = createSSRHandler({
+        template,
+        serializeServerData: JSON.stringify,
+        render: async (_url, context) => {
+            context!.requestState!.responseHeaders.append(
+                "set-cookie",
+                "preference=compact; Path=/",
+            );
+            context!.requestState!.responseHeaders.append("set-cookie", "locale=en; Path=/");
+            context!.requestState!.responseHeaders.set("x-request-tag", "example");
+            throw new Error("private-renderer-detail");
+        },
+    });
+    try {
+        const response = await handler.fetch(new Request("https://app.test/account"));
+        expect(response.status).toBe(500);
+        expect(response.headers.getSetCookie()).toHaveLength(2);
+        expect(response.headers.get("cache-control")).toBe("no-store");
+        expect(response.headers.get("x-request-tag")).toBe("example");
+        expect(await response.text()).toBe("Internal Server Error");
+    } finally {
+        await handler.dispose();
+    }
+});
+
 test("portable SSR preserves status, cookies, redirect, slots, locale, rewrite and mode overrides", async () => {
     const render = vi.fn(async (url: string) => ({
         ...base,

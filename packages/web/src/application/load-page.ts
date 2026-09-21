@@ -10,6 +10,8 @@ import type { LeafNode } from "../navigation/types";
 import { leaf } from "../navigation/nodes";
 import { createActiveLeafCodec } from "../navigation/codec";
 import type { RouteMatch } from "../router/router";
+import { controllerContext } from "./controller-context";
+import { RemoteNavigationResult, remotePages } from "./server-controller-proxy";
 
 export interface LoadPageOptions {
     readonly web: WebRuntime;
@@ -60,7 +62,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                     ? target
                     : (target.url ??
                       (hasRoutes ? createActiveLeafCodec().encode(target, web.router) : ""));
-            const match: RouteMatch | null =
+            let match: RouteMatch | null =
                 direct && !direct.url && !hasRoutes
                     ? {
                           intent: routeIntent(direct.intent, direct.params, direct.query),
@@ -71,7 +73,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
             if (!match) return { kind: "deny", status: 404, message: "Page not found" };
             if (direct && match.intent.id !== direct.intent)
                 throw new ExecutionError("configuration", "Leaf URL does not match its intent");
-            const destination =
+            let destination =
                 typeof target === "string"
                     ? leaf(match.intent.id, match.intent.params ?? {}, {
                           url,
@@ -99,7 +101,7 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                 getCookie: () => undefined,
                 getHeader: () => undefined,
             };
-            const navContext = {
+            let navContext = {
                 ...context,
                 params: match.intent.params ?? {},
                 query: match.intent.query ?? {},
@@ -133,9 +135,11 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                 };
                 const state = execution.context.bindings[WEB_EXECUTION] as WebExecutionState;
                 state.entryIds.set(input, destination.entryId);
+                state.contexts.set(input, controllerContext(execution.context, navContext));
                 if (retained) state.retained.set(input, retained);
                 page = await execution.execute(operation, input);
             } catch (error) {
+                if (error instanceof RemoteNavigationResult) return error.result;
                 if (error instanceof ExecutionError && error.code === "cancelled") throw error;
                 return {
                     kind: "deny",
@@ -144,10 +148,25 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                 };
             }
             check();
+            const remote = remotePages.get(page);
+            if (remote) {
+                remotePages.delete(page);
+                destination = { ...remote.target, entryId: destination.entryId };
+                if (destination.url) match = await web.router.resolve(destination.url);
+                navContext = {
+                    ...navContext,
+                    intent: routeIntent(destination.intent, destination.params, destination.query),
+                    params: destination.params,
+                    query: destination.query ?? {},
+                    url: destination.url ?? "",
+                    path: new URL(destination.url || "/", "http://localhost").pathname,
+                };
+                check();
+            }
             const after = await runAfterLoadGuards(
                 [
                     ...(web.definition.afterLoad ?? []),
-                    ...(match.afterGuards ?? []),
+                    ...(match?.afterGuards ?? []),
                     ...(options.afterLoad ?? []),
                 ],
                 { ...navContext, page },
@@ -158,8 +177,12 @@ export async function loadPage(options: LoadPageOptions): Promise<PageLoadResult
                 kind: "page",
                 page,
                 target: destination,
-                match,
-                ...(after.kind === "rewrite" ? { rewriteUrl: after.url } : {}),
+                match: match ?? undefined,
+                ...(after.kind === "rewrite"
+                    ? { rewriteUrl: after.url }
+                    : remote?.rewriteUrl
+                      ? { rewriteUrl: remote.rewriteUrl }
+                      : {}),
             };
         }
         throw new ExecutionError("configuration", "Page rewrite recursion depth exceeded");

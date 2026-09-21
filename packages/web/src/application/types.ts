@@ -6,6 +6,7 @@ import type { BasePage } from "../models/page";
 import type { LeafNode, NavigationNode } from "../navigation/types";
 import type { RouteInput, RouteParams } from "../router/types";
 import type { RouteMatch } from "../router/router";
+import type { ControllerContext } from "./controller-context";
 
 export interface PageControllerDefinition {
     readonly id: string;
@@ -18,7 +19,7 @@ export interface PageControllerDefinition {
     };
     readonly handler?: (
         params: RouteParams,
-        context: ExecutionContext,
+        context: ControllerContext,
         query: RouteParams,
     ) => BasePage | Promise<BasePage>;
     readonly policies?: readonly OperationPolicy<RouteParams>[];

@@ -60,7 +60,7 @@ const DEFAULT_LOCALE = ${JSON.stringify(ctx.defaultLocale ?? null)};
 ${opts.platformCache ?? ""}
 const app = new Hono();
 ${generateProxyCode(ctx.proxies ?? [])}
-${ctx.setupPath ? 'if (typeof _setupDefault === "function") await _setupDefault(app);' : ""}
+${ctx.setupPath ? "await _setupDefault(app);" : ""}
 ${opts.platformMiddleware ?? ""}
 const ssr = createSSRHandler({
         ownRenderers: true,
@@ -74,7 +74,7 @@ const ssr = createSSRHandler({
     ${opts.platformCache ? "cache: {get: platformCacheGet, set: platformCacheSet}," : ""}
     ${opts.publicCacheHeaders ? `publicCacheHeaders: ${JSON.stringify(opts.publicCacheHeaders)},` : ""}
 });
-app.get("*", c => ssr.fetch(c.req.raw, c.env));
+app.all("*", c => ssr.fetch(c.req.raw, c.env));
 ${opts.platformExport}
 `;
 }

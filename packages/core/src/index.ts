@@ -38,7 +38,7 @@ export {
     type ReportCallback,
     type ReportingLoggerOptions,
 } from "./logger/reporting";
-export type { LoggerFactory, Logger as LoggerInterface } from "./logger/types";
+export type { Logger, LoggerFactory } from "./logger/types";
 export { stableStringify } from "./utils/stable-stringify";
 export { HostGuardError, HttpClient, HttpError } from "./http/client";
 export type {
@@ -95,7 +95,6 @@ export { DEP_KEYS } from "./dependencies/make-dependencies";
 export type {
     FeatureFlags,
     FeatureFlagsProvider,
-    Logger,
     Storage,
     TranslationMessages,
 } from "./dependencies/make-dependencies";

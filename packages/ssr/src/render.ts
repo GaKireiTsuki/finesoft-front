@@ -1,5 +1,5 @@
 import type { SecureFetchOptions } from "@finesoft/core";
-import type { WebHydration } from "@finesoft/web";
+import type { WebHydration, ServerRequestState } from "@finesoft/web";
 
 export interface SSRContext {
     identity?: string;
@@ -8,6 +8,8 @@ export interface SSRContext {
     fetch?: typeof globalThis.fetch;
     request?: Request;
     bindings?: Readonly<Record<string, unknown>>;
+    /** Request metadata and explicit response mutations scoped to this render. */
+    requestState?: ServerRequestState;
 }
 export interface SSRAppResult {
     html: string;

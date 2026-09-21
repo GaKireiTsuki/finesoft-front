@@ -54,7 +54,7 @@ export function createSSRApp(
             console.error("[SSR Error]", error);
         },
     });
-    app.get("*", (context) => owner.fetch(context.req.raw, context.env));
+    app.all("*", (context) => owner.fetch(context.req.raw, context.env));
     return Object.assign(app, { dispose: owner.dispose });
 }
 

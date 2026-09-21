@@ -1,11 +1,12 @@
-import type { ExecutionContext, OperationPolicy, ParamsFor, QuerySchemaMap } from "@finesoft/core";
-import { route, type PageRoute, type RouteDefinition } from "../bootstrap/define-routes";
+import type { ExecutionContext, OperationPolicy } from "@finesoft/core";
+import { route, type PageRoute } from "../bootstrap/define-routes";
 import type { BasePage } from "../models/page";
 import { leaf } from "../navigation/nodes";
 import type { LeafNode } from "../navigation/types";
 import type { RouteParams } from "../router/types";
 import type { PageControllerDefinition } from "./types";
 import type { RouteInputFor, ValidRoutes } from "./route-input";
+import type { ControllerContext } from "./controller-context";
 
 type ControllerParams<C> = C extends { execute(input: { params: infer P }): unknown }
     ? P extends RouteParams
@@ -26,14 +27,6 @@ export interface PageReference<
         options: Options &
             NoInfer<Record<Exclude<keyof Options, keyof Omit<PageRoute<Path>, "path">>, never>>,
     ): Readonly<{ path: Path; intentId: Id } & Options>;
-    route<
-        const Path extends string,
-        C extends ParamsFor<Path> = ParamsFor<Path>,
-        Q extends QuerySchemaMap = QuerySchemaMap,
-    >(
-        path: Path,
-        options?: Omit<RouteDefinition<Path, C, Q>, "path" | "intentId">,
-    ): Readonly<RouteDefinition<Path, C, Q>>;
     leaf(
         ...args: {} extends Q
             ? {} extends P
@@ -56,7 +49,7 @@ export function definePage<
     readonly routes: Routes & NoInfer<ValidRoutes<Routes>>;
     readonly handler: (
         params: NoInfer<RouteInputFor<Routes>["params"]>,
-        context: ExecutionContext,
+        context: ControllerContext,
         query: NoInfer<RouteInputFor<Routes>["query"]>,
     ) => R | Promise<R>;
     readonly policies?: readonly OperationPolicy<NoInfer<RouteInputFor<Routes>["params"]>>[];
@@ -93,7 +86,7 @@ export function definePage<
 >(input: {
     readonly id: Id;
     readonly routes?: undefined;
-    readonly handler: (params: P, context: ExecutionContext) => R | Promise<R>;
+    readonly handler: (params: P, context: ControllerContext) => R | Promise<R>;
     readonly policies?: readonly OperationPolicy<RouteParams>[];
 }): PageReference<P, R, Id>;
 export function definePage(input: {
@@ -104,7 +97,7 @@ export function definePage(input: {
     };
     readonly handler?: (
         params: any,
-        context: ExecutionContext,
+        context: ControllerContext,
         query: any,
     ) => BasePage | Promise<BasePage>;
     readonly policies?: readonly OperationPolicy<RouteParams>[];

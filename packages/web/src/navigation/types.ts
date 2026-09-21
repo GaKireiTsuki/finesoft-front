@@ -4,21 +4,15 @@
  * 给内容无关的 SSR/CSR 框架增加结构化导航能力，对标 SwiftUI 的
  * NavigationStack / TabView / NavigationSplitView —— 但不含任何 UI。
  * 框架持有导航的「状态 + 语义 + URL/history/SSR 集成」，应用自行决定如何渲染，
- * `Page` 保持 `unknown`。
+ * 页面数据统一使用 `BasePage`。
  *
  * 模型是一棵递归导航树（可辨识联合）：叶子是导航目标（intent + params），
  * 内部节点递归组合（tabs of stacks；detail 列是 stack 的 split；……），
- * 与 SwiftUI 的组合方式一致。单个 LeafNode 树即为今天的扁平单页行为（向后兼容）。
+ * 与 SwiftUI 的组合方式一致。单个 LeafNode 树表示扁平单页。
  */
 
 import type { BasePage } from "../models/page";
 import type { RouteParams } from "../router/types";
-
-/**
- * 导航树里 `Page` 的别名 —— 运行期 dispatch 始终产出 `BasePage`，
- * 但导航层对内容无关，字段语义由应用决定。
- */
-export type Page = BasePage;
 
 /** 导航节点 Kind 常量 */
 export const NAVIGATION_NODE_KINDS = {
@@ -120,7 +114,7 @@ export interface ResolvedDestination {
     readonly intent: string;
     readonly params: RouteParams;
     readonly query?: RouteParams;
-    readonly page: Page;
+    readonly page: BasePage;
     readonly status?: number;
 }
 

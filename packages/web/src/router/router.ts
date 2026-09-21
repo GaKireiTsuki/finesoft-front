@@ -53,12 +53,8 @@ export class Router {
         this.sealed = true;
         return this;
     }
-    add(pattern: string, intentId: string, renderModeOrOptions?: string | RouteAddOptions): this {
+    add(pattern: string, intentId: string, options: RouteAddOptions = {}): this {
         if (this.sealed) throw new Error("Router is sealed");
-        const options: RouteAddOptions =
-            typeof renderModeOrOptions === "string"
-                ? { renderMode: renderModeOrOptions }
-                : (renderModeOrOptions ?? {});
         const compiled = compilePath(pattern);
         this.routes.push({ pattern, intentId, path: compiled.descriptor, compiled, ...options });
         return this;
@@ -120,10 +116,6 @@ export class Router {
         return this.routes.map(({ pattern, intentId, path }) =>
             Object.freeze({ pattern, intentId, path }),
         );
-    }
-    /** Compatibility summary for callers awaiting their structured-route migration. */
-    getRoutes(): string[] {
-        return this.routes.map((route) => `${route.pattern} → ${route.intentId}`);
     }
     reverse(
         intentId: string,

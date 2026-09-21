@@ -6,11 +6,19 @@ import { Router } from "../router/router";
 import { routeIntent, type RouteInput } from "../router/types";
 import type { PageControllerDefinition, WebAppDefinition } from "./types";
 import type { RouteDefinition } from "../bootstrap/define-routes";
+import {
+    SERVER_REQUEST,
+    SERVER_CONTROLLER,
+    controllerContext,
+    type ControllerContext,
+    type ServerRequestState,
+} from "./controller-context";
 
 export interface WebExecutionState {
     prefetched: PrefetchedIntents;
     readonly retained: WeakMap<object, BasePage>;
     readonly entryIds: WeakMap<object, string>;
+    readonly contexts: WeakMap<object, ControllerContext>;
 }
 export const WEB_EXECUTION = "@finesoft/web/execution";
 export function consumePage(
@@ -107,11 +115,28 @@ export function defineWebApp(input: WebAppDefinition): WebAppDefinition {
                         policy(input.params, context),
                 ),
                 handler: (input, context) => {
+                    const state = context.bindings[WEB_EXECUTION] as WebExecutionState | undefined;
+                    const request = context.bindings[SERVER_REQUEST] as
+                        | ServerRequestState
+                        | undefined;
+                    const current =
+                        state?.contexts.get(input) ??
+                        controllerContext(context, {
+                            url: "",
+                            path: "",
+                            intent: routeIntent(controller.id, input.params, input.query),
+                            isServer: !!request || typeof window === "undefined",
+                            getCookie: () => undefined,
+                            getHeader: (name) => request?.request.headers.get(name) ?? undefined,
+                        });
                     const cached = consumePage(context, controller.id, input);
                     if (cached !== undefined) return cached;
+                    const instance = controller.create?.();
+                    if (request?.remote && (!instance || !(SERVER_CONTROLLER in instance)))
+                        throw new ExecutionError("not_found");
                     if (controller.handler)
-                        return controller.handler(input.params, context, input.query);
-                    return controller.create!().perform(input.params, context, input.query);
+                        return controller.handler(input.params, current, input.query);
+                    return instance!.perform(input.params, current, input.query);
                 },
             }),
         );

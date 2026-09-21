@@ -10,6 +10,9 @@ import {
     type WebAppDefinition,
     type WebAppView,
     type WebConfiguration,
+    SERVER_REQUEST,
+    type ServerRequestState,
+    type ServerControllerRequest,
 } from "@finesoft/web";
 import { materializeServerData } from "./server-data";
 import type { SSRAppResult, SSRContext, SSRRenderResult } from "./render";
@@ -35,7 +38,18 @@ export function createSSRRender<Definition extends WebAppDefinition>(
     });
     const active = new Set<Promise<SSRRenderResult>>();
     let closing: Promise<void> | undefined;
-    const render = async (url: string, context: SSRContext = {}): Promise<SSRRenderResult> => {
+    const render = async (
+        url: string,
+        context: SSRContext = {},
+        remote?: ServerControllerRequest,
+    ): Promise<SSRRenderResult> => {
+        const request = context.request ?? new Request(new URL(url || "/", "http://localhost"));
+        const requestState: ServerRequestState = context.requestState ?? {
+            request,
+            responseHeaders: new Headers(),
+            remote: !!remote,
+            cookies: parseCookieString(request.headers.get("cookie") ?? ""),
+        };
         const configuration = { ...config.definition.configuration, ...config.configuration };
         const resolvedLocale = config.resolveLocale?.(url, context.request);
         const locale = resolvedLocale?.lang ?? configuration.locale;
@@ -62,25 +76,37 @@ export function createSSRRender<Definition extends WebAppDefinition>(
                 identity: context.identity,
                 traceId: context.traceId,
                 fetch,
-                bindings: { ...context.bindings, request: context.request },
+                bindings: {
+                    ...context.bindings,
+                    request: context.request,
+                    [SERVER_REQUEST]: { ...requestState, remote: !!remote },
+                },
             },
         });
         let controller: ReturnType<typeof createWebSession<Definition>> | undefined;
         const execution = web.createExecution();
         let failed = false;
         try {
-            const resolved = await resolveInitialNavigation(web, url);
-            const initial = resolved?.tree ?? stack(leaf("@finesoft/not-found", {}, { url }));
+            const resolved = remote ? undefined : await resolveInitialNavigation(web, url);
+            const initial = remote
+                ? stack(
+                      leaf(remote.intent, remote.params, {
+                          query: remote.query,
+                          ...(remote.url ? { url: remote.url } : {}),
+                      }),
+                  )
+                : (resolved?.tree ?? stack(leaf("@finesoft/not-found", {}, { url })));
             const base = {
                 head: "",
                 css: "",
                 html: "",
                 serverData: { pages: [] },
                 locale: await web.getLocale(execution),
+                headers: requestState.responseHeaders,
             } satisfies SSRRenderResult;
-            if (resolved?.renderMode === "csr") return { ...base, renderMode: "csr" };
+            if (!remote && resolved?.renderMode === "csr") return { ...base, renderMode: "csr" };
             let redirect: { url: string; status: number } | undefined;
-            const cookies = parseCookieString(context.request?.headers.get("cookie") ?? "");
+            const cookies = requestState.cookies;
             controller = createWebSession({
                 web,
                 execution,
@@ -90,18 +116,15 @@ export function createSSRRender<Definition extends WebAppDefinition>(
                     redirect ??= value;
                 },
                 createContext: ({ intent, params, query, url: matchedUrl }) => ({
+                    url: matchedUrl ?? url,
+                    path: new URL(matchedUrl ?? url, "http://localhost").pathname,
+                    intent: { id: intent, params, query },
+                    params,
+                    query: query ?? {},
                     container: execution.context.container,
-                    navigation: {
-                        url: matchedUrl ?? url,
-                        path: new URL(matchedUrl ?? url, "http://localhost").pathname,
-                        intent: { id: intent, params, query },
-                        params,
-                        query: query ?? {},
-                        container: execution.context.container,
-                        isServer: true,
-                        getCookie: (name) => cookies.get(name),
-                        getHeader: (name) => context.request?.headers.get(name) ?? undefined,
-                    },
+                    isServer: true,
+                    getCookie: (name) => cookies.get(name),
+                    getHeader: (name) => context.request?.headers.get(name) ?? undefined,
                 }),
             });
             for (const kind of ["flow", "externalUrl"])
@@ -134,7 +157,7 @@ export function createSSRRender<Definition extends WebAppDefinition>(
                           })),
                       },
             );
-            const native = await config.render(controller);
+            const native = remote ? "" : await config.render(controller);
             execution.context.signal.throwIfAborted();
             const output = typeof native === "string" ? { html: native } : native;
             return {
@@ -169,24 +192,24 @@ export function createSSRRender<Definition extends WebAppDefinition>(
             if (!failed && errors.length) throw new AggregateError(errors, "SSR cleanup failed");
         }
     };
-    return Object.assign(
-        (url: string, context?: SSRContext) => {
-            if (closing) return Promise.reject(Error("SSR renderer disposed"));
-            const work = render(url, context);
-            active.add(work);
-            void work.then(
-                () => active.delete(work),
-                () => active.delete(work),
-            );
-            return work;
-        },
-        {
-            routes: getWebPlan(config.definition).routes,
-            dispose: () =>
-                (closing ??= (async () => {
-                    while (active.size) await Promise.allSettled(active);
-                    await owner.dispose();
-                })()),
-        },
-    );
+    const run = (url: string, context?: SSRContext, remote?: ServerControllerRequest) => {
+        if (closing) return Promise.reject(Error("SSR renderer disposed"));
+        const work = render(url, context, remote);
+        active.add(work);
+        void work.then(
+            () => active.delete(work),
+            () => active.delete(work),
+        );
+        return work;
+    };
+    return Object.assign(run, {
+        controller: (input: ServerControllerRequest, context: SSRContext) =>
+            run(input.url || "/", context, input),
+        routes: getWebPlan(config.definition).routes,
+        dispose: () =>
+            (closing ??= (async () => {
+                while (active.size) await Promise.allSettled(active);
+                await owner.dispose();
+            })()),
+    });
 }

@@ -9,7 +9,6 @@ import {
     generateUuid,
     type ExecutionHandle,
     type ExecutionContext,
-    type Container,
 } from "@finesoft/core";
 import type { WebRuntime } from "../application/runtime";
 import { WEB_EXECUTION, type WebExecutionState } from "../application/definition";
@@ -25,6 +24,7 @@ import type { WebAppDefinition } from "./types";
 import type { AppSnapshot, NavigationSummary, ViewEntry, WebAppView } from "./view";
 import { resourceKey } from "../navigation/keys";
 import type { RouteParams } from "../router/types";
+import type { BasePage } from "../models/page";
 import { leaf, stack } from "../navigation/nodes";
 import {
     collectAllLeaves,
@@ -48,7 +48,6 @@ import type {
     NavigationNode,
     NavigationPath,
     NavigationSnapshot,
-    Page,
     ResolvedDestination,
 } from "../navigation/types";
 
@@ -56,36 +55,13 @@ import type {
 // 上下文构建回调
 // =====================================================================
 
-/**
- * 控制器解析单个目标时需要的「环境」——由应用提供。
- *
- * 仓库里没有契约所说的 `IntentContext`：dispatch 需要 `Container`，守卫需要
- * `NavigationContext`（含 url/cookie/header）。所以 `createContext` 在此被建模为
- * 「给定目标 intent/params，返回构建守卫上下文 + 派发所需的零件」：
- * - `container`：派发 intent 用（`intentDispatcher.dispatch(intent, container)`）。
- * - `navigation`：完整的 `NavigationContext`（应用按 SSR/CSR 用
- *   `createServerContext`/`createBrowserContext` 造好传入）；缺省时控制器用一个不含
- *   cookie/header 的最小上下文兜底（含 url/path/params/intent/container/isServer，
- *   其中 isServer 取 `WebSessionOptions.isServer`，缺省按运行环境推断）。
- *
- * `signal` propagates to guarded page loading and the existing execution scope.
- */
+/** Host metadata for a destination; execution owns dependency scope and cancellation. */
 export interface NavigationContextInput {
     readonly execution: ExecutionContext;
     readonly intent: string;
     readonly params: RouteParams;
     readonly query?: RouteParams;
     readonly signal?: AbortSignal;
-    readonly url?: string;
-}
-
-/** `createContext` 的返回：派发用的 Container + 守卫用的 NavigationContext（可选）。 */
-export interface NavigationDispatchContext {
-    /** DI 容器 —— intent 派发的必备参数。 */
-    readonly container: Container;
-    /** 守卫上下文；缺省时控制器用最小上下文兜底。 */
-    readonly navigation?: NavigationContext;
-    /** 该目标对应的完整 URL（用于最小兜底上下文的 url/path）。 */
     readonly url?: string;
 }
 
@@ -130,25 +106,22 @@ export interface WebSessionOptions<Definition extends WebAppDefinition = WebAppD
         snapshot: NavigationSnapshot,
         signal?: AbortSignal,
     ) => void | Promise<void>;
-    /** 初始导航树（单 LeafNode = 今天的扁平单页）。 */
+    /** 初始导航树；单 LeafNode 表示扁平单页。 */
     readonly initial: NavigationNode;
-    /** 应用提供的「目标 → 派发上下文」构建回调。 */
-    readonly createContext?: (input: NavigationContextInput) => NavigationDispatchContext;
+    /** Host-specific guard context, including request cookies and headers. */
+    readonly createContext?: (input: NavigationContextInput) => NavigationContext;
     /**
-     * 是否运行在服务端——仅用于 `createContext` 未返回 `navigation` 时的最小兜底上下文，
+     * 是否运行在服务端——仅用于未配置 `createContext` 时的最小上下文，
      * 决定该上下文的 `isServer` 字段。缺省为 true；浏览器 host 显式传 false。
-     * 应用若已通过 `createContext` 提供完整 `navigation`，此项不生效。
+     * 应用若已通过 `createContext` 提供完整上下文，此项不生效。
      */
     readonly isServer?: boolean;
     /** 目标级 beforeLoad 守卫（在全局/路由守卫之外，由控制器对每个可见目标执行）。 */
     readonly beforeLoad?: readonly BeforeLoadGuard[];
     /** 目标级 afterLoad 守卫。 */
     readonly afterLoad?: readonly AfterLoadGuard[];
-    /**
-     * 兜底错误页工厂——dispatch 失败 / deny 时，用它产出该目标的 page。
-     * 缺省用一个最小的 BasePage（pageType="error"）。复刻 runner 的 fallback 语义。
-     */
-    readonly getErrorPage?: (status: number, message: string) => Page;
+    /** Override the application's error page for this session. */
+    readonly getErrorPage?: (status: number, message: string) => BasePage;
     /**
      * Called after the redirecting execution finishes. Return a tree to follow within
      * this same queued operation (at most five follows), preserving cancellation and
@@ -189,10 +162,6 @@ export interface WebSession<Definition extends WebAppDefinition = WebAppDefiniti
 // 实现
 // =====================================================================
 
-function defaultErrorPage(status: number, message: string): Page {
-    return { id: `error-${status}`, pageType: "error", title: message };
-}
-
 const TREE_ACTION_KINDS = Object.values(ACTION_KINDS).filter(
     (kind) => kind !== "flow" && kind !== "externalUrl" && kind !== "compound",
 );
@@ -204,11 +173,11 @@ export function createWebSession(options: WebSessionOptions): WebSession {
     const web = options.web;
     let locale: WebAppView["locale"], translator: WebAppView["translator"];
     const beforeNavigate = [
-        ...(web.definition?.beforeNavigate ?? []),
+        ...(web.definition.beforeNavigate ?? []),
         ...(options.beforeNavigate ?? []),
     ];
-    const beforeCommit = [...(web.definition?.beforeCommit ?? []), ...(options.beforeCommit ?? [])];
-    const getErrorPage = options.getErrorPage ?? web.definition?.getErrorPage ?? defaultErrorPage;
+    const beforeCommit = [...(web.definition.beforeCommit ?? []), ...(options.beforeCommit ?? [])];
+    const getErrorPage = options.getErrorPage ?? web.definition.getErrorPage;
     let snapshot: AppSnapshot = Object.freeze({
         tree: options.initial,
         destinations: [],
@@ -394,7 +363,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                             url,
                         });
                         return (
-                            provided?.navigation ?? {
+                            provided ?? {
                                 url,
                                 path: new URL(url, "http://localhost").pathname,
                                 params: intent.params ?? {},

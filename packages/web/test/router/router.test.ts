@@ -55,12 +55,15 @@ describe("Router", () => {
         expect(() => router.add("/users/:id/:id", "bad-route")).toThrow(/Duplicate parameter/);
     });
 
-    test("returns registered route summaries and null for misses", async () => {
+    test("returns registered route definitions and null for misses", async () => {
         const router = new Router();
         router.add("/", "home");
         router.add("/account/:tab?", "account");
 
-        expect(router.getRoutes()).toEqual(["/ → home", "/account/:tab? → account"]);
+        expect(router.getDefinitions()).toMatchObject([
+            { pattern: "/", intentId: "home" },
+            { pattern: "/account/:tab?", intentId: "account" },
+        ]);
         expect(await router.resolve("/missing")).toBeNull();
     });
 
@@ -179,7 +182,7 @@ describe("Router", () => {
         expect(await router.resolve("/search?page=0")).toBeNull();
     });
 
-    test("keeps undeclared query params as strings (backward compatible)", async () => {
+    test("keeps undeclared query params as strings", async () => {
         const router = new Router();
         router.add("/search", "search", { queryCodecs: { page: int() } });
 

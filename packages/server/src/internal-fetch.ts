@@ -25,18 +25,23 @@ export function createInternalFetch(
         bindings?: Readonly<Record<string, unknown>>,
     ) => Response | Promise<Response>,
     depth: number = 1,
-    context?: { request: Request; bindings: Readonly<Record<string, unknown>> },
+    context?: {
+        request: Request;
+        bindings: Readonly<Record<string, unknown>>;
+    },
 ): typeof globalThis.fetch {
     return ((input: RequestInfo | URL, init?: RequestInit) => {
         // 只拦截相对路径（以 / 开头），其他一律走真实网络
         if (typeof input === "string" && input.startsWith("/")) {
+            const base = context?.request.url ?? "http://localhost";
+            const target = new URL(input, base);
+            if (target.origin !== new URL(base).origin)
+                throw new TypeError("Internal fetch must stay on the request origin");
             const signal = context
                 ? AbortSignal.any([context.request.signal, ...(init?.signal ? [init.signal] : [])])
                 : init?.signal;
-            const request = new Request(
-                new URL(input, context?.request.url ?? "http://localhost"),
-                { ...init, signal },
-            );
+            // Headers and response propagation are explicit application choices.
+            const request = new Request(target, { ...init, signal });
             request.headers.set(SSR_DEPTH_HEADER, String(depth));
             return Promise.resolve(appFetch(request, context?.bindings));
         }

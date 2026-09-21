@@ -289,6 +289,7 @@ export function createWebRuntime<Definition extends WebAppDefinition>(
                         prefetched: prefetchedIntents,
                         retained: new WeakMap(),
                         entryIds: new WeakMap(),
+                        contexts: new WeakMap(),
                     },
                 },
             });

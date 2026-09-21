@@ -18,11 +18,7 @@ import type {
 import type { BasePage } from "../../src/models/page";
 import { PrefetchedIntents } from "../../src/prefetched-intents/prefetched-intents";
 import { Router } from "../../src/router/router";
-import {
-    createWebSession,
-    type WebSessionOptions,
-    type NavigationDispatchContext,
-} from "../../src/application/session";
+import { createWebSession, type WebSessionOptions } from "../../src/application/session";
 import { split, stack, tabs } from "../../src/navigation/nodes";
 import { SPLIT_VISIBILITIES, type NavigationNode } from "../../src/navigation/types";
 
@@ -130,12 +126,6 @@ function makeThrowingControllers(intentId: string, calls?: string[]): PageContro
     return dispatcher;
 }
 
-/** 构建一个 createContext 回调（返回 Container；可附 url）。 */
-function contextFactory(url?: string): WebSessionOptions["createContext"] {
-    const container = new Container();
-    return (): NavigationDispatchContext => ({ container, url });
-}
-
 /** 默认选项装配器：只需给 dispatcher + initial，其余取默认。 */
 function factory(controller: FixtureController): PageControllerDefinition {
     return {
@@ -171,14 +161,14 @@ function makeOptions(
         }),
         prefetchedIntents: prefetched,
     });
-    return { createContext: contextFactory(), ...options, web: framework };
+    return { ...options, web: framework };
 }
 
 // =====================================================================
-// 向后兼容：单 LeafNode = 今天的扁平单页
+// 单 LeafNode 表示扁平单页
 // =====================================================================
 
-describe("single leaf (backward-compatible flat page)", () => {
+describe("single leaf flat page", () => {
     test("resolve() dispatches the one intent and yields one destination", async () => {
         const calls: string[] = [];
         const dispatcher = makeControllers({ home: (p) => pageFor("home", p) }, calls);
@@ -650,7 +640,6 @@ describe("beforeLoad guards (primary destination)", () => {
                 controllers: dispatcher,
                 router,
                 initial: leaf("alias"),
-                createContext: contextFactory(),
                 beforeLoad: [guard],
             }),
         );
@@ -673,7 +662,6 @@ describe("beforeLoad guards (primary destination)", () => {
                 controllers: dispatcher,
                 router,
                 initial: leaf("alias"),
-                createContext: contextFactory(),
                 beforeLoad: [guard],
             }),
         );
@@ -1199,7 +1187,7 @@ describe("minimalContext isServer (no navigation supplied)", () => {
                 controllers: dispatcher,
                 initial: leaf("home"),
                 beforeLoad: [recordingGuard(seen)],
-                // createContext 默认不返回 navigation → 走 minimalContext 兜底。
+                // 未配置 createContext 时使用默认守卫上下文。
             }),
         );
 
@@ -1253,19 +1241,16 @@ describe("minimalContext isServer (no navigation supplied)", () => {
                 beforeLoad: [recordingGuard(seen)],
                 // isServer 选项说 true，但 createContext 提供了 isServer:false 的完整 navigation。
                 isServer: true,
-                createContext: ({ intent, params }): NavigationDispatchContext => ({
+                createContext: ({ intent, params }): NavigationContext => ({
+                    query: {},
+                    url: "/home",
+                    path: "/home",
+                    params,
+                    intent: { id: intent, params },
+                    isServer: false,
                     container,
-                    navigation: {
-                        query: {},
-                        url: "/home",
-                        path: "/home",
-                        params,
-                        intent: { id: intent, params },
-                        isServer: false,
-                        container,
-                        getCookie: () => undefined,
-                        getHeader: () => undefined,
-                    },
+                    getCookie: () => undefined,
+                    getHeader: () => undefined,
                 }),
             }),
         );

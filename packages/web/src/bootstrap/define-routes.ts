@@ -50,23 +50,6 @@ export function route<
         NoInfer<
             Record<Exclude<keyof Definition, keyof Omit<RouteDefinition<Path>, "path">>, never>
         >,
-): Readonly<{ path: Path } & Definition>;
-export function route<
-    const Path extends string,
-    P extends ParamsFor<Path> = ParamsFor<Path>,
-    Q extends QuerySchemaMap = QuerySchemaMap,
->(
-    path: Path,
-    def: {
-        intentId: string;
-        params?: P;
-        query?: Q;
-        cache?: "public";
-        renderMode?: RenderMode;
-        beforeLoad?: BeforeLoadGuard[];
-        afterLoad?: AfterLoadGuard[];
-    },
-): Readonly<RouteDefinition<Path, P, Q>>;
-export function route(path: string, def: Omit<RouteDefinition, "path">): Readonly<RouteDefinition> {
+): Readonly<{ path: Path } & Definition> {
     return Object.freeze({ path, ...def });
 }

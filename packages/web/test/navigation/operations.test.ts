@@ -566,7 +566,7 @@ describe("collectVisibleDestinations 受可见性裁剪", () => {
         expect(collectVisibleDestinations(node)).toEqual([leaf("folders"), leaf("message")]);
     });
 
-    test("automatic（缺省）→ 全列，与既有行为一致（向后兼容）", () => {
+    test("automatic（缺省）显示全部有内容的列", () => {
         expect(collectVisibleDestinations(tree)).toEqual([
             leaf("folders"),
             leaf("list"),
