@@ -11,6 +11,7 @@ export type {
     ControllerTypeResult,
     Adapter,
     AdapterContext,
+    CloudflareAdapterOptions,
 } from "./vite";
 
 const node = (): typeof NodeAPI => loadImplementation("node");

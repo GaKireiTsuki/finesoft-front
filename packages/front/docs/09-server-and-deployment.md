@@ -77,6 +77,19 @@ Node’s host requires `@hono/node-server`. Worker fetch has no Node compatibili
 
 When `setup` is a module path, that module must `export default` its setup function. Development, preview and generated hosts use this explicit export; named functions are not discovered automatically.
 
+Setup runs before declared proxies, so `app.use(...)` authentication covers proxy requests as well as application routes. Register guards before terminal handlers in setup. A terminal setup route can override a proxy on the same path. A configured setup that fails to load aborts preview startup. Proxy `auth` supplies an upstream credential; it does not authenticate the incoming caller. Proxies without application guards remain public.
+
+Cloudflare output fails closed for arbitrary `SAFE_FETCH` hostnames because the adapter has no connection-time DNS enforcement. To use a known trusted API, configure exact origins explicitly:
+
+```ts
+import { cloudflareAdapter, finesoftFrontViteConfig } from "@finesoft/front";
+finesoftFrontViteConfig({
+    adapter: cloudflareAdapter({ trustedOrigins: ["https://api.example.com"] }),
+});
+```
+
+This is an explicit trust exception for those origins, not DNS pinning. The origin includes scheme and port; no wildcards, paths or prefix matching are used. Redirects are checked again and private IP literals remain blocked. Relative in-process API calls retain their behavior. The `"cloudflare"` adapter shortcut has an empty trusted-origin list.
+
 ## Static hosting boundary
 
 `staticAdapter` reads built `render.routes` by default, uses the same SSR host to generate HTML and awaits cleanup. `dynamicRoutes` supplies concrete dynamic paths; `routesExport` is an explicit extension. Discovery and rendering failures fail the build. Plain HTML cannot express redirects, error status, Set-Cookie or custom HTTP response headers, so the adapter rejects these responses; choose a request host when they are required.

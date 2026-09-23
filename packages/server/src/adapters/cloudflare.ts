@@ -18,7 +18,18 @@ import {
 } from "./shared";
 import type { Adapter } from "./types";
 
-export function cloudflareAdapter(): Adapter {
+export interface CloudflareAdapterOptions {
+    /** Trusted API origins; other hostnames fail closed because this host supplies no DNS policy. */
+    trustedOrigins?: readonly string[];
+}
+
+export function cloudflareAdapter(options: CloudflareAdapterOptions = {}): Adapter {
+    const trustedOrigins = [...(options.trustedOrigins ?? [])];
+    for (const origin of trustedOrigins) {
+        const parsed = new URL(origin);
+        if (parsed.origin !== origin || !["https:", "http:"].includes(parsed.protocol))
+            throw new TypeError(`Expected an exact HTTP(S) origin: ${origin}`);
+    }
     return {
         name: "cloudflare",
         async build(ctx) {
@@ -30,6 +41,7 @@ export function cloudflareAdapter(): Adapter {
             // Hono 原生支持 CF Workers 的 fetch 接口，直接 export default app
             const entrySource = generateSSREntry(ctx, {
                 dnsPolicy: "hostname",
+                trustedOrigins,
                 platformImport: ``,
                 platformExport: `export default app;`,
                 // Cloudflare Cache API — 持久化 ISR 缓存到 CDN 边缘节点

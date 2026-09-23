@@ -22,7 +22,7 @@ export function nodeAdapter(): Adapter {
             const entrySource = generateSSREntry(ctx, {
                 platformImport: `import { startNodeHandler } from "@finesoft/front";
 import { readFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";`,
                 platformMiddleware: `
 // 预渲染文件中间件：检查 dist/prerender/ 下是否有对应的静态 HTML
@@ -37,6 +37,8 @@ app.use("*", async (c, next) => {
   ];
   if (urlPath === "/") candidates.unshift(resolve(prerenderDir, "index.html"));
   for (const f of candidates) {
+    const contained = relative(prerenderDir, f);
+    if (contained === ".." || contained.startsWith(".." + sep) || isAbsolute(contained)) continue;
     if (existsSync(f)) {
       const html = readFileSync(f, "utf-8");
       return c.html(html);

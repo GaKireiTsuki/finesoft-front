@@ -126,7 +126,7 @@ test("equal targets own separate drafts while sharing an opt-in query result; ex
             calls++;
             return { name: "Product" };
         },
-        cache: { ttlMs: 10000 },
+        cache: { ttlMs: 10000, partition: () => "public-product" },
     });
     const web = defineWebApp({
         pages: routePages(

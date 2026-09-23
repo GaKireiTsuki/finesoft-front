@@ -44,7 +44,7 @@ export interface FinesoftFrontViteOptions {
     /**
      * 声明式代理路由配置。
      * 框架统一执行路径校验（SSRF 防护）、Host 限制、错误处理、响应头控制。
-     * 代理路由在 setup 之前注册，优先级高于自定义路由。
+     * 代理路由在 setup 之后注册，受 setup 中先注册的鉴权中间件保护。
      */
     proxies?: ProxyRouteConfig[];
     /**
@@ -440,17 +440,17 @@ export async function loadMessages(locale) {
 
                 const app = new HonoClass();
 
-                // 声明式代理路由（框架层，优先注册）
-                if (options.proxies?.length) {
-                    registerProxyRoutes(app, options.proxies);
-                }
-
                 // Setup: 函数直接调用，文件路径通过 ssrLoadModule 加载
                 if (typeof options.setup === "function") {
                     await options.setup(app);
                 } else if (typeof options.setup === "string") {
                     const mod = await server.ssrLoadModule("/" + options.setup);
                     await mod.default(app);
+                }
+
+                // Application access checks must precede terminal proxy handlers.
+                if (options.proxies?.length) {
+                    registerProxyRoutes(app, options.proxies);
                 }
 
                 const ssrApp = createSSRApp({
@@ -490,26 +490,20 @@ export async function loadMessages(locale) {
 
                 const app = new HonoClass();
 
-                // 声明式代理路由（框架层，优先注册）
-                if (options.proxies?.length) {
-                    registerProxyRoutes(app, options.proxies);
-                }
-
                 // Setup: 函数直接调用，文件路径从构建产物加载
                 if (typeof options.setup === "function") {
                     await options.setup(app);
                 } else if (typeof options.setup === "string") {
-                    try {
-                        const setupPath = pathToFileURL(
-                            path.resolve(root, "dist/server/setup.mjs"),
-                        ).href;
-                        const mod = await dynamicImport(setupPath);
-                        await mod.default(app);
-                    } catch {
-                        console.warn(
-                            "[finesoft] Could not load setup module for preview. API routes disabled.",
-                        );
-                    }
+                    const setupPath = pathToFileURL(
+                        path.resolve(root, "dist/server/setup.mjs"),
+                    ).href;
+                    const mod = await dynamicImport(setupPath);
+                    await mod.default(app);
+                }
+
+                // A missing/failed setup must abort startup, never expose unguarded proxies.
+                if (options.proxies?.length) {
+                    registerProxyRoutes(app, options.proxies);
                 }
 
                 const templatePath = path.resolve(root, "dist/client/index.html");

@@ -77,6 +77,19 @@ Node 主机需要 `@hono/node-server`。可移植 Worker 图无需 Node 兼容�
 
 当 `setup` 是模块路径时，该模块必须通过 `export default` 导出 setup 函数。开发、预览与生成的部署主机统一使用这个导出，不再自动猜测命名函数。
 
+`setup` 先于声明式代理运行，先注册的 `app.use(...)` 鉴权中间件因此也保护代理请求。请先注册鉴权，再注册终止请求的处理器；setup 中同路径的终止路由会覆盖代理。配置的 setup 加载失败时，预览启动失败。代理的 `auth` 仅提供上游凭据，不认证调用者；未安装应用鉴权的代理仍公开可用。
+
+Cloudflare 适配器没有连接时 DNS 校验能力，因此 `SAFE_FETCH` 默认拒绝任意域名。访问已知可信 API 时，显式配置完整来源：
+
+```ts
+import { cloudflareAdapter, finesoftFrontViteConfig } from "@finesoft/front";
+finesoftFrontViteConfig({
+    adapter: cloudflareAdapter({ trustedOrigins: ["https://api.example.com"] }),
+});
+```
+
+这是对该来源的显式信任例外，不是 DNS 地址固定。来源包含协议和端口，不支持路径、通配符或前缀匹配；重定向逐跳重查，私有 IP 字面量仍被拒绝。相对路径的进程内 API 调用保持可用。`"cloudflare"` 字符串快捷方式使用空的可信来源列表。
+
 ## 静态托管边界
 
 `staticAdapter` 默认读取构建产物的 `render.routes`，通过同一 SSR host 生成 HTML 并等待释放；`dynamicRoutes` 提供具体动态路径，`routesExport` 仅作显式扩展。发现路由或渲染失败会令构建失败。纯 HTML 不能表达重定向、错误状态、Set-Cookie 或自定义 HTTP 响应头，因此适配器拒绝这些响应；需要它们时选择 Node/Worker 等请求主机。

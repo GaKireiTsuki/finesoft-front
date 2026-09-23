@@ -322,6 +322,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
         const destinations: ResolvedDestination[] = [];
         const resolvedLeaves = new Map<string, LeafNode>();
         let redirect: { url: string; status: number } | undefined;
+        let pageDenial: { kind: "deny"; status: number; message: string } | undefined;
         try {
             if (admission)
                 for (const policy of beforeNavigate) {
@@ -386,6 +387,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                             : result.target,
                     );
                 if (result.kind === "redirect") redirect ??= result;
+                if (result.kind === "deny") pageDenial ??= result;
                 destinations.push({
                     ...(result.kind === "page" && result.match?.cache
                         ? { cache: result.match.cache }
@@ -432,8 +434,9 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                     redirect: { url: redirect.url, status: redirect.status },
                 };
             }
-            if (destinations.some((dest) => dest.status !== undefined))
-                return { snapshot: candidate };
+            // A partial candidate has not passed beforeCommit. In particular, start()
+            // must use its error-only rejection presentation, never publish successful siblings.
+            if (pageDenial) return reject(pageDenial, candidate);
             for (const policy of beforeCommit) {
                 check();
                 const result = await policy({ ...context, tree: candidate.tree, candidate });
@@ -621,8 +624,12 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                 throw new ExecutionError("cancelled");
             if (candidate !== snapshot) {
                 let result = candidate;
-                if (candidate.rejection) {
-                    const { status, message } = candidate.rejection;
+                const failed = candidate.destinations.find((entry) => entry.status !== undefined);
+                if (candidate.rejection || failed) {
+                    const status = candidate.rejection?.status ?? failed!.status!;
+                    const page = candidate.rejection
+                        ? getErrorPage(status, candidate.rejection.message)
+                        : failed!.page;
                     const error = leaf("@finesoft/error");
                     result = {
                         tree: stack(error),
@@ -630,7 +637,7 @@ export function createWebSession(options: WebSessionOptions): WebSession {
                             {
                                 ...error,
                                 resourceKey: resourceKey(error.intent, error.params),
-                                page: getErrorPage(status, message),
+                                page,
                                 status,
                             },
                         ],

@@ -3,7 +3,7 @@ import { expect, test, vi } from "vite-plus/test";
 
 vi.mock("@finesoft/core", async () => import("../../core/src/index.ts"));
 
-import { defineWebApp, deny, leaf, next, split } from "@finesoft/web";
+import { defineWebApp, deny, leaf, next, split, encodeNavigationTreeParam } from "@finesoft/web";
 import { routePages } from "../../web/test/helpers/definition";
 import { createSSRRender } from "../src/create-render";
 
@@ -12,6 +12,69 @@ const errorPage = (status: number, message: string) => ({
     pageType: "error",
     title: message,
 });
+
+test.each(["missing", "denied", "fault"])(
+    "initial URL navigation never discloses a successful sibling of %s",
+    async (failure) => {
+        const commit = vi.fn(() => deny(403, "Whole-tree denial"));
+        const definition = defineWebApp({
+            id: "mixed-failure",
+            pages: routePages(
+                [
+                    {
+                        id: "secret",
+                        handler: () => ({
+                            id: "secret",
+                            pageType: "secret",
+                            title: "PRIVATE_SIBLING",
+                        }),
+                    },
+                    {
+                        id: "denied",
+                        handler: () => ({ id: "denied", pageType: "denied", title: "denied" }),
+                    },
+                    {
+                        id: "fault",
+                        handler: () => {
+                            throw new Error("failure");
+                        },
+                    },
+                ],
+                [{ path: "/secret", intentId: "secret" }],
+            ),
+            getErrorPage: errorPage,
+            beforeLoad: [(ctx) => (ctx.intent.id === "denied" ? deny(401, "Sign in") : next())],
+            beforeCommit: [commit],
+        });
+        const render = createSSRRender({
+            definition,
+            render: (app) => JSON.stringify(app.getSnapshot()),
+        });
+        try {
+            for (const order of [
+                [failure, "secret"],
+                ["secret", failure],
+            ]) {
+                const tree = split(
+                    order.map((intent, i) => ({ id: String(i), content: leaf(intent) })),
+                );
+                const result = await render(`/secret?__nav=${encodeNavigationTreeParam(tree)}`);
+                expect(JSON.stringify(result)).not.toContain("PRIVATE_SIBLING");
+                expect(result.status).toBe(
+                    failure === "missing" ? 404 : failure === "denied" ? 401 : 500,
+                );
+                expect(result.serverData).toEqual({ pages: [] });
+                expect(result.cache).toBeUndefined();
+            }
+            const denied = await render("/secret");
+            expect(denied.status).toBe(403);
+            expect(JSON.stringify(denied)).not.toContain("PRIVATE_SIBLING");
+            expect(commit).toHaveBeenCalledTimes(1);
+        } finally {
+            await render.dispose();
+        }
+    },
+);
 
 test("SSR runs admission and commit policies around one shared native presentation", async () => {
     const events: string[] = [];

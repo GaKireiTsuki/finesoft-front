@@ -1,5 +1,7 @@
 import * as nodePath from "node:path";
 import { runInNewContext } from "node:vm";
+import { Hono } from "hono";
+import { secureFetch } from "@finesoft/core";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
 vi.mock("../../src/adapters/shared", async (importOriginal) => {
@@ -29,6 +31,75 @@ afterEach(() => {
 });
 
 describe("deployment adapters", () => {
+    test("Cloudflare output rejects arbitrary hostnames and permits only explicitly trusted origins", async () => {
+        for (const trustedOrigins of [[], ["https://api.example"]]) {
+            const { fs } = createFsMock();
+            mockPrerenderRoutes.mockResolvedValue([]);
+            await cloudflareAdapter({ trustedOrigins }).build(createAdapterContext(fs));
+            const source = mockGenerateSSREntry.mock.results.at(-1)!.value as string;
+            const expression = source.match(/safeFetch: (.*),\n/)![1];
+            const policy = runInNewContext(`(${expression})`);
+            const base = vi.fn<typeof fetch>(async () => new Response("ok"));
+            const safe = secureFetch(base, policy);
+            await expect(safe("https://untrusted.example/path")).rejects.toMatchObject({
+                name: "HostGuardError",
+            });
+            expect(base).not.toHaveBeenCalled();
+            if (trustedOrigins.length) {
+                expect(await (await safe("https://api.example/path")).text()).toBe("ok");
+                base.mockResolvedValue(
+                    new Response(null, {
+                        status: 302,
+                        headers: { location: "https://untrusted.example" },
+                    }),
+                );
+                await expect(safe("https://api.example/redirect")).rejects.toMatchObject({
+                    name: "HostGuardError",
+                });
+                expect(base).toHaveBeenCalledTimes(2);
+            }
+            base.mockResolvedValue(new Response("internal"));
+            expect(await (await safe("/api/internal")).text()).toBe("internal");
+        }
+    });
+    test.each(["win32", "posix"] as const)(
+        "Node prerender middleware contains decoded paths under %s semantics",
+        async (platform) => {
+            const { fs } = createFsMock();
+            mockPrerenderRoutes.mockResolvedValue([]);
+            await nodeAdapter().build(createAdapterContext(fs));
+            const source = mockGenerateSSREntry.mock.calls.at(-1)![1].platformMiddleware!;
+            const paths = nodePath[platform];
+            const root = platform === "win32" ? "C:\\site\\dist\\server" : "/site/dist/server";
+            const prerender = paths.resolve(root, "../prerender");
+            const files = new Map([
+                [paths.resolve(prerender, "index.html"), "home"],
+                [paths.resolve(prerender, "docs/index.html"), "docs"],
+                [paths.resolve(root, "../../secrets/index.html"), "secret-index"],
+                [paths.resolve(root, "../../secrets.html"), "secret-html"],
+            ]);
+            const reads = vi.fn((path: string) => files.get(path));
+            const app = new Hono();
+            runInNewContext(source.replace("import.meta.url", "'entry'"), {
+                ...paths,
+                app,
+                fileURLToPath: () => paths.join(root, "index.mjs"),
+                existsSync: (path: string) => files.has(path),
+                readFileSync: reads,
+            });
+            app.all("*", (c) => c.notFound());
+            for (const attack of [
+                "/..%5C..%5Csecrets",
+                "/%2e%2e%5c%2e%2e%5csecrets",
+                "/..%5C..%5Csecrets.html",
+            ]) {
+                expect((await app.request(`https://app.test${attack}`)).status).toBe(404);
+            }
+            expect(reads).not.toHaveBeenCalled();
+            expect(await (await app.request("https://app.test/")).text()).toBe("home");
+            expect(await (await app.request("https://app.test/docs")).text()).toBe("docs");
+        },
+    );
     test("builds Node output and writes prerendered pages", async () => {
         const { files, fs } = createFsMock();
         const ctx = createAdapterContext(fs);

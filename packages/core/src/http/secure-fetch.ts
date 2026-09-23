@@ -35,6 +35,8 @@ export interface SecureFetchOptions {
     validateDns?: boolean;
     /** Required when DNS validation is enabled for a hostname. */
     lookup?: DnsLookup;
+    /** Exact trusted origins exempt from DNS checks, not literal checks. Rechecked on redirects. */
+    trustedOrigins?: readonly string[];
     /** Host transport enforcing policy at connection time; preserves the injected fetch. */
     wrapFetch?: (baseFetch: typeof globalThis.fetch) => typeof globalThis.fetch;
 }

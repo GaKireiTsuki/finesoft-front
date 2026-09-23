@@ -59,8 +59,8 @@ const RENDER_MODES = ${JSON.stringify(ctx.renderModes ?? {})};
 const DEFAULT_LOCALE = ${JSON.stringify(ctx.defaultLocale ?? null)};
 ${opts.platformCache ?? ""}
 const app = new Hono();
-${generateProxyCode(ctx.proxies ?? [])}
 ${ctx.setupPath ? "await _setupDefault(app);" : ""}
+${generateProxyCode(ctx.proxies ?? [])}
 ${opts.platformMiddleware ?? ""}
 const ssr = createSSRHandler({
         ownRenderers: true,
@@ -69,7 +69,7 @@ const ssr = createSSRHandler({
     serializeServerData,
     renderModes: RENDER_MODES,
     defaultLocale: DEFAULT_LOCALE,
-    safeFetch: ${opts.dnsPolicy === "hostname" ? "{ validateDns: false }" : "_safeFetchOptions"},
+    safeFetch: ${opts.dnsPolicy === "hostname" ? JSON.stringify({ trustedOrigins: opts.trustedOrigins ?? [] }) : "_safeFetchOptions"},
     fetch: (request, bindings) => app.fetch(request, bindings),
     ${opts.platformCache ? "cache: {get: platformCacheGet, set: platformCacheSet}," : ""}
     ${opts.publicCacheHeaders ? `publicCacheHeaders: ${JSON.stringify(opts.publicCacheHeaders)},` : ""}

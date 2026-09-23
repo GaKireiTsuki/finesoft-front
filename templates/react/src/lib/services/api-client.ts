@@ -8,12 +8,9 @@ import { HttpClient, type HttpClientConfig } from "@finesoft/front";
 export class ApiClient extends HttpClient {
     constructor(config: Partial<HttpClientConfig> & Pick<HttpClientConfig, "fetch">) {
         super({
+            ...config,
             baseUrl: config.baseUrl ?? "/api",
             defaultHeaders: { "Content-Type": "application/json", ...config.defaultHeaders },
-            fetch: config.fetch,
-            validateDns: config.validateDns,
-            lookup: config.lookup,
-            allowInternalHosts: config.allowInternalHosts,
         });
     }
 

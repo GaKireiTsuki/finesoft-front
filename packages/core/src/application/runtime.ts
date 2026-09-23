@@ -299,13 +299,26 @@ export function createRuntime(options: RuntimeOptions): RuntimeHandle {
                         return output;
                     }
                     const cacheValue = cachePolicy.key ? cachePolicy.key(validated) : validated;
+                    const partition = cachePolicy.partition?.(context);
+                    if (cachePolicy.partition && typeof partition !== "string")
+                        configuration("Cache partition must be a string");
                     const key = encodeCacheIdentity([
                         operation.id,
                         invocation.identity ?? null,
                         invocation.locale ?? null,
+                        partition,
                         cacheValue,
                     ]);
-                    const selectedCache = cachePolicy.scope === "execution" ? scopeCache : cache;
+                    // Bindings may contain opaque host resources and mutable tenant state.
+                    // Never serialize them or share their results without an explicit partition.
+                    const invocationBound =
+                        Reflect.ownKeys(context.bindings).length > 0 ||
+                        invocation.fetch !== undefined;
+                    const selectedCache =
+                        cachePolicy.scope === "execution" ||
+                        (invocationBound && !cachePolicy.partition)
+                            ? scopeCache
+                            : cache;
                     const cached = selectedCache.get(key);
                     if (cached && cached.expires > Date.now()) {
                         complete(true);

@@ -7,6 +7,8 @@ export type DnsLookup = (hostname: string) => Promise<readonly string[]>;
 export interface TargetGuardOptions {
     readonly validateDns?: boolean;
     readonly lookup?: DnsLookup;
+    /** Exact host-owned origins trusted without DNS checks; literal address checks still apply. */
+    readonly trustedOrigins?: readonly string[];
 }
 
 /** Shared target policy for HttpClient and secureFetch. */
@@ -25,6 +27,7 @@ export async function enforceHostGuard(
     }
     const verdict = classifyUrl(parsed.href);
     if (!verdict.ok) throw new HostGuardError(url, verdict.reason);
+    if (options.trustedOrigins?.includes(parsed.origin)) return;
     if (
         options.validateDns === false ||
         parsed.hostname.includes(":") ||

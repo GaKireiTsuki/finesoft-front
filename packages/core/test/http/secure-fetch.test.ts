@@ -6,6 +6,51 @@ function fakeFetch(): typeof globalThis.fetch {
     return vi.fn(async () => new Response("ok", { status: 200 })) as any;
 }
 
+test("trusted origins are exact DNS trust exceptions, never private-address or redirect exemptions", async () => {
+    const base = fakeFetch();
+    const safe = secureFetch(base, { trustedOrigins: ["https://api.example", "http://127.0.0.1"] });
+    await safe("https://api.example/normal");
+    for (const url of [
+        "http://api.example",
+        "https://api.example:444",
+        "https://api.example.evil.test",
+        "https://api.example@evil.test",
+        "http://127.0.0.1",
+    ]) {
+        await expect(safe(url)).rejects.toBeInstanceOf(HostGuardError);
+    }
+    expect(base).toHaveBeenCalledTimes(1);
+});
+
+test.each(["198.18.0.0", "198.19.255.255", "0xc6120001", "3323068417", "[::ffff:c613:ffff]"])(
+    "blocks benchmark-network destination %s before fetching",
+    async (host) => {
+        const base = fakeFetch();
+        await expect(
+            secureFetch(base, { validateDns: false })(`http://${host}/`),
+        ).rejects.toBeInstanceOf(HostGuardError);
+        expect(base).not.toHaveBeenCalled();
+    },
+);
+
+test("blocks benchmark-network redirects and DNS answers while retaining public destinations", async () => {
+    const base = vi.fn<typeof fetch>(
+        async () =>
+            new Response(null, { status: 302, headers: { location: "http://198.19.1.1/" } }),
+    );
+    await expect(
+        secureFetch(base, { lookup: async () => ["1.1.1.1"] })("https://public.test"),
+    ).rejects.toBeInstanceOf(HostGuardError);
+    expect(base).toHaveBeenCalledTimes(1);
+    base.mockClear();
+    await expect(
+        secureFetch(base, { lookup: async () => ["198.18.1.1"] })("https://private.test"),
+    ).rejects.toBeInstanceOf(HostGuardError);
+    expect(base).not.toHaveBeenCalled();
+    base.mockResolvedValue(new Response("public"));
+    expect(await (await secureFetch(base)("https://1.1.1.1/")).text()).toBe("public");
+});
+
 describe("secureFetch", () => {
     test("blocks loopback IPv4 by default", async () => {
         const base = fakeFetch();

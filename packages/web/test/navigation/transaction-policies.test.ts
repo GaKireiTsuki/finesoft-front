@@ -41,6 +41,111 @@ function fixture(policies: Partial<WebAppDefinition> = {}) {
     });
     return { web: framework, controller, events };
 }
+
+test("initial browser failures publish only an error and can retry without retaining successful sibling data", async () => {
+    let broken = true;
+    const definition = defineWebApp({
+        id: "initial-failure",
+        pages: routePages(
+            [
+                {
+                    id: "left",
+                    handler: () => {
+                        if (broken) throw Error("broken");
+                        return { id: "left", pageType: "left", title: "left" };
+                    },
+                },
+                {
+                    id: "secret",
+                    handler: () => ({
+                        id: "secret",
+                        pageType: "secret",
+                        title: "PRIVATE_BROWSER_SIBLING",
+                    }),
+                },
+            ],
+            [],
+        ),
+        getErrorPage: (status, title) => ({ id: String(status), pageType: "error", title }),
+        beforeCommit: [() => next()],
+    });
+    const web = createWebRuntime({ definition });
+    const controller = createWebSession({
+        web,
+        isServer: false,
+        initial: split([
+            { id: "left", content: leaf("left") },
+            { id: "right", content: leaf("secret") },
+        ]),
+    });
+    try {
+        const failed = await controller.start();
+        expect(failed.entries).toHaveLength(1);
+        expect(failed.entries[0].status).toBe(500);
+        expect(JSON.stringify(failed)).not.toContain("PRIVATE_BROWSER_SIBLING");
+        broken = false;
+        await controller.perform({ kind: "hydrate", tree: controller.getTree() });
+        expect(controller.getSnapshot().entries).toHaveLength(2);
+        expect(JSON.stringify(controller.getSnapshot())).toContain("PRIVATE_BROWSER_SIBLING");
+    } finally {
+        await controller.dispose();
+        await web.dispose();
+    }
+});
+
+test("an initial external redirect never publishes successful siblings before leaving the browser", async () => {
+    const commit = vi.fn(() => deny(403, "Private"));
+    const web = createWebRuntime({
+        definition: defineWebApp({
+            id: "external-redirect",
+            pages: routePages(
+                [
+                    {
+                        id: "secret",
+                        handler: () => ({
+                            id: "secret",
+                            pageType: "secret",
+                            title: "PRIVATE_REDIRECT_SIBLING",
+                        }),
+                    },
+                    {
+                        id: "redirect",
+                        handler: () => ({
+                            id: "redirect",
+                            pageType: "redirect",
+                            title: "redirect",
+                        }),
+                    },
+                ],
+                [],
+            ),
+            beforeLoad: [
+                (ctx) =>
+                    ctx.intent.id === "redirect" ? redirect("https://external.test/") : next(),
+            ],
+            beforeCommit: [commit],
+            getErrorPage: (status, title) => ({ id: String(status), pageType: "error", title }),
+        }),
+    });
+    const onRedirect = vi.fn(() => undefined);
+    const session = createWebSession({
+        web,
+        isServer: false,
+        onRedirect,
+        initial: split([
+            { id: "secret", content: leaf("secret") },
+            { id: "redirect", content: leaf("redirect") },
+        ]),
+    });
+    try {
+        expect(JSON.stringify(await session.start())).not.toContain("PRIVATE_REDIRECT_SIBLING");
+        expect(onRedirect).toHaveBeenCalledOnce();
+        expect(commit).not.toHaveBeenCalled();
+    } finally {
+        await session.dispose();
+        await web.dispose();
+    }
+});
 test("transaction phases surround per-page Split loads exactly once and precede listeners", async () => {
     const order: string[] = [];
     const fixtureApp = fixture({

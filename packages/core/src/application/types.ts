@@ -38,6 +38,11 @@ export interface QueryCache<I> {
     readonly scope?: "runtime" | "execution";
     readonly ttlMs: number;
     readonly key?: (input: I) => string;
+    /**
+     * Trusted cache partition covering every result-affecting invocation binding/fetch.
+     * Without it, invocations with bindings or their own fetch cache only within the execution.
+     */
+    readonly partition?: (context: ExecutionContext) => string;
     readonly tags?: readonly string[];
 }
 export interface Operation<I = unknown, O = unknown> {

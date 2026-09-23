@@ -497,7 +497,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         expect(namedSetup).not.toHaveBeenCalled();
     });
 
-    test("configures preview routing, caches prerendered HTML, and handles failures", async () => {
+    test("configures preview routing after setup, caches prerendered HTML, and handles failures", async () => {
         const plugin = finesoftFrontViteConfig({
             setup: "src/setup.ts",
             renderModes: { "/forced-csr": "csr" },
@@ -592,7 +592,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
                 return { getRequestListener };
             }
             if (specifier === setupModuleUrl) {
-                throw new Error("missing setup module");
+                return { default: () => {} };
             }
             if (specifier === ssrModuleUrl) {
                 return { render, serializeServerData };
@@ -603,9 +603,7 @@ describe("finesoftFrontViteConfig lifecycle", () => {
         const configure = plugin.configurePreviewServer(server);
         await configure?.();
 
-        expect(warn).toHaveBeenCalledWith(
-            "[finesoft] Could not load setup module for preview. API routes disabled.",
-        );
+        expect(warn).not.toHaveBeenCalled();
 
         const app = HonoMock.latest();
         const handler = app.handlers.get("ALL *") as

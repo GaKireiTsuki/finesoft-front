@@ -1,5 +1,11 @@
 import { expect, test, vi } from "vite-plus/test";
-import { createRuntime, defineApp, defineOperation, ExecutionError } from "../../src";
+import {
+    createRuntime,
+    defineApp,
+    defineOperation,
+    ExecutionError,
+    type ExecutionContext,
+} from "../../src";
 function deferred<T>() {
     let resolve!: (value: T) => void;
     let reject!: (error: unknown) => void;
@@ -9,6 +15,102 @@ function deferred<T>() {
     });
     return { promise, resolve, reject };
 }
+
+test("runtime caches do not reuse results across invocation bindings with overlapping identities", async () => {
+    const handler = vi.fn((_: undefined, context: ExecutionContext) => context.bindings.tenant);
+    const query = defineOperation({
+        id: "tenant-data",
+        kind: "query",
+        cache: { scope: "runtime", ttlMs: 10000 },
+        handler,
+    });
+    const runtime = createRuntime({ app: defineApp({ id: "tenants", operations: [query] }) });
+    try {
+        for (const tenant of ["a", "b", "a"]) {
+            const scope = runtime.createExecution({ identity: "member", bindings: { tenant } });
+            expect(await scope.execute(query, undefined)).toBe(tenant);
+            expect(await scope.execute(query, undefined)).toBe(tenant);
+            await scope.dispose();
+        }
+        expect(handler).toHaveBeenCalledTimes(3);
+    } finally {
+        await runtime.dispose();
+    }
+});
+
+test("explicit cache partitions preserve safe cross-execution reuse, policies and invalidation", async () => {
+    const handler = vi.fn((_: undefined, context: ExecutionContext) => context.bindings.tenant);
+    const query = defineOperation({
+        id: "partitioned-data",
+        kind: "query",
+        cache: {
+            ttlMs: 10000,
+            partition: (context) => String(context.bindings.tenant),
+            tags: ["tenants"],
+        },
+        policies: [
+            (_, context) => {
+                if (context.bindings.denied) throw new ExecutionError("denied");
+            },
+        ],
+        handler,
+    });
+    const runtime = createRuntime({ app: defineApp({ id: "partitioned", operations: [query] }) });
+    try {
+        for (const tenant of ["a", "b", "a", "b"]) {
+            expect(
+                await runtime.execute(query, undefined, {
+                    identity: "member",
+                    bindings: { tenant },
+                }),
+            ).toBe(tenant);
+        }
+        expect(handler).toHaveBeenCalledTimes(2);
+        await expect(
+            runtime.execute(query, undefined, {
+                identity: "member",
+                bindings: { tenant: "a", denied: true },
+            }),
+        ).rejects.toMatchObject({ code: "denied" });
+        runtime.invalidate(["tenants"]);
+        expect(
+            await runtime.execute(query, undefined, {
+                identity: "member",
+                bindings: { tenant: "a" },
+            }),
+        ).toBe("a");
+        expect(handler).toHaveBeenCalledTimes(3);
+    } finally {
+        await runtime.dispose();
+    }
+});
+
+test("opaque bindings and invocation fetch implementations stay execution-local without serialization", async () => {
+    const opaque: Record<string, unknown> = {};
+    opaque.self = opaque;
+    const query = defineOperation({
+        id: "fetch-data",
+        kind: "query",
+        cache: { ttlMs: 10000, key: () => "same" },
+        handler: async (_: undefined, context) => (await context.fetch("/data")).text(),
+    });
+    const runtime = createRuntime({ app: defineApp({ id: "opaque", operations: [query] }) });
+    try {
+        for (const bindings of [undefined, { resource: opaque }]) {
+            for (const tenant of ["a", "b"]) {
+                expect(
+                    await runtime.execute(query, undefined, {
+                        identity: "same",
+                        bindings,
+                        fetch: async () => new Response(tenant),
+                    }),
+                ).toBe(tenant);
+            }
+        }
+    } finally {
+        await runtime.dispose();
+    }
+});
 
 test("strict default cache keys distinguish undefined, sentinel-shaped objects, null and signed zero", async () => {
     let calls = 0;

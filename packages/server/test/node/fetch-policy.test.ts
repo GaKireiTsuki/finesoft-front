@@ -23,23 +23,28 @@ test("connection lookup passes the exact checked DNS records without a second re
     expect(lookup).toHaveBeenCalledWith("public.test", { all: true });
 });
 
-test.each(["127.0.0.1", "::ffff:127.0.0.1", "169.254.169.254", "10.0.0.1"])(
-    "rejects %s from mixed connection DNS answers",
-    async (address) => {
-        lookup.mockResolvedValue([
-            { address: "1.1.1.1", family: 4 },
-            { address, family: address.includes(":") ? 6 : 4 },
-        ]);
-        const callback = vi.fn();
-        guardedLookup("rebind.test", { all: true }, callback);
-        await vi.waitFor(() => expect(callback).toHaveBeenCalled());
-        expect(callback).toHaveBeenCalledWith(
-            expect.objectContaining({ name: "HostGuardError" }),
-            "",
-            0,
-        );
-    },
-);
+test.each([
+    "127.0.0.1",
+    "::ffff:127.0.0.1",
+    "169.254.169.254",
+    "10.0.0.1",
+    "198.18.0.0",
+    "198.19.255.255",
+    "::ffff:c612:1",
+])("rejects %s from mixed connection DNS answers", async (address) => {
+    lookup.mockResolvedValue([
+        { address: "1.1.1.1", family: 4 },
+        { address, family: address.includes(":") ? 6 : 4 },
+    ]);
+    const callback = vi.fn();
+    guardedLookup("rebind.test", { all: true }, callback);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalled());
+    expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "HostGuardError" }),
+        "",
+        0,
+    );
+});
 
 test("real Node fetch refuses the connection after a public preflight turns private", async () => {
     let hits = 0;

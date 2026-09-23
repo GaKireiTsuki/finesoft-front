@@ -1,5 +1,5 @@
 export { autoAdapter } from "./adapters/auto";
-export { cloudflareAdapter } from "./adapters/cloudflare";
+export { cloudflareAdapter, type CloudflareAdapterOptions } from "./adapters/cloudflare";
 export { netlifyAdapter } from "./adapters/netlify";
 export { nodeAdapter } from "./adapters/node";
 export { resolveAdapter } from "./adapters/resolve";

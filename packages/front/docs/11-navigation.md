@@ -205,6 +205,8 @@ Admission receives `from`, candidate `tree`, stable `transitionId`, active `exec
 
 A denial returns an uncommitted snapshot with `rejection`, including for empty trees. Session restore rejects it before replacing scopes or slices. Initial browser denial renders the error without committing navigation or recording a page visit; later denial preserves the displayed draft. Both flat and navigation SSR honor these policies and emit no rejected page data or public-cache permission. CSR shells still defer navigation to the browser.
 
+If any visible page fails during initial navigation, the whole candidate stays uncommitted and only its error presentation is exposed. Successful siblings are withheld from the native view and SSR hydration data until a successful retry passes the commit boundary. Initial browser redirects that hand off to an external site likewise withhold successful siblings while the browser leaves. Page failures do not invoke `beforeCommit`; later failed navigation preserves the previously committed view.
+
 Owned back/forward rejection compensates to the committed history entry and restores its scroll identity. Additive history metadata preserves ownership and position across reloads. Entries without compatible ownership metadata are diagnosed; the framework cannot infer a safe traversal distance for external entries.
 
 Low-level hosts configuring `createWebSession({ createContext })` return a `NavigationContext` directly. The execution supplies its DI container and cancellation signal; request cookies and headers stay in the host context. The session uses the application's `getErrorPage` unless explicitly overridden.

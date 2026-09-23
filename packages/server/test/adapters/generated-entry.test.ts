@@ -48,7 +48,10 @@ export const serializeServerData=JSON.stringify;
         );
         writeFileSync(
             join(dir, "setup.mjs"),
-            `export default app => app.get('/api', c => c.text(String(c.env.tenant)));`,
+            `export default app => {
+                app.use('/proxy/*', async (c, next) => c.req.header('x-session') === 'allowed' ? next() : c.text('Unauthorized', 401));
+                app.get('/api', c => c.text(String(c.env.tenant)));
+            };`,
         );
         const code = generateSSREntry(
             {
@@ -88,15 +91,18 @@ globalThis.fetch=async (url,init)=>{requests.push({url,init});return new Respons
 try {
   process.env.GENERATED_PROXY_TOKEN='runtime-secret';
   response=await app.fetch(new Request('https://test/proxy/image?v=2'));
+  assert.equal(response.status,401);assert.equal(requests.length,0);
+  const authorized={headers:{'x-session':'allowed'}};
+  response=await app.fetch(new Request('https://test/proxy/image?v=2',authorized));
   assert.deepEqual(new Uint8Array(await response.arrayBuffer()),binary);
   assert.equal(response.headers.get('cache-control'),'max-age=60');
   assert.equal(requests[0].url,'https://upstream.example/image?v=2');
   assert.equal(requests[0].init.headers.Authorization,'Bearer runtime-secret');
   assert.equal(requests[0].init.headers['x-config'],${JSON.stringify('a"b\\c')});
-  response=await app.fetch(new Request('https://test/proxy/%2Fprivate'));
+  response=await app.fetch(new Request('https://test/proxy/%2Fprivate',authorized));
   assert.equal(response.status,400);assert.equal(requests.length,1);
   const nodeProcess=globalThis.process;
-  try { globalThis.process=undefined; response=await app.fetch(new Request('https://test/proxy/edge')); }
+  try { globalThis.process=undefined; response=await app.fetch(new Request('https://test/proxy/edge',authorized)); }
   finally { globalThis.process=nodeProcess; }
   assert.equal(response.status,200);assert.equal(requests[1].init.headers.Authorization,undefined);
 } finally { globalThis.fetch=originalFetch;delete process.env.GENERATED_PROXY_TOKEN; }

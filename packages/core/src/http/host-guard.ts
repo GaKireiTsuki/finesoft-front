@@ -156,6 +156,10 @@ function classifyIPv4Octets(o: [number, number, number, number]): HostCheckResul
     if (a === 100 && b >= 64 && b <= 127) {
         return { ok: false, reason: "CGNAT IPv4 forbidden" };
     }
+    // 198.18.0.0/15 — non-public network benchmarking (RFC 2544)
+    if (a === 198 && (b === 18 || b === 19)) {
+        return { ok: false, reason: "benchmark IPv4 (198.18/15) forbidden" };
+    }
     // 224.0.0.0/4 — multicast
     if (a >= 224 && a <= 239) return { ok: false, reason: "multicast IPv4 forbidden" };
     // 240.0.0.0/4 — reserved

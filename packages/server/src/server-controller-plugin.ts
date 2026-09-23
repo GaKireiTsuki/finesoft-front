@@ -51,12 +51,281 @@ export function serverControllerModules(getRoot: () => string) {
             .getModifiers(node)
             ?.some((m) => m.kind === kind);
 
+    function unwrap(node: ts.Expression): ts.Expression {
+        const c = getCompiler();
+        while (
+            c.isParenthesizedExpression(node) ||
+            c.isAsExpression(node) ||
+            c.isTypeAssertionExpression(node) ||
+            c.isNonNullExpression(node) ||
+            c.isSatisfiesExpression(node)
+        )
+            node = node.expression;
+        return node;
+    }
+
+    function propertyName(node: ts.PropertyName): string | undefined {
+        const c = getCompiler();
+        if (c.isIdentifier(node) || c.isStringLiteralLike(node) || c.isNumericLiteral(node))
+            return node.text;
+        return c.isComputedPropertyName(node) && c.isStringLiteralLike(unwrap(node.expression))
+            ? (unwrap(node.expression) as ts.StringLiteral).text
+            : undefined;
+    }
+
+    function bindingPath(node: ts.BindingName, name: string): string[] | undefined {
+        const c = getCompiler();
+        if (c.isIdentifier(node)) return node.text === name ? [] : undefined;
+        for (let index = 0; index < node.elements.length; index++) {
+            const item = node.elements[index];
+            if (!c.isBindingElement(item) || item.dotDotDotToken) continue;
+            const nested = bindingPath(item.name, name);
+            const member = c.isArrayBindingPattern(node)
+                ? String(index)
+                : item.propertyName
+                  ? propertyName(item.propertyName)
+                  : c.isIdentifier(item.name)
+                    ? item.name.text
+                    : undefined;
+            if (nested && member !== undefined) return [member, ...nested];
+        }
+        return undefined;
+    }
+
+    async function exportedMember(
+        context: BuildContext,
+        specifier: string,
+        importer: string,
+        name: string,
+        members: string[],
+        seen: Set<string>,
+        baseOnly: boolean,
+    ): Promise<boolean> {
+        if (!members.length) return exported(context, specifier, importer, name, seen, baseOnly);
+        if (specifier.startsWith("@finesoft/")) return false;
+        const resolved = await context.resolve(specifier, importer, { skipSelf: true });
+        const file = resolved?.id.split("?")[0];
+        if (!file) return false;
+        const key = `${file}:export-member:${JSON.stringify([name, ...members])}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        const source = read(file);
+        if (!source) return false;
+        context.addWatchFile(file);
+        const c = getCompiler();
+        for (const statement of source.statements) {
+            if (c.isExportDeclaration(statement) && !statement.isTypeOnly) {
+                const module =
+                    statement.moduleSpecifier && c.isStringLiteral(statement.moduleSpecifier)
+                        ? statement.moduleSpecifier.text
+                        : undefined;
+                const clause = statement.exportClause;
+                if (module && clause && c.isNamespaceExport(clause) && clause.name.text === name)
+                    return exportedMember(
+                        context,
+                        module,
+                        file,
+                        members[0],
+                        members.slice(1),
+                        seen,
+                        baseOnly,
+                    );
+                if (
+                    module &&
+                    !clause &&
+                    (await exportedMember(
+                        context,
+                        module,
+                        file,
+                        name,
+                        members,
+                        new Set(seen),
+                        baseOnly,
+                    ))
+                )
+                    return true;
+                if (clause && c.isNamedExports(clause))
+                    for (const item of clause.elements) {
+                        if (item.isTypeOnly || item.name.text !== name) continue;
+                        const local = item.propertyName ?? item.name;
+                        return module
+                            ? exportedMember(
+                                  context,
+                                  module,
+                                  file,
+                                  local.text,
+                                  members,
+                                  seen,
+                                  baseOnly,
+                              )
+                            : memberExpression(context, source, local, members, seen, baseOnly);
+                    }
+            }
+            if (c.isVariableStatement(statement) && has(statement, c.SyntaxKind.ExportKeyword))
+                for (const item of statement.declarationList.declarations)
+                    if (c.isIdentifier(item.name) && item.name.text === name && item.initializer)
+                        return memberExpression(
+                            context,
+                            source,
+                            item.initializer,
+                            members,
+                            seen,
+                            baseOnly,
+                        );
+            if (name === "default" && c.isExportAssignment(statement))
+                return memberExpression(
+                    context,
+                    source,
+                    statement.expression,
+                    members,
+                    seen,
+                    baseOnly,
+                );
+        }
+        return false;
+    }
+
+    async function memberExpression(
+        context: BuildContext,
+        source: ts.SourceFile,
+        node: ts.Expression,
+        members: string[],
+        seen: Set<string>,
+        baseOnly: boolean,
+    ): Promise<boolean> {
+        if (!members.length) return expression(context, source, node, seen, baseOnly);
+        node = unwrap(node);
+        const key = `${source.fileName}:member:${node.pos}:${node.end}:${JSON.stringify(members)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        const c = getCompiler();
+        if (c.isPropertyAccessExpression(node))
+            return memberExpression(
+                context,
+                source,
+                node.expression,
+                [node.name.text, ...members],
+                seen,
+                baseOnly,
+            );
+        if (c.isElementAccessExpression(node) && c.isStringLiteralLike(node.argumentExpression))
+            return memberExpression(
+                context,
+                source,
+                node.expression,
+                [node.argumentExpression.text, ...members],
+                seen,
+                baseOnly,
+            );
+        if (c.isObjectLiteralExpression(node))
+            for (const item of [...node.properties].reverse()) {
+                if (c.isSpreadAssignment(item)) {
+                    if (
+                        await memberExpression(
+                            context,
+                            source,
+                            item.expression,
+                            members,
+                            new Set(seen),
+                            baseOnly,
+                        )
+                    )
+                        return true;
+                    continue;
+                }
+                if (propertyName(item.name) !== members[0]) continue;
+                if (c.isPropertyAssignment(item))
+                    return memberExpression(
+                        context,
+                        source,
+                        item.initializer,
+                        members.slice(1),
+                        seen,
+                        baseOnly,
+                    );
+                if (c.isShorthandPropertyAssignment(item))
+                    return memberExpression(
+                        context,
+                        source,
+                        item.name,
+                        members.slice(1),
+                        seen,
+                        baseOnly,
+                    );
+            }
+        if (c.isArrayLiteralExpression(node)) {
+            const item = node.elements[Number(members[0])];
+            return (
+                !!item && memberExpression(context, source, item, members.slice(1), seen, baseOnly)
+            );
+        }
+        if (!c.isIdentifier(node)) return false;
+        for (const statement of source.statements) {
+            if (c.isVariableStatement(statement))
+                for (const item of statement.declarationList.declarations) {
+                    const prefix = bindingPath(item.name, node.text);
+                    if (prefix && item.initializer)
+                        return memberExpression(
+                            context,
+                            source,
+                            item.initializer,
+                            [...prefix, ...members],
+                            seen,
+                            baseOnly,
+                        );
+                }
+            if (
+                !c.isImportDeclaration(statement) ||
+                !c.isStringLiteral(statement.moduleSpecifier) ||
+                statement.importClause?.isTypeOnly
+            )
+                continue;
+            const clause = statement.importClause;
+            const binding = clause?.namedBindings;
+            const specifier = statement.moduleSpecifier.text;
+            if (binding && c.isNamespaceImport(binding) && binding.name.text === node.text)
+                return exportedMember(
+                    context,
+                    specifier,
+                    source.fileName,
+                    members[0],
+                    members.slice(1),
+                    seen,
+                    baseOnly,
+                );
+            if (clause?.name?.text === node.text)
+                return exportedMember(
+                    context,
+                    specifier,
+                    source.fileName,
+                    "default",
+                    members,
+                    seen,
+                    baseOnly,
+                );
+            if (binding && c.isNamedImports(binding))
+                for (const item of binding.elements)
+                    if (!item.isTypeOnly && item.name.text === node.text)
+                        return exportedMember(
+                            context,
+                            specifier,
+                            source.fileName,
+                            (item.propertyName ?? item.name).text,
+                            members,
+                            seen,
+                            baseOnly,
+                        );
+        }
+        return false;
+    }
+
     async function exported(
         context: BuildContext,
         specifier: string,
         importer: string,
         name: string,
         seen: Set<string>,
+        baseOnly = false,
     ): Promise<boolean> {
         if (specifier === "@finesoft/front" || serverEntries.has(specifier))
             return name === "BaseServerController";
@@ -76,7 +345,13 @@ export function serverControllerModules(getRoot: () => string) {
                 const target = has(statement, c.SyntaxKind.DefaultKeyword)
                     ? "default"
                     : statement.name?.text;
-                if (target === name) return serverClass(context, source, statement, seen);
+                if (target === name)
+                    return !baseOnly && serverClass(context, source, statement, seen);
+            }
+            if (c.isVariableStatement(statement) && has(statement, c.SyntaxKind.ExportKeyword)) {
+                for (const item of statement.declarationList.declarations)
+                    if (c.isIdentifier(item.name) && item.name.text === name && item.initializer)
+                        return expression(context, source, item.initializer, seen, baseOnly);
             }
             if (c.isExportDeclaration(statement) && !statement.isTypeOnly) {
                 const module =
@@ -86,7 +361,7 @@ export function serverControllerModules(getRoot: () => string) {
                 if (
                     !statement.exportClause &&
                     module &&
-                    (await exported(context, module, file, name, new Set(seen)))
+                    (await exported(context, module, file, name, new Set(seen), baseOnly))
                 )
                     return true;
                 if (statement.exportClause && c.isNamedExports(statement.exportClause)) {
@@ -94,13 +369,13 @@ export function serverControllerModules(getRoot: () => string) {
                         if (item.isTypeOnly || item.name.text !== name) continue;
                         const local = (item.propertyName ?? item.name).text;
                         return module
-                            ? exported(context, module, file, local, seen)
-                            : identifier(context, source, local, seen);
+                            ? exported(context, module, file, local, seen, baseOnly)
+                            : identifier(context, source, local, seen, baseOnly);
                     }
                 }
             }
             if (name === "default" && c.isExportAssignment(statement))
-                return expression(context, source, statement.expression, seen);
+                return expression(context, source, statement.expression, seen, baseOnly);
         }
         return false;
     }
@@ -109,6 +384,7 @@ export function serverControllerModules(getRoot: () => string) {
         source: ts.SourceFile,
         name: string,
         seen: Set<string>,
+        baseOnly = false,
     ): Promise<boolean> {
         const key = `${source.fileName}:local:${name}`;
         if (seen.has(key)) return false;
@@ -116,11 +392,20 @@ export function serverControllerModules(getRoot: () => string) {
         const c = getCompiler();
         for (const statement of source.statements) {
             if (c.isClassDeclaration(statement) && statement.name?.text === name)
-                return serverClass(context, source, statement, seen);
+                return !baseOnly && serverClass(context, source, statement, seen);
             if (c.isVariableStatement(statement))
-                for (const item of statement.declarationList.declarations)
-                    if (c.isIdentifier(item.name) && item.name.text === name && item.initializer)
-                        return expression(context, source, item.initializer, seen);
+                for (const item of statement.declarationList.declarations) {
+                    const members = bindingPath(item.name, name);
+                    if (members && item.initializer)
+                        return memberExpression(
+                            context,
+                            source,
+                            item.initializer,
+                            members,
+                            seen,
+                            baseOnly,
+                        );
+                }
             if (
                 !c.isImportDeclaration(statement) ||
                 !c.isStringLiteral(statement.moduleSpecifier) ||
@@ -135,6 +420,7 @@ export function serverControllerModules(getRoot: () => string) {
                     source.fileName,
                     "default",
                     seen,
+                    baseOnly,
                 );
             if (clause?.namedBindings && c.isNamedImports(clause.namedBindings))
                 for (const item of clause.namedBindings.elements)
@@ -145,6 +431,7 @@ export function serverControllerModules(getRoot: () => string) {
                             source.fileName,
                             (item.propertyName ?? item.name).text,
                             seen,
+                            baseOnly,
                         );
         }
         return false;
@@ -154,36 +441,48 @@ export function serverControllerModules(getRoot: () => string) {
         source: ts.SourceFile,
         node: ts.Expression,
         seen: Set<string>,
+        baseOnly = false,
     ): Promise<boolean> {
         const c = getCompiler();
-        if (c.isIdentifier(node)) return identifier(context, source, node.text, seen);
-        if (c.isPropertyAccessExpression(node) && c.isIdentifier(node.expression)) {
-            for (const statement of source.statements) {
-                if (
-                    !c.isImportDeclaration(statement) ||
-                    !c.isStringLiteral(statement.moduleSpecifier)
-                )
-                    continue;
-                const binding = statement.importClause?.namedBindings;
-                if (
-                    binding &&
-                    c.isNamespaceImport(binding) &&
-                    binding.name.text === node.expression.text
-                )
-                    return exported(
-                        context,
-                        statement.moduleSpecifier.text,
-                        source.fileName,
-                        node.name.text,
-                        seen,
-                    );
-            }
+        node = unwrap(node);
+        if (c.isIdentifier(node)) return identifier(context, source, node.text, seen, baseOnly);
+        const member = c.isPropertyAccessExpression(node)
+            ? node.name.text
+            : c.isElementAccessExpression(node) && c.isStringLiteralLike(node.argumentExpression)
+              ? node.argumentExpression.text
+              : undefined;
+        if (member && (c.isPropertyAccessExpression(node) || c.isElementAccessExpression(node))) {
+            return memberExpression(context, source, node.expression, [member], seen, baseOnly);
         }
-        if (c.isClassExpression(node)) return serverClass(context, source, node, seen);
+        // Unknown computed members of a namespace carrying the raw base must not
+        // quietly return the original implementation to the browser.
+        if (baseOnly && c.isElementAccessExpression(node) && !member)
+            return memberExpression(
+                context,
+                source,
+                node.expression,
+                ["BaseServerController"],
+                seen,
+                true,
+            );
+        if (c.isClassExpression(node)) return !baseOnly && serverClass(context, source, node, seen);
         if (c.isCallExpression(node)) {
-            if (await expression(context, source, node.expression, new Set(seen))) return true;
+            if (!baseOnly && (await expression(context, source, node.expression, new Set(seen))))
+                return true;
             for (const argument of node.arguments)
-                if (await expression(context, source, argument, new Set(seen))) return true;
+                if (
+                    (await expression(context, source, argument, new Set(seen), baseOnly)) ||
+                    (baseOnly &&
+                        (await memberExpression(
+                            context,
+                            source,
+                            argument,
+                            ["BaseServerController"],
+                            new Set(seen),
+                            true,
+                        )))
+                )
+                    return true;
         }
         return false;
     }
@@ -197,6 +496,98 @@ export function serverControllerModules(getRoot: () => string) {
             (clause) => clause.token === getCompiler().SyntaxKind.ExtendsKeyword,
         )?.types[0];
         return !!base && expression(context, source, base.expression, seen);
+    }
+
+    /** One classification drives cold dependency indexing and every browser load form. */
+    async function classify(context: BuildContext, source: ts.SourceFile) {
+        const c = getCompiler();
+        const classes: ts.ClassLikeDeclaration[] = [];
+        const uses: ts.Expression[] = [];
+        const visit = (node: ts.Node) => {
+            if (c.isImportDeclaration(node) || c.isExportDeclaration(node) || c.isTypeNode(node))
+                return;
+            if (c.isClassDeclaration(node) || c.isClassExpression(node)) classes.push(node);
+            if (
+                c.isIdentifier(node) ||
+                c.isPropertyAccessExpression(node) ||
+                c.isElementAccessExpression(node) ||
+                c.isCallExpression(node)
+            )
+                uses.push(node);
+            c.forEachChild(node, visit);
+        };
+        visit(source);
+        const owned = new Set<ts.ClassLikeDeclaration>();
+        for (const node of classes)
+            if (await serverClass(context, source, node, new Set())) owned.add(node);
+        const names = new Map<string, string>();
+        const defaultNames = new Map<ts.ExportAssignment, string>();
+        const reserved = new Set(uses.filter(c.isIdentifier).map((node) => node.text));
+        const generatedName = (prefix: string) => {
+            let name = prefix;
+            while (reserved.has(name)) name += "_";
+            reserved.add(name);
+            return name;
+        };
+        for (const statement of source.statements) {
+            if (c.isClassDeclaration(statement) && owned.has(statement)) {
+                const name = statement.name?.text ?? "__ServerController";
+                names.set(name, name);
+            }
+            if (c.isVariableStatement(statement))
+                for (const item of statement.declarationList.declarations)
+                    if (
+                        c.isIdentifier(item.name) &&
+                        item.initializer &&
+                        owned.has(unwrap(item.initializer) as ts.ClassExpression)
+                    )
+                        names.set(item.name.text, item.name.text);
+            if (
+                c.isExportAssignment(statement) &&
+                owned.has(unwrap(statement.expression) as ts.ClassExpression)
+            ) {
+                const name = generatedName("__ServerControllerDefault");
+                defaultNames.set(statement, name);
+                names.set(name, name);
+            }
+        }
+        // Keep local aliases of a rewritten class identical to the original class reference.
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const statement of source.statements) {
+                if (!c.isVariableStatement(statement)) continue;
+                for (const item of statement.declarationList.declarations) {
+                    if (
+                        !c.isIdentifier(item.name) ||
+                        !item.initializer ||
+                        names.has(item.name.text)
+                    )
+                        continue;
+                    const value = unwrap(item.initializer);
+                    if (c.isIdentifier(value) && names.has(value.text)) {
+                        names.set(item.name.text, names.get(value.text)!);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        // Raw framework-base use in an unsupported factory must fail closed. Pure
+        // imports/re-export barrels and consumers of already classified controllers remain shared.
+        let server = owned.size > 0;
+        if (!server) {
+            const checked = new Set<string>();
+            for (const use of uses) {
+                const key = use.getText(source);
+                if (checked.has(key)) continue;
+                checked.add(key);
+                if (await expression(context, source, use, new Set(), true)) {
+                    server = true;
+                    break;
+                }
+            }
+        }
+        return { server, names, defaultNames };
     }
 
     async function protectDependencies(
@@ -279,21 +670,11 @@ export function serverControllerModules(getRoot: () => string) {
         }
         if (!pending.size) return;
         indexing = (async () => {
-            const c = getCompiler();
             for (const file of pending) {
                 pending.delete(file);
                 const source = read(file);
                 if (!source) continue;
-                if (
-                    privateFiles.has(file) ||
-                    (
-                        await Promise.all(
-                            source.statements
-                                .filter(c.isClassDeclaration)
-                                .map((node) => serverClass(context, source, node, new Set())),
-                        )
-                    ).some(Boolean)
-                )
+                if (privateFiles.has(file) || (await classify(context, source)).server)
                     await protectDependencies(context, file);
             }
         })();
@@ -321,17 +702,8 @@ export function serverControllerModules(getRoot: () => string) {
                 return null;
             }
             const c = getCompiler();
-            const names = new Map<string, string>();
-            for (const statement of source.statements) {
-                if (
-                    c.isClassDeclaration(statement) &&
-                    (await serverClass(context, source, statement, new Set()))
-                ) {
-                    const name = statement.name?.text ?? "__ServerController";
-                    names.set(name, name);
-                }
-            }
-            if (!names.size) {
+            const { server, names, defaultNames } = await classify(context, source);
+            if (!server) {
                 if (privateFiles.has(file))
                     throw Error(
                         `Server controller dependency cannot be loaded by the browser: ${file}`,
@@ -345,6 +717,10 @@ export function serverControllerModules(getRoot: () => string) {
                 )
             )
                 throw Error(`Server controller source cannot be loaded as an asset: ${file}`);
+            if (!names.size)
+                throw Error(
+                    `Unsupported server controller syntax; use a module-scope class: ${file}`,
+                );
             const exports: string[] = [];
             for (const statement of source.statements) {
                 if (c.isInterfaceDeclaration(statement) || c.isTypeAliasDeclaration(statement))
@@ -360,6 +736,17 @@ export function serverControllerModules(getRoot: () => string) {
                             ? `export default ${name};`
                             : `export { ${name} };`,
                     );
+                } else if (
+                    c.isVariableStatement(statement) &&
+                    has(statement, c.SyntaxKind.ExportKeyword)
+                ) {
+                    for (const item of statement.declarationList.declarations) {
+                        if (!c.isIdentifier(item.name) || !names.has(item.name.text))
+                            throw Error(
+                                `Server controller modules can only export controllers and types: ${file}`,
+                            );
+                        exports.push(`export { ${item.name.text} };`);
+                    }
                 } else if (c.isExportDeclaration(statement) && !statement.isTypeOnly) {
                     if (
                         statement.moduleSpecifier ||
@@ -379,19 +766,20 @@ export function serverControllerModules(getRoot: () => string) {
                         exports.push(`export { ${name} as ${item.name.text} };`);
                     }
                 } else if (c.isExportAssignment(statement)) {
-                    if (
-                        !c.isIdentifier(statement.expression) ||
-                        !names.has(statement.expression.text)
-                    )
+                    const value = unwrap(statement.expression);
+                    const name =
+                        defaultNames.get(statement) ??
+                        (c.isIdentifier(value) ? value.text : undefined);
+                    if (!name || !names.has(name))
                         throw Error(`Invalid server controller default export: ${file}`);
-                    exports.push(`export default ${statement.expression.text};`);
+                    exports.push(`export default ${name};`);
                 } else if (has(statement, c.SyntaxKind.ExportKeyword))
                     throw Error(
                         `Server controller modules can only export controllers and types: ${file}`,
                     );
             }
             return {
-                code: `import { ServerControllerProxy as __Proxy } from "@finesoft/front";\n${[...names].map(([name]) => `class ${name} extends __Proxy {}`).join("\n")}\n${exports.join("\n")}`,
+                code: `import { ServerControllerProxy as __Proxy } from "@finesoft/front";\n${[...names].map(([name, original]) => (name === original ? `class ${name} extends __Proxy {}` : `const ${name} = ${original};`)).join("\n")}\n${exports.join("\n")}`,
                 map: { version: 3, sources: [], names: [], mappings: "", sourcesContent: [] },
             };
         },

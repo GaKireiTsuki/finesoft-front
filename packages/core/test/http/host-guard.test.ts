@@ -18,13 +18,18 @@ describe("classifyHost — IPv4 literal forms", () => {
         "100.64.0.1", // CGNAT
         "224.0.0.1", // multicast
         "240.0.0.1", // reserved
+        "198.18.0.0", // benchmark network
+        "198.19.255.255",
     ])("blocks dotted-decimal private/reserved %s", (host) => {
         assertBlocked(classifyHost(host), host);
     });
 
-    test.each(["8.8.8.8", "1.1.1.1", "208.67.222.222"])("allows public %s", (host) => {
-        expect(classifyHost(host).ok).toBe(true);
-    });
+    test.each(["8.8.8.8", "1.1.1.1", "208.67.222.222", "198.17.255.255", "198.20.0.0"])(
+        "allows public %s",
+        (host) => {
+            expect(classifyHost(host).ok).toBe(true);
+        },
+    );
 
     test("blocks decimal-integer form 2130706433 (= 127.0.0.1)", () => {
         assertBlocked(classifyHost("2130706433"), "decimal 127.0.0.1");

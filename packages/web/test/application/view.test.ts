@@ -138,7 +138,6 @@ test.each(["retry", "leave-and-return"] as const)(
         const session = createWebSession({ web, initial });
         try {
             expect((await session.start()).destinations.map((entry) => entry.status)).toEqual([
-                undefined,
                 403,
             ]);
             expect(handler).toHaveBeenCalledOnce();
