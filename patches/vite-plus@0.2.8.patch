@@ -1,0 +1,46 @@
+diff --git a/dist/constants-BppDcRc1.js b/dist/constants-BppDcRc1.js
+--- a/dist/constants-BppDcRc1.js
++++ b/dist/constants-BppDcRc1.js
+@@ -5,7 +5,7 @@
+ //#region src/utils/constants.ts
+ const VITE_PLUS_NAME = "vite-plus";
+ const VITE_PLUS_VERSION = process.env.VP_VERSION || version;
+-const VITEST_VERSION = "4.1.10";
++const VITEST_VERSION = "4.1.11";
+ const VITE_PLUS_OVERRIDE_PACKAGES = process.env.VP_OVERRIDE_PACKAGES ? JSON.parse(process.env.VP_OVERRIDE_PACKAGES) : {
+ 	vite: `npm:@voidzero-dev/vite-plus-core@${VITE_PLUS_VERSION}`,
+ 	vitest: VITEST_VERSION
+diff --git a/dist/define-config-CEm_MtvJ.cjs b/dist/define-config-CEm_MtvJ.cjs
+--- a/dist/define-config-CEm_MtvJ.cjs
++++ b/dist/define-config-CEm_MtvJ.cjs
+@@ -40,7 +40,7 @@
+ var version = "0.2.8", VITE_PLUS_VERSION, VITEST_VERSION, CONFIG_METADATA_ENV;
+ var init_constants = __esmMin((() => {
+ 	VITE_PLUS_VERSION = process.env.VP_VERSION || version;
+-	VITEST_VERSION = "4.1.10";
++	VITEST_VERSION = "4.1.11";
+ 	process.env.VP_OVERRIDE_PACKAGES ? JSON.parse(process.env.VP_OVERRIDE_PACKAGES) : `${VITE_PLUS_VERSION}`;
+ 	(0, node_module.createRequire)(require("url").pathToFileURL(__filename).href);
+ 	process.versions.node, process.release.name;
+diff --git a/dist/versions.js b/dist/versions.js
+--- a/dist/versions.js
++++ b/dist/versions.js
+@@ -5,5 +5,5 @@
+   "oxlint": "1.76.0",
+   "oxfmt": "0.61.0",
+   "oxlint-tsgolint": "7.0.2001",
+-  "vitest": "4.1.10"
++  "vitest": "4.1.11"
+ };
+diff --git a/dist/editor-CGWdbLgD.js b/dist/editor-CGWdbLgD.js
+--- a/dist/editor-CGWdbLgD.js
++++ b/dist/editor-CGWdbLgD.js
+@@ -1266,7 +1266,7 @@
+ 		pkg.optionalDependencies
+ 	]) {
+ 		if (!dependencies) continue;
+-		for (const [name, spec] of Object.entries(dependencies)) if (isAlignableVitestEcosystemPackage(name) && spec.startsWith("catalog:") && catalogDependencyResolver(spec, name) !== "4.1.10") return true;
++		for (const [name, spec] of Object.entries(dependencies)) if (isAlignableVitestEcosystemPackage(name) && spec.startsWith("catalog:") && catalogDependencyResolver(spec, name) !== VITEST_VERSION) return true;
+ 	}
+ 	return false;
+ }

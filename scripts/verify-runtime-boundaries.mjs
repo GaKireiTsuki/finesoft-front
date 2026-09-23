@@ -55,7 +55,7 @@ const peers = {
     node: { "@hono/node-server": "2.1.0", "@types/node": "24.12.2" },
     tooling: {
         vite: "npm:@voidzero-dev/vite-plus-core@0.2.8",
-        hono: "4.12.9",
+        hono: "4.13.5",
         "@types/node": "24.12.2",
     },
 };

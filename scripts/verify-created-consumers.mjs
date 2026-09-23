@@ -82,6 +82,10 @@ async function verifyDevelopment(cwd, name) {
 const typescriptVersion = JSON.parse(
     await fs.readFile(root + "node_modules/typescript/package.json", "utf8"),
 ).version;
+const packageManager = JSON.parse(await fs.readFile(root + "package.json", "utf8")).packageManager;
+const vitestVersion = JSON.parse(
+    await fs.readFile(root + "node_modules/vitest/package.json", "utf8"),
+).version;
 try {
     for (const name of [
         "react",
@@ -98,6 +102,7 @@ try {
             "@finesoft/front": ["./.finesoft/front.d.ts"],
         });
         const pkg = JSON.parse(await fs.readFile(source + "/package.json"));
+        assert.equal(pkg.packageManager, packageManager);
         assert.ok(!JSON.stringify(pkg).includes("workspace:"));
         assert.ok(!JSON.stringify(pkg).includes("catalog:"));
         assert.equal(pkg.scripts.prebuild, undefined);
@@ -106,7 +111,6 @@ try {
         const cwd = scratch + "/" + name;
         await fs.cp(source, cwd, { recursive: true });
         pkg.dependencies["@finesoft/front"] = "file:" + tarball;
-        pkg.packageManager = "pnpm@11.20.0";
         await fs.writeFile(evidence + "/" + name + "-package.json", JSON.stringify(pkg, null, 2));
         pkg.devDependencies ??= {};
         // These are temporary validation-only tools. The generated manifest written to
@@ -119,6 +123,23 @@ try {
         if (name.startsWith("svelte")) pkg.devDependencies["svelte-check"] = "^4.3.4";
         await fs.writeFile(cwd + "/package.json", JSON.stringify(pkg, null, 2));
         await fs.writeFile(evidence + "/" + name + "-install.log", run(["install"], cwd));
+        await fs.copyFile(
+            cwd + "/pnpm-workspace.yaml",
+            evidence + "/" + name + "-pnpm-workspace.yaml",
+        );
+        // Resolve through the installed Vite+ package, not the monorepo, to catch
+        // scaffolds that silently reinstall Vite+'s original transitive versions.
+        const toolingRequire = createRequire(
+            await fs.realpath(cwd + "/node_modules/vite-plus/package.json"),
+        );
+        const installedToolchain = {};
+        for (const dependency of ["vitest", "@vitest/mocker", "@vitest/browser"]) {
+            const installed = JSON.parse(
+                await fs.readFile(toolingRequire.resolve(dependency + "/package.json"), "utf8"),
+            );
+            assert.equal(installed.version, vitestVersion, `${name}: ${dependency}`);
+            installedToolchain[dependency] = installed.version;
+        }
         await fs.writeFile(
             evidence + "/" + name + "-check.log",
             run(["check", "--no-fmt", "--no-lint"], cwd),
@@ -147,6 +168,7 @@ try {
         );
         result.push({
             name,
+            installedToolchain,
             independentConfiguration: "passed",
             typecheck: "TypeScript and native component checker passed",
             build: "installed local tarball and built client/SSR outside workspace",
