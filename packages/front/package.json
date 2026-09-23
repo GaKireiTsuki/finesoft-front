@@ -1,6 +1,6 @@
 {
     "name": "@finesoft/front",
-    "version": "0.5.3",
+    "version": "0.5.4",
     "description": "Application runtime, routing, native UI and platform hosts through one public API",
     "license": "MIT",
     "repository": {
